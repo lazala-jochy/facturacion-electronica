@@ -1,4 +1,3 @@
-import AppLayout from "../layout/AppLayout";
 import type { AuthCompany } from "../services/auth";
 
 export default function Dashboard({
@@ -9,14 +8,17 @@ export default function Dashboard({
   onLogout: () => void;
 }) {
   return (
-    <AppLayout>
+    
       <div className="space-y-5">
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-2xl font-semibold text-slate-900">
-            Bienvenido, {company.name}
+            Bienvenido, {company.razonSocial}
           </h2>
           <p className="mt-2 text-slate-600">
             Empresa activa: {company.rnc} | {company.email}
+          </p>
+           <p className="mt-2 text-slate-600">
+            Direccion: {company.direccion} 
           </p>
           <p className="mt-1 text-sm text-slate-500">
             Listo para emitir comprobantes fiscales electronicos en RD.
@@ -44,6 +46,6 @@ export default function Dashboard({
           </div>
         </div>
       </div>
-    </AppLayout>
+    
   );
 }

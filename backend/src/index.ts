@@ -10,7 +10,8 @@ import {
 const PORT = Number(process.env.PORT ?? 3001);
 
 type AuthBody = {
-  name?: string;
+  razonSocial?: string;
+  direccion?: string;
   rnc?: string;
   email?: string;
   password?: string;
@@ -54,12 +55,13 @@ const readBody = async (req: IncomingMessage): Promise<AuthBody> => {
 
 const handleRegister = async (req: IncomingMessage, res: ServerResponse) => {
   const body = await readBody(req);
-  const name = body.name?.trim();
+  const razonSocial = body.razonSocial?.trim();
+  const direccion = body.direccion?.trim();
   const rnc = body.rnc?.trim();
   const email = body.email ? normalizeEmail(body.email) : "";
   const password = body.password?.trim() ?? "";
-
-  if (!name || !rnc || !email || !password) {
+console.log(body, "this is the data sent")
+  if (!razonSocial || !rnc || !email || !password) {
     return json(res, 400, { message: "Completa todos los campos requeridos." });
   }
   if (!/^[0-9]{9,11}$/.test(rnc)) {
@@ -82,15 +84,16 @@ const handleRegister = async (req: IncomingMessage, res: ServerResponse) => {
   }
 
   const company = await createCompany({
-    name,
+    razonSocial,
     rnc,
     email,
     password: hashPassword(password),
+    direccion: direccion ?? "",
   });
 
   return json(res, 201, {
     message: "Cuenta creada correctamente.",
-    company: { id: company.id, name: company.name, email: company.email, rnc: company.rnc },
+    company: { id: company.id, razonSocial: company.razonSocial, email: company.email, rnc: company.rnc, direccion: company.direccion },
   });
 };
 
@@ -111,7 +114,7 @@ const handleLogin = async (req: IncomingMessage, res: ServerResponse) => {
   return json(res, 200, {
     message: "Inicio de sesion exitoso.",
     session: { token: randomBytes(24).toString("hex") },
-    company: { id: company.id, name: company.name, email: company.email, rnc: company.rnc },
+    company: { id: company.id, razonSocial: company.razonSocial, email: company.email, rnc: company.rnc, direccion: company.direccion },
   });
 };
 

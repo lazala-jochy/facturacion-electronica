@@ -2,9 +2,10 @@ import { prisma } from "../prisma";
 
 export type CreateCompanyInput = {
   rnc: string;
-  name: string;
+  razonSocial: string;
   email: string;
   password: string;
+  direccion: string;
 };
 
 export const createCompany = async (data: CreateCompanyInput) => {

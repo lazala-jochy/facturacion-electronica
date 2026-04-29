@@ -1,8 +1,9 @@
 export type AuthCompany = {
   id: number;
-  name: string;
+  razonSocial: string;
   email: string;
   rnc: string;
+  direccion: string;
 };
 
 type AuthResponse = {
@@ -17,8 +18,9 @@ type AuthPayload = {
 };
 
 type RegisterPayload = AuthPayload & {
-  name: string;
+  razonSocial: string;
   rnc: string;
+  direccion: string;
 };
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3001";

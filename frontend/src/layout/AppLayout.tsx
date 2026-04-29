@@ -1,35 +1,49 @@
-import type { ReactNode } from "react";
+import { Outlet, NavLink } from "react-router-dom";
 
-export default function AppLayout({ children }: { children: ReactNode }) {
+export default function AppLayout() {
   return (
     <div className="h-screen flex bg-gray-100">
-      
-      {/* Sidebar */}
       <aside className="w-64 bg-gray-900 text-white p-4">
-        <h1 className="text-xl font-bold mb-6">
-          Facturación
-        </h1>
+        <h1 className="text-xl font-bold mb-6">Facturación</h1>
 
         <nav className="space-y-2">
-          <button className="w-full text-left p-2 hover:bg-gray-700 rounded">
+          <NavLink
+            to="/"
+            className={({ isActive }) =>
+              `block p-2 rounded ${isActive ? "bg-gray-700" : "hover:bg-gray-700"}`
+            }
+          >
             Dashboard
-          </button>
+          </NavLink>
 
-          <button className="w-full text-left p-2 hover:bg-gray-700 rounded">
+          <NavLink
+            to="/ecf"
+            className={({ isActive }) =>
+              `block p-2 rounded ${isActive ? "bg-gray-700" : "hover:bg-gray-700"}`
+            }
+          >
+            e-CF
+          </NavLink>
+
+          <NavLink
+            to="/clients"
+            className="block p-2 hover:bg-gray-700 rounded"
+          >
             Clients
-          </button>
+          </NavLink>
 
-          <button className="w-full text-left p-2 hover:bg-gray-700 rounded">
+          <NavLink
+            to="/invoices"
+            className="block p-2 hover:bg-gray-700 rounded"
+          >
             Invoices
-          </button>
+          </NavLink>
         </nav>
       </aside>
 
-      {/* Main content */}
       <main className="flex-1 p-6">
-        {children}
+        <Outlet />
       </main>
-
     </div>
   );
 }

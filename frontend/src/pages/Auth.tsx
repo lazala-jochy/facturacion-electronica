@@ -1,5 +1,9 @@
 import { useState, type FormEvent } from "react";
-import { loginCompany, registerCompany, type AuthCompany } from "../services/auth";
+import {
+  loginCompany,
+  registerCompany,
+  type AuthCompany,
+} from "../services/auth";
 
 type AuthMode = "login" | "register";
 
@@ -10,7 +14,8 @@ export default function Auth({
 }) {
   const [mode, setMode] = useState<AuthMode>("login");
   const isLogin = mode === "login";
-  const [name, setName] = useState("");
+  const [razonSocial, setRazonSocial] = useState("");
+  const [direccion, setDireccion] = useState("");
   const [rnc, setRnc] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -34,7 +39,11 @@ export default function Auth({
     setError("");
     setSuccess("");
 
-    if (!email.trim() || !password.trim() || (!isLogin && !name.trim())) {
+    if (
+      !email.trim() ||
+      !password.trim() ||
+      (!isLogin && !razonSocial.trim())
+    ) {
       setError("Completa los campos requeridos.");
       return;
     }
@@ -65,10 +74,11 @@ export default function Auth({
         onAuthenticated(response.company);
       } else {
         await registerCompany({
-          name: name.trim(),
+          razonSocial: razonSocial.trim(),
           rnc: rnc.trim(),
           email: email.trim(),
           password,
+          direccion: direccion.trim(),
         });
         setSuccess("Cuenta creada. Ahora inicia sesion.");
         setMode("login");
@@ -79,7 +89,7 @@ export default function Auth({
       setError(
         submissionError instanceof Error
           ? submissionError.message
-          : "No se pudo completar la autenticacion. Intenta nuevamente."
+          : "No se pudo completar la autenticacion. Intenta nuevamente.",
       );
     } finally {
       setIsSubmitting(false);
@@ -158,22 +168,42 @@ export default function Auth({
               <form onSubmit={handleSubmit} className="mt-8 space-y-6">
                 {!isLogin && (
                   <div>
-                    <label
-                      htmlFor="name"
-                      className="block text-sm font-semibold text-slate-800 mb-2"
-                    >
-                      Nombre
-                    </label>
-                    <input
-                      id="name"
-                      type="text"
-                      className="w-full h-12 px-4 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-indigo-100 focus:border-[#3f6ce8] transition-all"
-                      placeholder="Tu nombre"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      autoComplete="name"
-                      required={!isLogin}
-                    />
+                    <div>
+                      <label
+                        htmlFor="name"
+                        className="block text-sm font-semibold text-slate-800 mb-2"
+                      >
+                        Razon social
+                      </label>
+                      <input
+                        id="razonSocial"
+                        type="text"
+                        className="w-full h-12 px-4 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-indigo-100 focus:border-[#3f6ce8] transition-all"
+                        placeholder="razon social"
+                        value={razonSocial}
+                        onChange={(e) => setRazonSocial(e.target.value)}
+                        autoComplete="razonSocial"
+                        required={!isLogin}
+                      />
+                    </div>
+                    <div>
+                      <label
+                        htmlFor="direccion"
+                        className="block text-sm font-semibold text-slate-800 mb-2"
+                      >
+                        Direccion
+                      </label>
+                      <input
+                        id="direccion"
+                        type="text"
+                        className="w-full h-12 px-4 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-indigo-100 focus:border-[#3f6ce8] transition-all"
+                        placeholder="Av principal, Santo Domingo, RD"
+                        value={direccion}
+                        onChange={(e) => setDireccion(e.target.value)}
+                        autoComplete="direccion"
+                        required={!isLogin}
+                      />
+                    </div>
                   </div>
                 )}
 
@@ -259,7 +289,9 @@ export default function Auth({
                       }`}
                       onClick={() => setShowPassword((prev) => !prev)}
                       aria-label={
-                        showPassword ? "Ocultar contrasena" : "Mostrar contrasena"
+                        showPassword
+                          ? "Ocultar contrasena"
+                          : "Mostrar contrasena"
                       }
                     >
                       <svg

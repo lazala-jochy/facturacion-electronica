@@ -8,10 +8,11 @@ generator client {
 }
 
 model Company {
-  id        Int      @id @default(autoincrement())
-  rnc       String
-  name      String
-  email     String
-  password  String
-  createdAt DateTime @default(now())
+  id               Int      @id @default(autoincrement())
+  rnc              String
+  razonSocial      String
+  email            String
+  password         String
+  direccion        String
+  createdAt        DateTime @default(now())
 }
