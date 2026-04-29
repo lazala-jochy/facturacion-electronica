@@ -107,11 +107,13 @@ Genera: `electron/dist`
 
 ---
 
-## 6) Generar instalador Windows (.exe)
+## 6) Generar instaladores por sistema operativo
 
 Ya esta configurado con `electron-builder`.
 
-Desde la carpeta `electron` ejecuta:
+### Windows (NSIS `.exe`)
+
+Desde la carpeta `electron`:
 
 ```bash
 cd electron
@@ -129,19 +131,71 @@ El instalador se genera en:
 
 - `electron/dist/*.exe`
 
-> Importante: para generar instalador de Windows, ejecuta este comando en Windows.
+### macOS (`.dmg` / `.zip`)
+
+Desde la carpeta `electron`:
+
+```bash
+cd electron
+npm run build:all
+npx electron-builder --mac dmg zip
+```
+
+Archivos generados (aprox):
+
+- `electron/dist/*.dmg`
+- `electron/dist/*-mac.zip`
+
+### Linux (`.AppImage` / `.deb`)
+
+Desde la carpeta `electron`:
+
+```bash
+cd electron
+npm run build:all
+npx electron-builder --linux AppImage deb
+```
+
+Archivos generados (aprox):
+
+- `electron/dist/*.AppImage`
+- `electron/dist/*.deb`
+
+> Importante: genera cada instalador en su propio sistema operativo (Windows en Windows, macOS en macOS, Linux en Linux).
 
 ---
 
-## 7) Instalar en otra PC (usuario final)
+## 7) Instalacion por sistema operativo (usuario final)
 
-En la PC destino (usuario final) **NO necesita Node.js**.
+En la maquina destino el usuario final **NO necesita Node.js**.
 
-Solo necesitas:
+### Windows
 
-1. Copiar el instalador generado (`.exe`)
-2. Ejecutarlo y completar el wizard de instalacion
-3. Abrir **Facturacion Electronica RD** desde escritorio o menu inicio
+1. Copiar el instalador `.exe`
+2. Ejecutarlo y completar el wizard (NSIS)
+3. Abrir desde escritorio o menu inicio
+
+### macOS
+
+1. Abrir el `.dmg`
+2. Arrastrar la app a `Applications`
+3. Si Gatekeeper bloquea, abrir con click derecho > `Open`
+
+### Linux
+
+Para `.AppImage`:
+
+```bash
+chmod +x Facturacion*.AppImage
+./Facturacion*.AppImage
+```
+
+Para `.deb` (Debian/Ubuntu):
+
+```bash
+sudo dpkg -i facturacion*.deb
+sudo apt-get install -f
+```
 
 La app en produccion:
 
@@ -151,7 +205,34 @@ La app en produccion:
 
 ---
 
-## 8) Comandos de verificacion rapida
+## 8) Desarrollo en diferentes OS
+
+Los comandos de desarrollo son los mismos en Windows, macOS y Linux:
+
+### Backend
+
+```bash
+cd backend
+npm run dev
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm run dev
+```
+
+### Electron
+
+```bash
+cd electron
+npm run start
+```
+
+---
+
+## 9) Comandos de verificacion rapida
 
 ```bash
 cd frontend && npm run lint && npm run build
@@ -161,7 +242,7 @@ cd ../electron && npm run build
 
 ---
 
-## 9) Estructura del proyecto
+## 10) Estructura del proyecto
 
 ```text
 facturacion-electronica/
@@ -173,10 +254,11 @@ facturacion-electronica/
 
 ---
 
-## 10) Troubleshooting
+## 11) Troubleshooting
 
 - **No abre estilos Tailwind**: verifica que frontend este corriendo (`npm run dev`) y que `src/index.css` tenga `@import "tailwindcss";`.
 - **Error de login/register**: confirma backend en `http://localhost:3001`.
 - **Electron pantalla en blanco**: revisa que Vite este arriba en `http://localhost:5173`.
 - **Error al generar `.exe`**: ejecuta `npm install` dentro de `electron` y vuelve a correr `npm run dist:win`.
+- **Error de firma en macOS**: para distribucion publica necesitas certificado Apple Developer ID.
 
