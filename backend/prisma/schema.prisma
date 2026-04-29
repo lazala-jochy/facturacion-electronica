@@ -16,3 +16,4 @@ model Company {
   direccion        String
   createdAt        DateTime @default(now())
 }
+
