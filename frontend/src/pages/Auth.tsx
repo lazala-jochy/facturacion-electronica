@@ -2,9 +2,8 @@ import { useState, type FormEvent } from "react";
 import {
   loginCompany,
   registerCompany,
-  type AuthCompany,
 } from "../services/auth";
-
+import type { AuthCompany } from "../types/company";
 type AuthMode = "login" | "register";
 
 export default function Auth({

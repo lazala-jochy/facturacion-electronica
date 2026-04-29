@@ -1,27 +1,4 @@
-export type AuthCompany = {
-  id: number;
-  razonSocial: string;
-  email: string;
-  rnc: string;
-  direccion: string;
-};
-
-type AuthResponse = {
-  message: string;
-  company: AuthCompany;
-  session?: { token: string };
-};
-
-type AuthPayload = {
-  email: string;
-  password: string;
-};
-
-type RegisterPayload = AuthPayload & {
-  razonSocial: string;
-  rnc: string;
-  direccion: string;
-};
+import type { AuthResponse, RegisterPayload, AuthPayload } from "../types/company";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
 

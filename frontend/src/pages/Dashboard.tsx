@@ -1,11 +1,8 @@
-import type { AuthCompany } from "../services/auth";
-
+import  type { AuthCompany } from "../types/company";
 export default function Dashboard({
   company,
-  onLogout,
 }: {
   company: AuthCompany;
-  onLogout: () => void;
 }) {
   return (
     
@@ -23,12 +20,7 @@ export default function Dashboard({
           <p className="mt-1 text-sm text-slate-500">
             Listo para emitir comprobantes fiscales electronicos en RD.
           </p>
-          <button
-            onClick={onLogout}
-            className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
-          >
-            Cerrar sesion
-          </button>
+       
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
