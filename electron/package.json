@@ -1,0 +1,73 @@
+{
+  "name": "electron",
+  "version": "1.0.0",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "npm run build && electron .",
+    "build:all": "npm --prefix ../frontend run build && npm --prefix ../backend run build && npm run build",
+    "dist:win": "npm run build:all && electron-builder --win nsis",
+    "dist:dir": "npm run build:all && electron-builder --dir"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@types/electron": "^1.4.38",
+    "@types/node": "^25.6.0",
+    "electron": "^41.3.0",
+    "electron-builder": "^26.0.12",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^6.0.3"
+  },
+  "build": {
+    "appId": "com.facturacionelectronica.rd",
+    "productName": "Facturacion Electronica RD",
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "**/*.node",
+      "backend-runtime/node_modules/.prisma/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../frontend/dist",
+        "to": "frontend-dist"
+      },
+      {
+        "from": "../backend/dist",
+        "to": "backend-runtime/dist"
+      },
+      {
+        "from": "../backend/package.json",
+        "to": "backend-runtime/package.json"
+      },
+      {
+        "from": "../backend/node_modules/@prisma",
+        "to": "backend-runtime/node_modules/@prisma"
+      },
+      {
+        "from": "../backend/node_modules/.prisma",
+        "to": "backend-runtime/node_modules/.prisma"
+      },
+      {
+        "from": "../backend/node_modules/@prisma/client",
+        "to": "backend-runtime/node_modules/@prisma/client"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

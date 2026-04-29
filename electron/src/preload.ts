@@ -1,0 +1,1 @@
+// bridge for later (React ↔ Electron ↔ Backend)
