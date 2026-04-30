@@ -212,14 +212,29 @@ GH_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
 ### Scripts relevantes (electron/package.json)
 
 ```bash
+# desarrollo: compila Electron y levanta la app en local
+npm run start
+
 # compila solo TypeScript de Electron
 npm run compile
+
+# build de frontend + chequeo backend + compile electron
+npm run build:modules
+
+# build completo de frontend + backend + electron
+npm run build:all
 
 # build de frontend + backend + electron, luego empaqueta sin publicar
 npm run build
 
 # build de todo y publica en GitHub Releases (produccion)
 npm run release
+
+# empaqueta instalador Windows (NSIS)
+npm run dist:win
+
+# empaqueta app en carpeta (sin instalador), ideal para smoke test
+npm run dist:dir
 ```
 
 ### Flujo de release recomendado

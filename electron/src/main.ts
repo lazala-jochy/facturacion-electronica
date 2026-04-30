@@ -3,7 +3,6 @@ import path from "path";
 import { spawn, type ChildProcess } from "child_process";
 import { pathToFileURL } from "url";
 import fs from "fs";
-import "dotenv/config";
 import { autoUpdater } from "electron-updater";
 
 let mainWindow: BrowserWindow | null = null;
@@ -94,7 +93,7 @@ const setupAutoUpdater = () => {
 
   autoUpdater.on("update-downloaded", async () => {
     console.log("[auto-update] Update downloaded.");
-    const { response } = await dialog.showMessageBox({
+    const result = await dialog.showMessageBox({
       type: "info",
       buttons: ["Restart Now", "Later"],
       defaultId: 0,
@@ -103,7 +102,7 @@ const setupAutoUpdater = () => {
       message: "A new version is ready. Restart now?",
     });
 
-    if (response === 0) {
+    if (result.response === 0) {
       autoUpdater.quitAndInstall();
     }
   });
