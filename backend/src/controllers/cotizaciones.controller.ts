@@ -7,6 +7,7 @@ import {
 import { generateDGIIData } from "../utils/dgii";
 import { buildCotizacionPdfBuffer } from "../utils/cotizacion-pdf";
 import { prisma } from "../prisma";
+import { ecfService } from "../services/ecf.service";
 
 const stripTenantFromBody = (body: Record<string, unknown>) => {
   delete body.company_id;
@@ -27,6 +28,9 @@ const serializeCotizacion = (
   subtotal: c.subtotal,
   itbis: c.itbis,
   total: c.total,
+  dgii_track_id: c.dgiiTrackId,
+  dgii_status: c.dgiiStatus,
+  dgii_submitted_at: c.dgiiSubmittedAt?.toISOString() ?? null,
   created_at: c.createdAt.toISOString(),
   client: {
     id: c.client.id,
@@ -151,6 +155,10 @@ export const listCotizaciones: RequestHandler = async (req, res) => {
       total: c.total,
       created_at: c.createdAt.toISOString(),
       client_name: c.client.name,
+      client_rnc_cedula: c.client.rncCedula,
+      dgii_status: c.dgiiStatus,
+      dgii_track_id: c.dgiiTrackId,
+      dgii_submitted_at: c.dgiiSubmittedAt?.toISOString() ?? null,
       items_count: c.items.length,
     })),
   });
@@ -207,4 +215,70 @@ export const downloadCotizacionPdf: RequestHandler = async (req, res) => {
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
   res.status(200).send(pdfBuffer);
+};
+
+export const generateEcfXmlByCotizacion: RequestHandler = async (req, res) => {
+  const companyId = req.auth?.companyId;
+  if (!companyId) {
+    res.status(401).json({ message: "No autorizado." });
+    return;
+  }
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ message: "ID invalido." });
+    return;
+  }
+
+  const out = await ecfService.generateForCotizacion(id, companyId);
+  if (!out.ok) {
+    res.status(out.status).json({
+      message: out.message,
+      errors: "errors" in out ? out.errors : undefined,
+    });
+    return;
+  }
+
+  res.json({
+    message: "XML e-CF generado.",
+    ecf_number: out.payload.ecfNumber,
+    xml: out.xml,
+  });
+};
+
+export const submitEcfByCotizacion: RequestHandler = async (req, res) => {
+  const companyId = req.auth?.companyId;
+  if (!companyId) {
+    res.status(401).json({ message: "No autorizado." });
+    return;
+  }
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ message: "ID invalido." });
+    return;
+  }
+
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const p12Path = typeof body.p12_path === "string" ? body.p12_path.trim() : "";
+  const p12Password = typeof body.p12_password === "string" ? body.p12_password : "";
+
+  const out = await ecfService.submitForCotizacion(
+    id,
+    companyId,
+    p12Path ? { p12Path, password: p12Password } : undefined,
+  );
+  if (!out.ok) {
+    res.status(out.status).json({
+      message: out.message,
+      errors: "errors" in out ? out.errors : undefined,
+    });
+    return;
+  }
+
+  res.json({
+    message: "e-CF enviado a DGII.",
+    status: out.dgiiResponse.status,
+    track_id: out.dgiiResponse.trackId,
+    accepted: out.dgiiResponse.accepted,
+    dgii_response: out.dgiiResponse.rawResponse,
+  });
 };

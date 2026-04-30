@@ -20,6 +20,9 @@ export type ClientListItem = {
     subtotal: number;
     itbis: number;
     total: number;
+    dgii_status?: string | null;
+    dgii_track_id?: string | null;
+    dgii_submitted_at?: string | null;
     created_at: string;
   }>;
 };

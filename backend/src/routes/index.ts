@@ -40,6 +40,16 @@ export const buildRouter = () => {
     requireAuth,
     asyncHandler(cotizacionesController.downloadCotizacionPdf),
   );
+  router.get(
+    "/cotizaciones/:id/ecf/xml",
+    requireAuth,
+    asyncHandler(cotizacionesController.generateEcfXmlByCotizacion),
+  );
+  router.post(
+    "/cotizaciones/:id/ecf/submit",
+    requireAuth,
+    asyncHandler(cotizacionesController.submitEcfByCotizacion),
+  );
 
   return router;
 };

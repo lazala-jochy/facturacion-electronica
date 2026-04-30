@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { listClients, type ClientListItem } from "../services/clients";
-import { downloadCotizacionPDF } from "../services/cotizaciones";
+import { downloadCotizacionPDF, submitEcf } from "../services/cotizaciones";
 
 // Helper para formatear moneda
 const formatCurrency = (value: number) => {
@@ -15,7 +15,10 @@ export default function Clients() {
   const [clients, setClients] = useState<ClientListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const [sendingEcfId, setSendingEcfId] = useState<number | null>(null);
   const [downloadError, setDownloadError] = useState<string>("");
+  const [ecfError, setEcfError] = useState<string>("");
+  const [ecfSuccess, setEcfSuccess] = useState<string>("");
 
   useEffect(() => {
     const fetchClients = async () => {
@@ -44,6 +47,38 @@ export default function Clients() {
       console.error("Error al descargar PDF:", error);
     } finally {
       setDownloadingId(null);
+    }
+  };
+
+  const handleSendEcf = async (cotizacionId: number) => {
+    setSendingEcfId(cotizacionId);
+    setEcfError("");
+    setEcfSuccess("");
+    try {
+      const out = await submitEcf(cotizacionId);
+      setEcfSuccess(`e-CF enviado (Track ID: ${out.track_id}).`);
+      setClients((prev) =>
+        prev.map((client) => ({
+          ...client,
+          cotizaciones: client.cotizaciones.map((row) =>
+            row.id === cotizacionId
+              ? {
+                  ...row,
+                  dgii_status: out.status,
+                  dgii_track_id: out.track_id,
+                  dgii_submitted_at: new Date().toISOString(),
+                }
+              : row,
+          ),
+        })),
+      );
+    } catch (error) {
+      const errorMsg =
+        error instanceof Error ? error.message : "Error al enviar e-CF";
+      setEcfError(errorMsg);
+      console.error("Error al enviar e-CF:", error);
+    } finally {
+      setSendingEcfId(null);
     }
   };
 
@@ -91,6 +126,7 @@ export default function Clients() {
                     <th className="hidden xl:table-cell px-4 sm:px-6 py-4 text-left">Correo</th>
                     <th className="px-4 sm:px-6 py-4 text-left">N° Cotización</th>
                     <th className="px-4 sm:px-6 py-4 text-left">Total</th>
+                    <th className="px-4 sm:px-6 py-4 text-center">e-CF</th>
                     <th className="px-4 sm:px-6 py-4 text-center">PDF</th>
                   </tr>
                 </thead>
@@ -98,6 +134,8 @@ export default function Clients() {
                 <tbody className="divide-y divide-gray-100">
                   {clients.map((client) => {
                     const last = client.cotizaciones?.[0];
+                    const alreadySent =
+                      last?.dgii_status === "accepted" || last?.dgii_status === "rejected";
 
                     return (
                       <tr key={client.id} className="hover:bg-indigo-50/40 transition">
@@ -123,6 +161,29 @@ export default function Clients() {
 
                         <td className="px-4 sm:px-6 py-4 text-gray-700 font-medium text-sm">
                           {last ? formatCurrency(last.total) : "-"}
+                        </td>
+
+                        <td className="px-4 sm:px-6 py-4 text-center">
+                          {last ? (
+                            <button
+                              onClick={() => handleSendEcf(last.id)}
+                              disabled={sendingEcfId === last.id || alreadySent}
+                              className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${
+                                alreadySent
+                                  ? "border-emerald-200 text-emerald-700 bg-emerald-50"
+                                  : "border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                              }`}
+                              title={alreadySent ? "e-CF ya enviado" : "Enviar e-CF"}
+                            >
+                              {sendingEcfId === last.id
+                                ? "Enviando..."
+                                : alreadySent
+                                  ? "Enviado"
+                                  : "Enviar"}
+                            </button>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
                         </td>
 
                         <td className="px-4 sm:px-6 py-4 text-center">
@@ -187,6 +248,8 @@ export default function Clients() {
             <div className="md:hidden divide-y divide-gray-100">
               {clients.map((client) => {
                 const last = client.cotizaciones?.[0];
+                const alreadySent =
+                  last?.dgii_status === "accepted" || last?.dgii_status === "rejected";
 
                 return (
                   <div key={client.id} className="p-4 hover:bg-indigo-50/40 transition">
@@ -198,51 +261,65 @@ export default function Clients() {
                         <p className="text-sm text-gray-500">RNC: {client.rnc_cedula}</p>
                       </div>
                       {last ? (
-                        <button
-                          onClick={() => handleDownload(last.id, client.name)}
-                          disabled={downloadingId === last.id}
-                          className="p-2 rounded-lg hover:bg-indigo-100 transition flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                          title="Descargar PDF"
-                        >
-                          {downloadingId === last.id ? (
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              className="w-4 h-4 text-indigo-600 animate-spin"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
-                            >
-                              <circle
-                                cx="12"
-                                cy="12"
-                                r="10"
-                                stroke="currentColor"
-                                strokeWidth="2"
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleSendEcf(last.id)}
+                            disabled={sendingEcfId === last.id || alreadySent}
+                            className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${
+                              alreadySent
+                                ? "border-emerald-200 text-emerald-700 bg-emerald-50"
+                                : "border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                            }`}
+                            title={alreadySent ? "e-CF ya enviado" : "Enviar e-CF"}
+                          >
+                            {sendingEcfId === last.id ? "..." : alreadySent ? "Enviado" : "Enviar"}
+                          </button>
+                          <button
+                            onClick={() => handleDownload(last.id, client.name)}
+                            disabled={downloadingId === last.id}
+                            className="p-2 rounded-lg hover:bg-indigo-100 transition flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Descargar PDF"
+                          >
+                            {downloadingId === last.id ? (
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="w-4 h-4 text-indigo-600 animate-spin"
                                 fill="none"
-                                opacity="0.25"
-                              />
-                              <path
-                                fill="currentColor"
-                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                              />
-                            </svg>
-                          ) : (
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              className="w-4 h-4 text-indigo-600"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
-                              strokeWidth={2}
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                d="M12 3v12m0 0l4-4m-4 4l-4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"
-                              />
-                            </svg>
-                          )}
-                        </button>
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <circle
+                                  cx="12"
+                                  cy="12"
+                                  r="10"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  fill="none"
+                                  opacity="0.25"
+                                />
+                                <path
+                                  fill="currentColor"
+                                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                />
+                              </svg>
+                            ) : (
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="w-4 h-4 text-indigo-600"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M12 3v12m0 0l4-4m-4 4l-4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"
+                                />
+                              </svg>
+                            )}
+                          </button>
+                        </div>
                       ) : null}
                     </div>
 
@@ -276,6 +353,18 @@ export default function Clients() {
         <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700 text-sm">
           <p className="font-semibold">Error al descargar</p>
           <p className="mt-1">{downloadError}</p>
+        </div>
+      )}
+      {ecfError && (
+        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700 text-sm">
+          <p className="font-semibold">Error en e-CF</p>
+          <p className="mt-1">{ecfError}</p>
+        </div>
+      )}
+      {ecfSuccess && (
+        <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-700 text-sm">
+          <p className="font-semibold">Flujo e-CF listo</p>
+          <p className="mt-1">{ecfSuccess}</p>
         </div>
       )}
     </div>

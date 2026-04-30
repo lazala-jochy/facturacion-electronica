@@ -9,18 +9,23 @@ import { prisma } from "./prisma";
 const PORT = Number(process.env.PORT ?? 3001);
 
 const maybeMigrate = () => {
-  if (process.env.NODE_ENV !== "production") return;
+  if (process.env.AUTO_MIGRATE === "false") return;
   const runtimeRoot = path.join(__dirname, "..");
   const prismaCli = path.join(runtimeRoot, "node_modules", "prisma", "build", "index.js");
   const schemaPath = path.join(runtimeRoot, "prisma", "schema.prisma");
-  execFileSync(process.execPath, [prismaCli, "migrate", "deploy", "--schema", schemaPath], {
-    cwd: runtimeRoot,
-    stdio: "inherit",
-    env: {
-      ...process.env,
-      ELECTRON_RUN_AS_NODE: "1",
-    },
-  });
+  try {
+    execFileSync(process.execPath, [prismaCli, "migrate", "deploy", "--schema", schemaPath], {
+      cwd: runtimeRoot,
+      stdio: "inherit",
+      env: {
+        ...process.env,
+        ELECTRON_RUN_AS_NODE: "1",
+      },
+    });
+  } catch (error) {
+    console.error("No se pudo aplicar migraciones Prisma en el arranque.", error);
+    throw error;
+  }
 };
 
 const bootstrap = async () => {

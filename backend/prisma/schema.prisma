@@ -69,6 +69,11 @@ model Cotizacion {
   subtotal       Float
   itbis          Float
   total          Float
+  dgiiTrackId    String?          @map("dgii_track_id")
+  dgiiStatus     String?          @map("dgii_status")
+  dgiiResponse   String?          @map("dgii_response")
+  signedXml      String?          @map("signed_xml")
+  dgiiSubmittedAt DateTime?       @map("dgii_submitted_at")
   createdAt      DateTime         @default(now()) @map("created_at")
   client         Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
   company        Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)

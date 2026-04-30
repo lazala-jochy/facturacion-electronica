@@ -9,6 +9,25 @@ export type CotizacionItemDraft = {
   unit_price: number;
 };
 
+export type CotizacionListItem = {
+  id: number;
+  number: number;
+  client_id: number;
+  company_id: number;
+  payment_terms: string;
+  account_manager: string;
+  subtotal: number;
+  itbis: number;
+  total: number;
+  created_at: string;
+  client_name: string;
+  client_rnc_cedula?: string;
+  dgii_status?: string | null;
+  dgii_track_id?: string | null;
+  dgii_submitted_at?: string | null;
+  items_count: number;
+};
+
 export type CreateClientWithCotizacionPayload = {
   client: {
     name: string;
@@ -36,13 +55,31 @@ export const createClientWithCotizacion = (payload: CreateClientWithCotizacionPa
   });
 
 export const listCotizaciones = () =>
-  apiFetch<{ cotizaciones: unknown[] }>("/cotizaciones", { method: "GET" });
+  apiFetch<{ cotizaciones: CotizacionListItem[] }>("/cotizaciones", { method: "GET" });
 
 export const getCotizacion = (id: number) =>
   apiFetch<{ cotizacion: unknown; dgii_preview: unknown }>(
     `/cotizaciones/${id}`,
     { method: "GET" },
   );
+
+export const generateEcfXml = (id: number) =>
+  apiFetch<{ message: string; ecf_number: string; xml: string }>(
+    `/cotizaciones/${id}/ecf/xml`,
+    { method: "GET" },
+  );
+
+export const submitEcf = (id: number) =>
+  apiFetch<{
+    message: string;
+    status: "accepted" | "rejected";
+    track_id: string;
+    accepted: boolean;
+    dgii_response: string;
+  }>(`/cotizaciones/${id}/ecf/submit`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
 
 /**
  * Descarga una cotización en formato PDF
