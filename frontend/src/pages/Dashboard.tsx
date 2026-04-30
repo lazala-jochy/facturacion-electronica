@@ -77,9 +77,9 @@ export default function Dashboard({
       .sort((a, b) => b.total - a.total)
       .slice(0, 5);
 
-    const recentMovements = [...cotizaciones]
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-      .slice(0, 6);
+    const topCotizaciones = [...cotizaciones]
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 5);
 
     return {
       ingresosMes,
@@ -87,7 +87,7 @@ export default function Dashboard({
       ticketPromedio,
       emitidasMes: inCurrentMonth.length,
       topClients,
-      recentMovements,
+      topCotizaciones,
     };
   }, [cotizaciones]);
 
@@ -199,12 +199,12 @@ export default function Dashboard({
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm transition-all duration-300 hover:shadow-md hover:-translate-y-0.5">
-          <h3 className="text-sm font-semibold text-slate-900">Movimientos recientes</h3>
-          {analytics.recentMovements.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-600">Sin movimientos registrados.</p>
+          <h3 className="text-sm font-semibold text-slate-900">Top 5 cotizaciones por ingreso</h3>
+          {analytics.topCotizaciones.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-600">Sin cotizaciones registradas.</p>
           ) : (
             <div className="mt-3 space-y-2">
-              {analytics.recentMovements.map((row) => (
+              {analytics.topCotizaciones.map((row) => (
                 <div key={row.id} className="flex items-center justify-between gap-3 text-sm rounded-md px-2 py-1.5 transition-colors duration-200 hover:bg-slate-50">
                   <div className="min-w-0">
                     <p className="truncate text-slate-900">

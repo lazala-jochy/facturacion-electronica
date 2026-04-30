@@ -6,7 +6,7 @@ export default function AppLayout({ onLogout }: { onLogout: () => void }) {
   const [accountOpen, setAccountOpen] = useState(false);
 
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row bg-gray-100">
+    <div className="min-h-screen flex flex-col lg:flex-row bg-gradient-to-br from-[#f5f6ff] via-[#f8f9ff] to-[#eef2ff]">
       {/* Mobile Menu Button */}
       <button
         onClick={() => setSidebarOpen(!sidebarOpen)}

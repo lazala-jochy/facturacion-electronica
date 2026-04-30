@@ -157,12 +157,12 @@ export default function Auth({
                 </div>
 
                 <h1 className="mt-7 text-[clamp(2.1rem,4.3vw,3.5rem)] leading-[1.06] font-bold tracking-tight text-slate-900">
-                  Facturacion
-                  <span className="block text-[#3f6ce8]">Electronica</span>
+                  Facturación
+                  <span className="block text-[#3f6ce8]">Electrónica</span>
                 </h1>
                 <p className="mt-5 text-[clamp(1rem,1.5vw,1.5rem)] leading-relaxed text-slate-600">
-                  La solucion inteligente para gestionar tu facturacion de manera
-                  facil y segura.
+                  La solución inteligente para gestionar tu facturación de manera
+                  fácil y segura.
                 </p>
               </div>
 
@@ -205,7 +205,7 @@ export default function Auth({
               </div>
 
               <h2 className="mt-6 text-center text-[clamp(2rem,3.2vw,3rem)] font-bold tracking-tight text-slate-900">
-                {isLogin ? "Iniciar sesion" : "Crear cuenta"}
+                {isLogin ? "Iniciar sesión" : "Crear cuenta"}
               </h2>
               <p className="mt-2 text-center text-[clamp(1rem,1.7vw,1.35rem)] text-slate-600">
                 {isLogin
