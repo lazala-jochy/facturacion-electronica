@@ -1,41 +1,39 @@
-import { createServer } from "http";
-import { authController } from "./controllers/auth.controller";
-import { companyService } from "./services/company.service";
-import { json } from "./utils/http";
+import "./types/express-auth.augment";
+import cors from "cors";
+import express from "express";
+import { buildRouter } from "./routes";
+import { prisma } from "./prisma";
 
 const PORT = Number(process.env.PORT ?? 3001);
 
 const bootstrap = async () => {
-  const companies = await companyService.list();
-  console.log("Backend auth ready. Companies:", companies.length);
+  const companyCount = await prisma.company.count();
+  console.log("Backend ready. Companies:", companyCount);
 
-  const server = createServer(async (req, res) => {
-    if (!req.url || !req.method) {
-      return json(res, 404, { message: "Ruta no encontrada." });
-    }
+  const app = express();
+  app.use(
+    cors({
+      origin: true,
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization"],
+    }),
+  );
+  app.use(express.json({ limit: "1mb" }));
+  app.use("/", buildRouter());
 
-    if (req.method === "OPTIONS") {
-      return json(res, 204, {});
-    }
+  app.use(
+    (
+      err: unknown,
+      _req: express.Request,
+      res: express.Response,
+      _next: express.NextFunction,
+    ) => {
+      console.error(err);
+      res.status(500).json({ message: "Error interno del servidor." });
+    },
+  );
 
-    try {
-      if (req.method === "GET" && req.url === "/health") {
-        return json(res, 200, { ok: true });
-      }
-      if (req.method === "POST" && req.url === "/auth/register") {
-        return await authController.register(req, res);
-      }
-      if (req.method === "POST" && req.url === "/auth/login") {
-        return await authController.login(req, res);
-      }
-      return json(res, 404, { message: "Ruta no encontrada." });
-    } catch (error) {
-      console.error("Backend error:", error);
-      return json(res, 500, { message: "Error interno del servidor." });
-    }
-  });
-
-  server.listen(PORT, () => {
+  app.listen(PORT, () => {
     console.log(`Backend listening on http://localhost:${PORT}`);
   });
 };

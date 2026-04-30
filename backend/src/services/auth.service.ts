@@ -1,60 +1,58 @@
-import { randomBytes } from "crypto";
-import type { Company } from "@prisma/client";
-import type { AuthBody } from "../types/auth";
+import type { Company, User } from "@prisma/client";
+import { prisma } from "../prisma";
+import type { LoginBody, RegisterBody } from "../types/auth";
 import { normalizeEmail } from "../utils/email";
 import { hashPassword, verifyPassword } from "../utils/password";
+import { signSessionToken } from "../utils/jwt";
 import {
   isValidEmailFormat,
   isValidPasswordLength,
   isValidRnc,
 } from "../utils/validation";
-import { companyService } from "./company.service";
 
-export type RegisterSuccess = {
-  ok: true;
-  company: Pick<Company, "id" | "razonSocial" | "email" | "rnc" | "direccion">;
-};
-
-export type RegisterFailure = {
-  ok: false;
-  status: number;
-  message: string;
-};
-
-export type RegisterResult = RegisterSuccess | RegisterFailure;
-
-export type LoginSuccess = {
+export type AuthOk = {
   ok: true;
   token: string;
-  company: Pick<Company, "id" | "razonSocial" | "email" | "rnc" | "direccion">;
+  user: Pick<User, "id" | "email">;
+  company: Pick<Company, "id" | "name" | "rnc" | "address" | "phone" | "email">;
 };
 
-export type LoginFailure = {
-  ok: false;
-  status: number;
-  message: string;
+export type AuthErr = { ok: false; status: number; message: string };
+
+export type MeOk = {
+  ok: true;
+  user: Pick<User, "id" | "email">;
+  company: Pick<Company, "id" | "name" | "rnc" | "address" | "phone" | "email">;
 };
 
-export type LoginResult = LoginSuccess | LoginFailure;
+const publicCompany = (c: Company) => ({
+  id: c.id,
+  name: c.name,
+  rnc: c.rnc,
+  address: c.address,
+  phone: c.phone,
+  email: c.email,
+});
 
-const publicCompanyFields = (company: Company) => ({
-  id: company.id,
-  razonSocial: company.razonSocial,
-  email: company.email,
-  rnc: company.rnc,
-  direccion: company.direccion,
+const publicUser = (u: User) => ({
+  id: u.id,
+  email: u.email,
 });
 
 export const authService = {
-  async register(body: AuthBody): Promise<RegisterResult> {
-    const razonSocial = body.razonSocial?.trim();
-    const direccion = body.direccion?.trim();
+  async register(body: RegisterBody): Promise<AuthOk | AuthErr> {
+    const name = body.name?.trim();
+    const address = body.address?.trim() ?? "";
     const rnc = body.rnc?.trim();
     const email = body.email ? normalizeEmail(body.email) : "";
     const password = body.password?.trim() ?? "";
 
-    if (!razonSocial || !rnc || !email || !password) {
-      return { ok: false, status: 400, message: "Completa todos los campos requeridos." };
+    if (!name || !rnc || !email || !password || !address) {
+      return {
+        ok: false,
+        status: 400,
+        message: "Completa todos los campos requeridos (incluye direccion fiscal).",
+      };
     }
     if (!isValidRnc(rnc)) {
       return { ok: false, status: 400, message: "El RNC debe tener 9 a 11 digitos." };
@@ -70,27 +68,60 @@ export const authService = {
       };
     }
 
-    const existing = await companyService.findByEmail(email);
-    if (existing) {
+    const existingEmail = await prisma.user.findUnique({ where: { email } });
+    if (existingEmail) {
       return { ok: false, status: 409, message: "Ya existe una cuenta con ese correo." };
     }
-    const existingRnc = await companyService.findByRnc(rnc);
+    const existingRnc = await prisma.company.findUnique({ where: { rnc } });
     if (existingRnc) {
-      return { ok: false, status: 409, message: "Ya existe una cuenta con ese RNC." };
+      return { ok: false, status: 409, message: "Ya existe una empresa registrada con ese RNC." };
     }
 
-    const company = await companyService.create({
-      razonSocial,
-      rnc,
-      email,
-      password: hashPassword(password),
-      direccion: direccion ?? "",
+    const companyPhone = body.company_phone?.trim() ?? "";
+    const companyEmailRaw = body.company_email?.trim() ?? "";
+    if (companyEmailRaw && !isValidEmailFormat(normalizeEmail(companyEmailRaw))) {
+      return {
+        ok: false,
+        status: 400,
+        message: "El correo de la empresa no es valido.",
+      };
+    }
+
+    const { company, user } = await prisma.$transaction(async (tx) => {
+      const companyRow = await tx.company.create({
+        data: {
+          name,
+          rnc,
+          address,
+          phone: companyPhone || null,
+          email: companyEmailRaw ? normalizeEmail(companyEmailRaw) : null,
+        },
+      });
+      const userRow = await tx.user.create({
+        data: {
+          email,
+          password: hashPassword(password),
+          companyId: companyRow.id,
+        },
+      });
+      return { company: companyRow, user: userRow };
     });
 
-    return { ok: true, company: publicCompanyFields(company) };
+    const token = signSessionToken({
+      sub: user.id,
+      companyId: company.id,
+      email: user.email,
+    });
+
+    return {
+      ok: true,
+      token,
+      user: publicUser(user),
+      company: publicCompany(company),
+    };
   },
 
-  async login(body: AuthBody): Promise<LoginResult> {
+  async login(body: LoginBody): Promise<AuthOk | AuthErr> {
     const email = body.email ? normalizeEmail(body.email) : "";
     const password = body.password?.trim() ?? "";
 
@@ -98,15 +129,45 @@ export const authService = {
       return { ok: false, status: 400, message: "Correo y contrasena son obligatorios." };
     }
 
-    const company = await companyService.findByEmail(email);
-    if (!company || !verifyPassword(password, company.password)) {
-      return { ok: false, status: 401, message: "Credenciales invalidas." };
+    const user = await prisma.user.findUnique({
+      where: { email },
+      include: { company: true },
+    });
+    if (!user || !verifyPassword(password, user.password)) {
+      return {
+        ok: false,
+        status: 401,
+        message:
+          "Correo o contraseña incorrectos. Si venias de una version anterior, debes registrarte de nuevo: ahora el correo de acceso es el del usuario (cuenta en «Registrate»), no el modelo viejo solo-empresa.",
+      };
     }
+
+    const token = signSessionToken({
+      sub: user.id,
+      companyId: user.companyId,
+      email: user.email,
+    });
 
     return {
       ok: true,
-      token: randomBytes(24).toString("hex"),
-      company: publicCompanyFields(company),
+      token,
+      user: publicUser(user),
+      company: publicCompany(user.company),
+    };
+  },
+
+  async me(userId: number, companyId: number): Promise<MeOk | AuthErr> {
+    const user = await prisma.user.findFirst({
+      where: { id: userId, companyId },
+      include: { company: true },
+    });
+    if (!user) {
+      return { ok: false, status: 401, message: "Usuario no encontrado." };
+    }
+    return {
+      ok: true,
+      user: publicUser(user),
+      company: publicCompany(user.company),
     };
   },
 };

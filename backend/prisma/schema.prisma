@@ -8,12 +8,79 @@ generator client {
 }
 
 model Company {
-  id               Int      @id @default(autoincrement())
-  rnc              String
-  razonSocial      String
-  email            String
-  password         String
-  direccion        String
-  createdAt        DateTime @default(now())
+  id           Int          @id @default(autoincrement())
+  name         String
+  rnc          String       @unique
+  address      String
+  phone        String?
+  email        String?
+  createdAt    DateTime     @default(now()) @map("created_at")
+  users        User[]
+  clients      Client[]
+  cotizaciones Cotizacion[]
+
+  @@map("companies")
 }
 
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  companyId Int      @map("company_id")
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([companyId])
+  @@map("users")
+}
+
+model Client {
+  id           Int          @id @default(autoincrement())
+  name         String
+  rncCedula    String       @map("rnc_cedula")
+  phone        String?
+  email        String?
+  companyId    Int          @map("company_id")
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  cotizaciones Cotizacion[]
+  createdAt    DateTime     @default(now()) @map("created_at")
+
+  @@index([companyId])
+  @@map("clients")
+}
+
+model Cotizacion {
+  id             Int              @id @default(autoincrement())
+  number         Int
+  clientId       Int              @map("client_id")
+  companyId      Int              @map("company_id")
+  paymentTerms   String           @map("payment_terms")
+  accountManager String           @map("account_manager")
+  subtotal       Float
+  itbis          Float
+  total          Float
+  createdAt      DateTime         @default(now()) @map("created_at")
+  client         Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  company        Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  items          CotizacionItem[]
+
+  @@unique([companyId, number])
+  @@index([companyId])
+  @@index([clientId])
+  @@map("cotizaciones")
+}
+
+model CotizacionItem {
+  id           Int        @id @default(autoincrement())
+  cotizacionId Int        @map("cotizacion_id")
+  itemNumber   Int        @map("item_number")
+  quantity     Float
+  unit         String
+  description  String
+  unitPrice    Float      @map("unit_price")
+  totalValue   Float      @map("total_value")
+  cotizacion   Cotizacion @relation(fields: [cotizacionId], references: [id], onDelete: Cascade)
+
+  @@index([cotizacionId])
+  @@map("cotizacion_items")
+}

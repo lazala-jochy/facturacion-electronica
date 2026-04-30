@@ -1,0 +1,89 @@
+### Variables (VS Code REST Client / IntelliJ HTTP)
+@base = http://localhost:3001
+@token = PASTE_JWT_HERE
+
+### Health
+GET {{base}}/health
+
+### Registro (empresa + usuario; opcional company_phone / company_email)
+POST {{base}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "Mi Empresa SRL",
+  "rnc": "131123456",
+  "address": "Av. Winston Churchill, Santo Domingo",
+  "email": "admin@miempresa.com",
+  "password": "secreta123",
+  "company_phone": "809-555-0100",
+  "company_email": "facturacion@miempresa.com"
+}
+
+### Login
+POST {{base}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@miempresa.com",
+  "password": "secreta123"
+}
+
+### Sesión actual (requiere Bearer)
+GET {{base}}/auth/me
+Authorization: Bearer {{token}}
+
+### Crear solo cliente (sin cotización)
+POST {{base}}/clients
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Cliente de prueba",
+  "rnc_cedula": "00123456789",
+  "phone": "809-555-0100",
+  "email": "cliente@example.com"
+}
+
+### Cliente + cotización + ítems (transacción; totales ITBIS 18% en servidor)
+POST {{base}}/clients-with-cotizacion
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "client": {
+    "name": "Comercial XYZ",
+    "rnc_cedula": "40216956781",
+    "phone": "829-555-0200",
+    "email": "compras@xyz.com"
+  },
+  "cotizacion": {
+    "payment_terms": "50% avance, 50% contra entrega",
+    "account_manager": "María Pérez"
+  },
+  "items": [
+    {
+      "quantity": 2,
+      "unit": "Servicio",
+      "description": "Consultoría fiscal mensual",
+      "unit_price": 15000
+    },
+    {
+      "quantity": 1,
+      "unit": "Unidad",
+      "description": "Software licencia anual",
+      "unit_price": 45000
+    }
+  ]
+}
+
+### Listar clientes del tenant
+GET {{base}}/clients
+Authorization: Bearer {{token}}
+
+### Listar cotizaciones del tenant
+GET {{base}}/cotizaciones
+Authorization: Bearer {{token}}
+
+### Detalle cotización + vista previa DGII (sin API real aún)
+GET {{base}}/cotizaciones/1
+Authorization: Bearer {{token}}

@@ -37,15 +37,77 @@ cd ../electron && npm install
 
 ---
 
-## 3) Configuracion de base de datos (primera vez)
+## 3) Base de datos (Prisma + SQLite)
 
-Desde `backend`:
+La base de desarrollo es **`backend/prisma/dev.db`**. Los esquemas viven en `backend/prisma/schema.prisma` y las migraciones en `backend/prisma/migrations/`.
+
+### Aplicar migraciones (lo habitual)
+
+Desde la carpeta **`backend`**:
+
+**Desarrollo** (aplica migraciones pendientes; si cambiaste el schema, crea una migración nueva y la aplica):
 
 ```bash
+cd backend
+npx prisma migrate dev
+```
+
+Equivale a:
+
+```bash
+cd backend
+npm run migrate:dev
+```
+
+**Producción o CI** (solo aplica migraciones ya versionadas, sin preguntar ni generar archivos nuevos):
+
+```bash
+cd backend
+npx prisma migrate deploy
+```
+
+Equivale a:
+
+```bash
+cd backend
+npm run migrate:deploy
+```
+
+### Cliente de Prisma (tras cambiar `schema.prisma`)
+
+```bash
+cd backend
 npx prisma generate
 ```
 
-> La base SQLite usada es `backend/prisma/dev.db`.
+O:
+
+```bash
+cd backend
+npm run prisma:generate
+```
+
+### Primera instalación en una máquina nueva
+
+```bash
+cd backend
+npm install
+npx prisma migrate deploy
+npx prisma generate
+```
+
+> **`migrate deploy`** no crea migraciones; úsalo cuando ya existan en el repo. Para iterar el modelo en local, usa **`migrate dev`**.
+
+### Cotizaciones (RD / DGII)
+
+El modelo incluye **`cotizaciones`** e **`cotizacion_items`** (ITBIS 18%). Tras cambios grandes de esquema en desarrollo se puede sincronizar con:
+
+```bash
+cd backend
+npx prisma db push
+```
+
+En producción conviene generar migraciones con `migrate dev` desde un estado limpio y versionarlas en `prisma/migrations/`.
 
 ---
 

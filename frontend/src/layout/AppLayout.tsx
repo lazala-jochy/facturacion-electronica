@@ -21,7 +21,14 @@ export default function AppLayout({ onLogout }: { onLogout: () => void }) {
               to="/clients"
               className="block p-2 rounded hover:bg-gray-700"
             >
-              Clients
+              Clientes
+            </NavLink>
+
+            <NavLink
+              to="/cotizaciones/nueva"
+              className="block p-2 rounded hover:bg-gray-700"
+            >
+              Cotización
             </NavLink>
 
             <NavLink

@@ -1,35 +1,48 @@
-import type { IncomingMessage, ServerResponse } from "http";
+import "../types/express-auth.augment";
+import type { RequestHandler } from "express";
 import { authService } from "../services/auth.service";
-import type { AuthBody } from "../types/auth";
-import { json, readJsonBody } from "../utils/http";
 
-export const authController = {
-  async register(req: IncomingMessage, res: ServerResponse) {
-    const body = await readJsonBody<AuthBody>(req);
-    const result = await authService.register(body);
+export const register: RequestHandler = async (req, res) => {
+  const result = await authService.register(req.body);
+  if (!result.ok) {
+    res.status(result.status).json({ message: result.message });
+    return;
+  }
+  res.status(201).json({
+    message: "Cuenta creada correctamente.",
+    token: result.token,
+    user: result.user,
+    company: result.company,
+  });
+};
 
-    if (!result.ok) {
-      return json(res, result.status, { message: result.message });
-    }
+export const login: RequestHandler = async (req, res) => {
+  const result = await authService.login(req.body);
+  if (!result.ok) {
+    res.status(result.status).json({ message: result.message });
+    return;
+  }
+  res.json({
+    message: "Inicio de sesion exitoso.",
+    token: result.token,
+    user: result.user,
+    company: result.company,
+  });
+};
 
-    return json(res, 201, {
-      message: "Cuenta creada correctamente.",
-      company: result.company,
-    });
-  },
-
-  async login(req: IncomingMessage, res: ServerResponse) {
-    const body = await readJsonBody<AuthBody>(req);
-    const result = await authService.login(body);
-
-    if (!result.ok) {
-      return json(res, result.status, { message: result.message });
-    }
-
-    return json(res, 200, {
-      message: "Inicio de sesion exitoso.",
-      session: { token: result.token },
-      company: result.company,
-    });
-  },
+export const me: RequestHandler = async (req, res) => {
+  const auth = req.auth;
+  if (!auth) {
+    res.status(401).json({ message: "No autorizado." });
+    return;
+  }
+  const result = await authService.me(auth.userId, auth.companyId);
+  if (!result.ok) {
+    res.status(result.status).json({ message: result.message });
+    return;
+  }
+  res.json({
+    user: result.user,
+    company: result.company,
+  });
 };

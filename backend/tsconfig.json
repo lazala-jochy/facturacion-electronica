@@ -6,7 +6,8 @@
     "outDir": "./dist",
     "esModuleInterop": true,
     "strict": true,
-    "types": ["node"]
+    "types": ["node", "express"]
   },
+  "include": ["src/**/*.ts"],
   "exclude": ["prisma.config.ts"]
 }

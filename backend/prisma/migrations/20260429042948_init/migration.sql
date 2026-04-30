@@ -1,9 +1,0 @@
--- CreateTable
-CREATE TABLE "Company" (
-    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-    "rnc" TEXT NOT NULL,
-    "name" TEXT NOT NULL,
-    "email" TEXT NOT NULL,
-    "password" TEXT NOT NULL,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-);

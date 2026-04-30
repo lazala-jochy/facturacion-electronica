@@ -6,50 +6,51 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import AppLayout from "./layout/AppLayout";
 import Invoices from "./pages/Invoices";
 import Clients from "./pages/Clients";
-import type { AuthCompany } from "./types/company";
-
-const STORAGE_KEY = "fe_rd_session_company";
+import CotizacionCreate from "./pages/CotizacionCreate";
+import { AUTH_STORAGE_KEY, type AuthSession } from "./types/session";
 
 function App() {
-  const initialCompany = useMemo<AuthCompany | null>(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
+  const initialSession = useMemo<AuthSession | null>(() => {
+    const stored = localStorage.getItem(AUTH_STORAGE_KEY);
     if (!stored) return null;
     try {
-      return JSON.parse(stored) as AuthCompany;
+      const parsed = JSON.parse(stored) as Partial<AuthSession>;
+      if (parsed?.token && parsed?.user && parsed?.company) {
+        return parsed as AuthSession;
+      }
+      return null;
     } catch {
       return null;
     }
   }, []);
 
-  const [company, setCompany] = useState<AuthCompany | null>(initialCompany);
+  const [session, setSession] = useState<AuthSession | null>(initialSession);
 
-  const handleAuthenticated = (nextCompany: AuthCompany) => {
-    setCompany(nextCompany);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextCompany));
+  const handleAuthenticated = (next: AuthSession) => {
+    setSession(next);
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(next));
   };
 
   const handleLogout = () => {
-    setCompany(null);
-    localStorage.removeItem(STORAGE_KEY);
+    setSession(null);
+    localStorage.removeItem(AUTH_STORAGE_KEY);
   };
 
-  if (!company) {
+  if (!session) {
     return <Auth onAuthenticated={handleAuthenticated} />;
   }
+
+  const { company } = session;
 
   return (
     <BrowserRouter>
       <Routes>
         <Route element={<AppLayout onLogout={handleLogout} />}>
-          <Route
-            path="/"
-            element={<Dashboard company={company} />}
-          />
+          <Route path="/" element={<Dashboard company={company} />} />
           <Route path="/ecf" element={<ECF company={company} />} />
           <Route path="/clients" element={<Clients />} />
+          <Route path="/cotizaciones/nueva" element={<CotizacionCreate />} />
           <Route path="/invoices" element={<Invoices />} />
-
-          {/* fallback */}
         </Route>
       </Routes>
     </BrowserRouter>
