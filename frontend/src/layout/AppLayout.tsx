@@ -10,7 +10,7 @@ export default function AppLayout({ onLogout }: { onLogout: () => void }) {
       {/* Mobile Menu Button */}
       <button
         onClick={() => setSidebarOpen(!sidebarOpen)}
-        className="lg:hidden fixed top-4 left-4 z-40 p-2 bg-gray-900 text-white rounded-lg"
+        className="lg:hidden fixed top-4 left-4 z-40 p-2 bg-gray-900 text-white rounded-lg transition hover:scale-105 active:scale-95"
         aria-label="Toggle menu"
       >
         <svg
@@ -72,20 +72,24 @@ export default function AppLayout({ onLogout }: { onLogout: () => void }) {
               to="/"
               onClick={() => setSidebarOpen(false)}
               className={({ isActive }) =>
-                `block p-2 rounded transition ${
-                  isActive ? "bg-gray-700" : "hover:bg-gray-700"
+                `block p-2 rounded transition-all duration-200 ${
+                  isActive
+                    ? "bg-gray-700 shadow-inner"
+                    : "hover:bg-gray-700 hover:translate-x-1"
                 }`
               }
             >
-              Dashboard
+              Inicio
             </NavLink>
 
             <NavLink
               to="/ecf"
               onClick={() => setSidebarOpen(false)}
               className={({ isActive }) =>
-                `block p-2 rounded transition ${
-                  isActive ? "bg-gray-700" : "hover:bg-gray-700"
+                `block p-2 rounded transition-all duration-200 ${
+                  isActive
+                    ? "bg-gray-700 shadow-inner"
+                    : "hover:bg-gray-700 hover:translate-x-1"
                 }`
               }
             >
@@ -96,8 +100,10 @@ export default function AppLayout({ onLogout }: { onLogout: () => void }) {
               to="/clients"
               onClick={() => setSidebarOpen(false)}
               className={({ isActive }) =>
-                `block p-2 rounded transition ${
-                  isActive ? "bg-gray-700" : "hover:bg-gray-700"
+                `block p-2 rounded transition-all duration-200 ${
+                  isActive
+                    ? "bg-gray-700 shadow-inner"
+                    : "hover:bg-gray-700 hover:translate-x-1"
                 }`
               }
             >
@@ -108,8 +114,10 @@ export default function AppLayout({ onLogout }: { onLogout: () => void }) {
               to="/cotizaciones/nueva"
               onClick={() => setSidebarOpen(false)}
               className={({ isActive }) =>
-                `block p-2 rounded transition ${
-                  isActive ? "bg-gray-700" : "hover:bg-gray-700"
+                `block p-2 rounded transition-all duration-200 ${
+                  isActive
+                    ? "bg-gray-700 shadow-inner"
+                    : "hover:bg-gray-700 hover:translate-x-1"
                 }`
               }
             >
@@ -120,12 +128,14 @@ export default function AppLayout({ onLogout }: { onLogout: () => void }) {
               to="/invoices"
               onClick={() => setSidebarOpen(false)}
               className={({ isActive }) =>
-                `block p-2 rounded transition ${
-                  isActive ? "bg-gray-700" : "hover:bg-gray-700"
+                `block p-2 rounded transition-all duration-200 ${
+                  isActive
+                    ? "bg-gray-700 shadow-inner"
+                    : "hover:bg-gray-700 hover:translate-x-1"
                 }`
               }
             >
-              Invoices
+              Reporte
             </NavLink>
           </nav>
         </div>
@@ -135,7 +145,7 @@ export default function AppLayout({ onLogout }: { onLogout: () => void }) {
           <button
             type="button"
             onClick={() => setAccountOpen((prev) => !prev)}
-            className="w-full p-2 rounded bg-gray-800 hover:bg-gray-700 transition text-left flex items-center justify-between"
+            className="w-full p-2 rounded bg-gray-800 hover:bg-gray-700 transition-all duration-200 hover:scale-[1.02] text-left flex items-center justify-between"
           >
             <span>Cuenta</span>
             <span className="text-xs">{accountOpen ? "▲" : "▼"}</span>
@@ -150,7 +160,7 @@ export default function AppLayout({ onLogout }: { onLogout: () => void }) {
                   setSidebarOpen(false);
                 }}
                 className={({ isActive }) =>
-                  `block px-3 py-2 text-sm transition ${
+                  `block px-3 py-2 text-sm transition-all duration-200 ${
                     isActive ? "bg-indigo-50 text-indigo-700" : "hover:bg-slate-50"
                   }`
                 }
@@ -163,7 +173,7 @@ export default function AppLayout({ onLogout }: { onLogout: () => void }) {
                   setAccountOpen(false);
                   onLogout();
                 }}
-                className="block w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition"
+                className="block w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-all duration-200"
               >
                 Cerrar sesión
               </button>
