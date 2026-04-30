@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import ECF from "./pages/ECF";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, HashRouter, Routes, Route } from "react-router-dom";
 import AppLayout from "./layout/AppLayout";
 import Invoices from "./pages/Invoices";
 import Clients from "./pages/Clients";
@@ -51,9 +51,10 @@ function App() {
   }
 
   const { company } = session;
+  const RouterComponent = window.location.protocol === "file:" ? HashRouter : BrowserRouter;
 
   return (
-    <BrowserRouter>
+    <RouterComponent>
       <Routes>
         <Route element={<AppLayout onLogout={handleLogout} />}>
           <Route path="/" element={<Dashboard company={company} />} />
@@ -72,7 +73,7 @@ function App() {
           />
         </Route>
       </Routes>
-    </BrowserRouter>
+    </RouterComponent>
   );
 }
 
