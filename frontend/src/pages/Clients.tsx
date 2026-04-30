@@ -29,6 +29,11 @@ export default function Clients() {
     fetchClients();
   }, []);
 
+  const handleDownload = (id: number) => {
+    console.log("Descargar PDF:", id);
+    // window.open(`/api/cotizaciones/${id}/pdf`);
+  };
+
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
       {/* Header */}
@@ -62,7 +67,6 @@ export default function Clients() {
           </div>
         ) : (
           <table className="w-full text-sm">
-            {/* Encabezado */}
             <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
               <tr>
                 <th className="px-6 py-4 text-left">Nombre</th>
@@ -71,19 +75,16 @@ export default function Clients() {
                 <th className="px-6 py-4 text-left">Correo</th>
                 <th className="px-6 py-4 text-left">N° Cotización</th>
                 <th className="px-6 py-4 text-left">Total</th>
+                <th className="px-6 py-4 text-center">PDF</th>
               </tr>
             </thead>
 
-            {/* Cuerpo */}
             <tbody className="divide-y divide-gray-100">
               {clients.map((client) => {
                 const last = client.cotizaciones?.[0];
 
                 return (
-                  <tr
-                    key={client.id}
-                    className="hover:bg-indigo-50/40 transition"
-                  >
+                  <tr key={client.id} className="hover:bg-indigo-50/40 transition">
                     <td className="px-6 py-4 font-semibold text-gray-900">
                       {client.name}
                     </td>
@@ -101,11 +102,38 @@ export default function Clients() {
                     </td>
 
                     <td className="px-6 py-4 text-indigo-600 font-medium">
-                      {last ? `${last.number}` : "-"}
+                      {last ? `#${last.number}` : "-"}
                     </td>
 
                     <td className="px-6 py-4 text-gray-700 font-medium">
                       {last ? formatCurrency(last.total) : "-"}
+                    </td>
+
+                    <td className="px-6 py-4 text-center">
+                      {last ? (
+                        <button
+                          onClick={() => handleDownload(last.id)}
+                          className="p-2 rounded-lg hover:bg-indigo-100 transition"
+                        >
+                          {/* SVG icon */}
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="w-5 h-5 text-indigo-600"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={2}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M12 3v12m0 0l4-4m-4 4l-4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"
+                            />
+                          </svg>
+                        </button>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
                     </td>
                   </tr>
                 );
