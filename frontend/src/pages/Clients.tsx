@@ -101,7 +101,7 @@ export default function Clients() {
                     </td>
 
                     <td className="px-6 py-4 text-indigo-600 font-medium">
-                      {last ? `#${last.number}` : "-"}
+                      {last ? `${last.number}` : "-"}
                     </td>
 
                     <td className="px-6 py-4 text-gray-700 font-medium">
