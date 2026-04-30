@@ -35,6 +35,7 @@ export default function CotizacionCreate() {
   const company = session?.company;
 
   const [clientName, setClientName] = useState("");
+  const [clientAddress, setClientAddress] = useState("");
   const [clientRnc, setClientRnc] = useState("");
   const [clientPhone, setClientPhone] = useState("");
   const [clientEmail, setClientEmail] = useState("");
@@ -98,6 +99,7 @@ export default function CotizacionCreate() {
       const res = await createClientWithCotizacion({
         client: {
           name: clientName.trim(),
+          address: clientAddress.trim() || undefined,
           rnc_cedula: clientRnc.trim(),
           phone: clientPhone.trim() || undefined,
           email: clientEmail.trim() || undefined,
@@ -114,6 +116,7 @@ export default function CotizacionCreate() {
         dgii: res.dgii_preview as Record<string, unknown>,
       });
       setClientName("");
+      setClientAddress("");
       setClientRnc("");
       setClientPhone("");
       setClientEmail("");
@@ -227,6 +230,15 @@ export default function CotizacionCreate() {
               value={clientRnc}
               onChange={(e) => setClientRnc(e.target.value)}
               required
+            />
+            <label className="mt-2 block text-xs font-medium text-slate-600">
+              Dirección
+            </label>
+            <input
+              className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+              value={clientAddress}
+              onChange={(e) => setClientAddress(e.target.value)}
+              placeholder="Dirección del cliente"
             />
             <div className="mt-2 grid grid-cols-2 gap-2">
               <div>

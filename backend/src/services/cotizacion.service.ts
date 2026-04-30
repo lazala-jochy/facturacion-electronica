@@ -15,6 +15,7 @@ export type IncomingItem = {
 export type CreateClientWithCotizacionInput = {
   client: {
     name: string;
+    address?: string | null;
     rnc_cedula: string;
     phone?: string | null;
     email?: string | null;
@@ -142,6 +143,7 @@ export const cotizacionService = {
         (await tx.client.create({
           data: {
             name: cName,
+            address: trimOrNull(input.client.address ?? undefined),
             rncCedula: cRnc,
             rnc: maybeRnc,
             cedula: maybeCedula,

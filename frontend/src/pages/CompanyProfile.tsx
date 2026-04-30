@@ -56,6 +56,17 @@ export default function CompanyProfile({ session, onCompanyUpdated }: Props) {
           Actualiza los datos que se muestran en cotizaciones y PDF.
         </p>
 
+        <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <div>
+            <p className="text-xs font-semibold uppercase text-slate-500">Nombre de la persona</p>
+            <p className="mt-1 text-sm font-medium text-slate-900">{session.user.full_name}</p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase text-slate-500">Cedula de la persona</p>
+            <p className="mt-1 text-sm font-mono text-slate-900">{session.user.cedula}</p>
+          </div>
+        </div>
+
         <form onSubmit={onSubmit} className="mt-5 space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-700">Nombre empresa</label>

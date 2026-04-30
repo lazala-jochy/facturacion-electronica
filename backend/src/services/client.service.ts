@@ -2,6 +2,7 @@ import { prisma } from "../prisma";
 
 export type CreateClientInput = {
   name: string;
+  address?: string | null;
   rncCedula: string;
   phone?: string | null;
   email?: string | null;
@@ -39,6 +40,7 @@ export const clientService = {
         const isRnc = doc.length >= 9 && doc.length <= 11;
         return {
           name,
+          address: trimOrNull(input.address ?? undefined),
           rncCedula,
           rnc: isRnc ? doc : null,
           cedula: isCedula ? doc : null,

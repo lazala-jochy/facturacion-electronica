@@ -20,6 +20,7 @@ type CotizacionForPdf = {
   };
   client: {
     name: string;
+    address: string | null;
     rncCedula: string;
     phone: string | null;
     email: string | null;
@@ -41,16 +42,16 @@ const money = (value: number) =>
     minimumFractionDigits: 2,
   }).format(value);
 
-const date = (value: Date) =>
-  new Intl.DateTimeFormat("es-DO", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(value);
+const formatReceiptMoney = (value: number) =>
+  `RD$${value.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 
-export const buildCotizacionPdfBuffer = (cotizacion: CotizacionForPdf) =>
+export const buildCotizacionPdfBuffer = (
+  cotizacion: CotizacionForPdf,
+  issuerPersonName?: string | null,
+) =>
   new Promise<Buffer>((resolve, reject) => {
     const doc = new PDFDocument({
       // A4 vertical para un PDF legible al imprimir o visualizar.
@@ -62,6 +63,10 @@ export const buildCotizacionPdfBuffer = (cotizacion: CotizacionForPdf) =>
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
+    doc.font("Helvetica-Bold").fontSize(12).text(issuerPersonName || cotizacion.accountManager, {
+      align: "center",
+    });
+    doc.moveDown(0.15);
     doc.font("Helvetica-Bold").fontSize(18).text(cotizacion.company.name, {
       align: "center",
     });
@@ -80,18 +85,13 @@ export const buildCotizacionPdfBuffer = (cotizacion: CotizacionForPdf) =>
 
     doc.font("Helvetica-Bold").fontSize(13);
     doc.text(cotizacion.documentTitle || "Pre-factura", { align: "center" });
-    doc.text(cotizacion.fiscalLegend || "Sin valor fiscal", { align: "center" });
-    doc.moveDown(0.5);
-    doc
-      .font("Helvetica")
-      .fontSize(10)
-      .text(`Cotizacion #${cotizacion.number}`, { align: "center" });
-    doc.text(date(cotizacion.createdAt), { align: "center" });
-    doc.moveDown(0.5);
+    doc.text("Con valor fiscal", { align: "center" });
+    doc.moveDown(0.55);
 
     doc.font("Helvetica-Bold").fontSize(11).text("CLIENTE", { underline: true });
     doc.font("Helvetica").fontSize(10.5);
     doc.text(cotizacion.client.name);
+    doc.text(cotizacion.client.address || "-");
     doc.text(`RNC/Cedula: ${cotizacion.client.rncCedula}`);
     doc.text(`Tel: ${cotizacion.client.phone || "-"}`);
     doc.text(`Email: ${cotizacion.client.email || "-"}`);
@@ -104,17 +104,27 @@ export const buildCotizacionPdfBuffer = (cotizacion: CotizacionForPdf) =>
     doc.moveDown(0.4);
 
     doc.font("Helvetica-Bold").fontSize(10.5);
-    doc.text("SERVICIO", doc.page.margins.left, doc.y, { continued: true, width: 380 });
-    doc.text("CANT", { continued: true, width: 60, align: "right" });
-    doc.text("VALOR", { align: "right" });
+    const leftX = doc.page.margins.left;
+    const rightX = doc.page.width - doc.page.margins.right;
+    const qtyColX = rightX - 165;
+    const valueColX = rightX - 5;
+    const headerY = doc.y;
+    doc.text("SERVICIOS", leftX, headerY, { width: qtyColX - leftX - 8 });
+    doc.text("CANT", qtyColX, headerY, { width: 52, align: "right" });
+    doc.text("VALOR", valueColX - 95, headerY, { width: 95, align: "right" });
     doc.moveDown(0.2);
     doc.font("Helvetica").fontSize(10);
 
     for (const item of cotizacion.items) {
       const label = `${item.description} (${item.unit})`;
-      doc.text(label, doc.page.margins.left, doc.y, { continued: true, width: 380 });
-      doc.text(item.quantity.toFixed(2), { continued: true, width: 60, align: "right" });
-      doc.text(money(item.totalValue), { align: "right" });
+      const rowY = doc.y;
+      doc.text(label, leftX, rowY, { width: qtyColX - leftX - 8 });
+      doc.text(item.quantity.toFixed(2), qtyColX, rowY, { width: 52, align: "right" });
+      doc.text(formatReceiptMoney(item.totalValue), valueColX - 95, rowY, {
+        width: 95,
+        align: "right",
+      });
+      doc.y = Math.max(doc.y, rowY + 14);
     }
 
     doc.moveDown(0.4);
@@ -124,21 +134,60 @@ export const buildCotizacionPdfBuffer = (cotizacion: CotizacionForPdf) =>
       .stroke();
     doc.moveDown(0.4);
 
-    doc.font("Helvetica").fontSize(11);
-    doc.text(`Subtotal: ${money(cotizacion.subtotal)}`, { align: "right" });
-    doc.text(`ITBIS: ${money(cotizacion.itbis)}`, { align: "right" });
-    doc.font("Helvetica-Bold").fontSize(13).text(`Total: ${money(cotizacion.total)}`, {
-      align: "right",
-    });
-    doc.moveDown(0.7);
+    const summaryLeftX = doc.page.width - doc.page.margins.right - 220;
+    const summaryWidth = 220;
+    const labelWidth = 92;
+    const valueWidth = summaryWidth - labelWidth;
+    const pushSummaryRow = (
+      label: string,
+      value: string,
+      options?: { bold?: boolean; size?: number; gap?: number },
+    ) => {
+      const rowY = doc.y;
+      const weight = options?.bold ? "Helvetica-Bold" : "Helvetica";
+      const size = options?.size ?? 11;
+      doc.font(weight).fontSize(size).text(label, summaryLeftX, rowY, {
+        width: labelWidth,
+        align: "right",
+      });
+      doc.text(value, summaryLeftX + labelWidth, rowY, {
+        width: valueWidth,
+        align: "right",
+      });
+      doc.y = rowY + (options?.gap ?? 22);
+    };
 
+    pushSummaryRow("Subtotal:", money(cotizacion.subtotal));
+    const subtotalExento = 0;
+    const subtotalGravado = cotizacion.subtotal;
+    pushSummaryRow("Subtotal Exento:", money(subtotalExento));
+    pushSummaryRow("Subtotal Gravado:", money(subtotalGravado));
+    pushSummaryRow("ITBIS:", money(cotizacion.itbis));
+    pushSummaryRow("Total:", money(cotizacion.total), { bold: true, size: 14, gap: 28 });
+
+    doc.moveDown(0.3);
     doc.font("Helvetica").fontSize(10.5);
-    doc.text(`Condiciones: ${cotizacion.paymentTerms}`, { align: "left" });
-    doc.text(`Ejecutivo: ${cotizacion.accountManager}`, { align: "left" });
-    doc.moveDown(0.6);
-    doc.text(`Total de lineas: ${cotizacion.items.length}`);
+    doc.text(`Condiciones: ${cotizacion.paymentTerms}`, summaryLeftX, doc.y, {
+      width: summaryWidth,
+      align: "left",
+    });
+    doc.text(`Ejecutivo: ${cotizacion.accountManager}`, summaryLeftX, doc.y, {
+      width: summaryWidth,
+      align: "left",
+    });
+    doc.moveDown(0.5);
+    doc.text(`Total de lineas: ${cotizacion.items.length}`, summaryLeftX, doc.y, {
+      width: summaryWidth,
+      align: "left",
+    });
     doc.text(
       `Total de productos: ${cotizacion.items.reduce((acc, row) => acc + row.quantity, 0).toFixed(2)}`,
+      summaryLeftX,
+      doc.y,
+      {
+        width: summaryWidth,
+        align: "left",
+      },
     );
     doc.moveDown(0.8);
     doc

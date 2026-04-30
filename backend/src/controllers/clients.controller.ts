@@ -20,12 +20,14 @@ export const createClient: RequestHandler = async (req, res) => {
   }
 
   const name = typeof req.body.name === "string" ? req.body.name : "";
+  const address = typeof req.body.address === "string" ? req.body.address : undefined;
   const rncCedula = pickRncCedula(req.body);
   const phone = typeof req.body.phone === "string" ? req.body.phone : undefined;
   const email = typeof req.body.email === "string" ? req.body.email : undefined;
 
   const out = await clientService.createClientOnly(companyId, {
     name,
+    address,
     rncCedula,
     phone,
     email,
@@ -41,6 +43,7 @@ export const createClient: RequestHandler = async (req, res) => {
     client: {
       id: out.client.id,
       name: out.client.name,
+      address: out.client.address,
       rnc_cedula: out.client.rncCedula,
       phone: out.client.phone,
       email: out.client.email,
@@ -60,6 +63,7 @@ export const listClients: RequestHandler = async (req, res) => {
     clients: rows.map((c) => ({
       id: c.id,
       name: c.name,
+      address: c.address,
       rnc_cedula: c.rncCedula,
       phone: c.phone,
       email: c.email,

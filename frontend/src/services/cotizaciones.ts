@@ -12,6 +12,7 @@ export type CotizacionItemDraft = {
 export type CreateClientWithCotizacionPayload = {
   client: {
     name: string;
+    address?: string;
     rnc_cedula: string;
     phone?: string;
     email?: string;

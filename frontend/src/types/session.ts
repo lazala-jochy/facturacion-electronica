@@ -47,6 +47,7 @@ export type RegisterPayload = LoginPayload & {
 
 export type CreateClientPayload = {
   name: string;
+  address?: string;
   rnc_cedula: string;
   phone?: string;
   email?: string;
@@ -57,6 +58,7 @@ export type ClientCreatedResponse = {
   client: {
     id: number;
     name: string;
+    address?: string | null;
     rnc_cedula: string;
     phone: string | null;
     email: string | null;

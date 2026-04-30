@@ -6,6 +6,7 @@ import {
 } from "../services/cotizacion.service";
 import { generateDGIIData } from "../utils/dgii";
 import { buildCotizacionPdfBuffer } from "../utils/cotizacion-pdf";
+import { prisma } from "../prisma";
 
 const stripTenantFromBody = (body: Record<string, unknown>) => {
   delete body.company_id;
@@ -30,6 +31,7 @@ const serializeCotizacion = (
   client: {
     id: c.client.id,
     name: c.client.name,
+    address: c.client.address,
     rnc_cedula: c.client.rncCedula,
     phone: c.client.phone,
     email: c.client.email,
@@ -89,6 +91,7 @@ export const createClientWithCotizacion: RequestHandler = async (req, res) => {
   const out = await cotizacionService.createClientWithCotizacion(companyId, {
     client: {
       name: typeof client.name === "string" ? client.name : "",
+      address: typeof client.address === "string" ? client.address : undefined,
       rnc_cedula: String(client.rnc_cedula ?? client.rncCedula ?? ""),
       phone: typeof client.phone === "string" ? client.phone : undefined,
       email: typeof client.email === "string" ? client.email : undefined,
@@ -117,6 +120,7 @@ export const createClientWithCotizacion: RequestHandler = async (req, res) => {
     client: {
       id: out.client.id,
       name: out.client.name,
+      address: out.client.address,
       rnc_cedula: out.client.rncCedula,
       phone: out.client.phone,
       email: out.client.email,
@@ -193,7 +197,11 @@ export const downloadCotizacionPdf: RequestHandler = async (req, res) => {
     return;
   }
 
-  const pdfBuffer = await buildCotizacionPdfBuffer(row);
+  const issuerUser = await prisma.user.findFirst({
+    where: { id: req.auth?.userId, companyId },
+    select: { fullName: true },
+  });
+  const pdfBuffer = await buildCotizacionPdfBuffer(row, issuerUser?.fullName);
   const fileName = `cotizacion-${row.number}.pdf`;
 
   res.setHeader("Content-Type", "application/pdf");
