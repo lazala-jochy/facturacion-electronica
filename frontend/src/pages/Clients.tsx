@@ -2,6 +2,14 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { listClients, type ClientListItem } from "../services/clients";
 
+// Helper para formatear moneda
+const formatCurrency = (value: number) => {
+  return new Intl.NumberFormat("es-DO", {
+    style: "currency",
+    currency: "DOP",
+  }).format(value);
+};
+
 export default function Clients() {
   const [clients, setClients] = useState<ClientListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -26,7 +34,7 @@ export default function Clients() {
       {/* Header */}
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">
+          <h1 className="text-3xl font-bold text-gray-900">
             Clientes
           </h1>
           <p className="mt-1 text-sm text-gray-500">
@@ -42,7 +50,7 @@ export default function Clients() {
         </Link>
       </div>
 
-      {/* Card */}
+      {/* Tabla */}
       <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-lg">
         {loading ? (
           <div className="p-8 text-gray-500 text-center">
@@ -54,17 +62,19 @@ export default function Clients() {
           </div>
         ) : (
           <table className="w-full text-sm">
-            {/* Header */}
+            {/* Encabezado */}
             <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
               <tr>
-                <th className="px-6 py-4 text-left">Cliente</th>
+                <th className="px-6 py-4 text-left">Nombre</th>
                 <th className="px-6 py-4 text-left">RNC / Cédula</th>
-                <th className="px-6 py-4 text-left">Contacto</th>
-                <th className="px-6 py-4 text-left">Última cotización</th>
+                <th className="px-6 py-4 text-left">Teléfono</th>
+                <th className="px-6 py-4 text-left">Correo</th>
+                <th className="px-6 py-4 text-left">N° Cotización</th>
+                <th className="px-6 py-4 text-left">Total</th>
               </tr>
             </thead>
 
-            {/* Body */}
+            {/* Cuerpo */}
             <tbody className="divide-y divide-gray-100">
               {clients.map((client) => {
                 const last = client.cotizaciones?.[0];
@@ -72,48 +82,30 @@ export default function Clients() {
                 return (
                   <tr
                     key={client.id}
-                    className="group hover:bg-indigo-50/40 transition cursor-pointer"
+                    className="hover:bg-indigo-50/40 transition"
                   >
-                    {/* Cliente */}
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-gray-900 group-hover:text-indigo-600 transition">
-                          {client.name}
-                        </span>
-                      </div>
+                    <td className="px-6 py-4 font-semibold text-gray-900">
+                      {client.name}
                     </td>
 
-                    {/* RNC */}
                     <td className="px-6 py-4 text-gray-600">
                       {client.rnc_cedula}
                     </td>
 
-                    {/* Contacto */}
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col text-gray-600 text-sm">
-                        <span>{client.phone || "-"}</span>
-                        <span className="text-xs text-gray-400">
-                          {client.email || "Sin correo"}
-                        </span>
-                      </div>
+                    <td className="px-6 py-4 text-gray-600">
+                      {client.phone || "-"}
                     </td>
 
-                    {/* Cotización */}
-                    <td className="px-6 py-4">
-                      {last ? (
-                        <div className="flex flex-col">
-                          <span className="text-indigo-600 font-semibold">
-                            #{last.number}
-                          </span>
-                          <span className="text-xs text-gray-500">
-                            RD$ {last.total.toFixed(2)}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-400">
-                          Sin cotización
-                        </span>
-                      )}
+                    <td className="px-6 py-4 text-gray-600">
+                      {client.email || "-"}
+                    </td>
+
+                    <td className="px-6 py-4 text-indigo-600 font-medium">
+                      {last ? `#${last.number}` : "-"}
+                    </td>
+
+                    <td className="px-6 py-4 text-gray-700 font-medium">
+                      {last ? formatCurrency(last.total) : "-"}
                     </td>
                   </tr>
                 );
