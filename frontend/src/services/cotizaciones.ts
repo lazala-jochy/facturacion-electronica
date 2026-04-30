@@ -107,6 +107,9 @@ export const generateEcfXml = (id: number) =>
   );
 
 export const submitEcf = (id: number) =>
+  (typeof navigator !== "undefined" && !navigator.onLine
+    ? Promise.reject(new Error("Debes conectarte a internet para enviar a DGII."))
+    :
   apiFetch<{
     message: string;
     status: "accepted" | "rejected";
@@ -116,7 +119,7 @@ export const submitEcf = (id: number) =>
   }>(`/cotizaciones/${id}/ecf/submit`, {
     method: "POST",
     body: JSON.stringify({}),
-  });
+  }));
 
 /**
  * Descarga una cotización en formato PDF

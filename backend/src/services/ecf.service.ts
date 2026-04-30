@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
-import { submitEcfToDgii } from "./dgiiService";
+import { submitEcfToDgii, type DgiiSubmissionResult } from "./dgiiService";
 import { signXml, type CertificateInput } from "./signer";
 import { validateEcfPayload, type EcfPayload } from "./validation";
 import { buildEcfXml } from "./xmlBuilder";
@@ -97,7 +97,17 @@ export const ecfService = {
     if (!generation.ok) return generation;
 
     const signedXml = await signXml(generation.xml, certificateInput);
-    const dgiiResponse = await submitEcfToDgii(signedXml);
+    let dgiiResponse: DgiiSubmissionResult;
+    try {
+      dgiiResponse = await submitEcfToDgii(signedXml);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Error de red al enviar a DGII.";
+      return {
+        ok: false as const,
+        status: 503,
+        message: `No se pudo enviar a DGII. Verifica la conexion a internet. (${message})`,
+      };
+    }
 
     await prisma.cotizacion.update({
       where: { id: cotizacionId },

@@ -54,7 +54,7 @@ export const updateCompany: RequestHandler = async (req, res) => {
     return;
   }
 
-  const result = await authService.updateCompany(auth.companyId, req.body);
+  const result = await authService.updateCompany(auth.companyId, auth.userId, req.body);
   if (!result.ok) {
     res.status(result.status).json({ message: result.message });
     return;
@@ -62,6 +62,7 @@ export const updateCompany: RequestHandler = async (req, res) => {
 
   res.json({
     message: "Perfil de empresa actualizado.",
+    user: result.user,
     company: result.company,
   });
 };

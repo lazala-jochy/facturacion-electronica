@@ -24,4 +24,6 @@ export type UpdateCompanyBody = {
   phone?: string;
   email?: string;
   regime?: string;
+  full_name?: string;
+  cedula?: string;
 };

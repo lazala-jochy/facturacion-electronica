@@ -1,13 +1,16 @@
 import { useState, type FormEvent } from "react";
 import { apiFetch } from "../services/api";
-import type { AuthCompany, AuthSession } from "../types/session";
+import type { AuthCompany, AuthSession, AuthUser } from "../types/session";
+import { formatPhoneInput, isValidPhone } from "../utils/phone";
 
 type Props = {
   session: AuthSession;
-  onCompanyUpdated: (company: AuthCompany) => void;
+  onProfileUpdated: (user: AuthUser, company: AuthCompany) => void;
 };
 
-export default function CompanyProfile({ session, onCompanyUpdated }: Props) {
+export default function CompanyProfile({ session, onProfileUpdated }: Props) {
+  const [fullName, setFullName] = useState(session.user.full_name);
+  const [cedula, setCedula] = useState(session.user.cedula);
   const [name, setName] = useState(session.company.name);
   const [rnc, setRnc] = useState(session.company.rnc);
   const [address, setAddress] = useState(session.company.address);
@@ -22,15 +25,26 @@ export default function CompanyProfile({ session, onCompanyUpdated }: Props) {
     e.preventDefault();
     setError("");
     setSuccess("");
+    if (phone.trim() && !isValidPhone(phone)) {
+      setError("El telefono debe tener formato xxx-xxx-xxxx.");
+      return;
+    }
+    if (!/^[0-9]{11}$/.test(cedula.replace(/\D/g, ""))) {
+      setError("La cedula debe tener 11 digitos.");
+      return;
+    }
 
     setLoading(true);
     try {
       const res = await apiFetch<{
         message: string;
+        user: AuthUser;
         company: AuthCompany;
       }>("/auth/company", {
         method: "PUT",
         body: JSON.stringify({
+          full_name: fullName.trim(),
+          cedula: cedula.replace(/\D/g, ""),
           name: name.trim(),
           rnc: rnc.trim(),
           address: address.trim(),
@@ -39,7 +53,7 @@ export default function CompanyProfile({ session, onCompanyUpdated }: Props) {
           regime: regime.trim() || undefined,
         }),
       });
-      onCompanyUpdated(res.company);
+      onProfileUpdated(res.user, res.company);
       setSuccess("Perfil de empresa actualizado.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo actualizar.");
@@ -49,7 +63,7 @@ export default function CompanyProfile({ session, onCompanyUpdated }: Props) {
   };
 
   return (
-    <div className="w-full px-4 sm:px-0 pb-10">
+    <div className="w-full px-4 sm:px-0 pb-10 pt-8 sm:pt-12">
       <div className="mx-auto max-w-2xl rounded-xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
         <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Perfil de empresa</h1>
         <p className="mt-1 text-sm text-slate-600">
@@ -59,11 +73,23 @@ export default function CompanyProfile({ session, onCompanyUpdated }: Props) {
         <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
           <div>
             <p className="text-xs font-semibold uppercase text-slate-500">Nombre de la persona</p>
-            <p className="mt-1 text-sm font-medium text-slate-900">{session.user.full_name}</p>
+            <input
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              required
+            />
           </div>
           <div>
             <p className="text-xs font-semibold uppercase text-slate-500">Cedula de la persona</p>
-            <p className="mt-1 text-sm font-mono text-slate-900">{session.user.cedula}</p>
+            <input
+              inputMode="numeric"
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm font-mono"
+              value={cedula}
+              onChange={(e) => setCedula(e.target.value.replace(/\D/g, "").slice(0, 11))}
+              placeholder="00112345678"
+              required
+            />
           </div>
         </div>
 
@@ -99,9 +125,12 @@ export default function CompanyProfile({ session, onCompanyUpdated }: Props) {
             <div>
               <label className="block text-sm font-medium text-slate-700">Teléfono</label>
               <input
+                inputMode="numeric"
                 className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
+                placeholder="xxx-xxx-xxxx"
+                maxLength={12}
               />
             </div>
             <div>

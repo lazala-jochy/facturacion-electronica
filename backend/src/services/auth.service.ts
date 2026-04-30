@@ -8,6 +8,7 @@ import {
   isValidEmailFormat,
   isValidCedula,
   isValidPasswordLength,
+  isValidPhoneFormat,
   isValidRnc,
 } from "../utils/validation";
 
@@ -38,6 +39,12 @@ export type MeOk = {
 
 export type UpdateCompanyOk = {
   ok: true;
+  user: {
+    id: number;
+    email: string;
+    full_name: string;
+    cedula: string;
+  };
   company: Pick<Company, "id" | "name" | "rnc" | "address" | "phone" | "email">;
 };
 
@@ -106,6 +113,13 @@ export const authService = {
 
     const companyPhone = body.company_phone?.trim() ?? "";
     const companyEmailRaw = (body.company_email?.trim() || email).trim();
+    if (companyPhone && !isValidPhoneFormat(companyPhone)) {
+      return {
+        ok: false,
+        status: 400,
+        message: "El telefono de la empresa debe tener formato xxx-xxx-xxxx.",
+      };
+    }
     if (!isValidEmailFormat(normalizeEmail(companyEmailRaw))) {
       return {
         ok: false,
@@ -200,19 +214,25 @@ export const authService = {
     };
   },
 
-  async updateCompany(companyId: number, body: UpdateCompanyBody): Promise<UpdateCompanyOk | AuthErr> {
+  async updateCompany(
+    companyId: number,
+    userId: number,
+    body: UpdateCompanyBody,
+  ): Promise<UpdateCompanyOk | AuthErr> {
     const name = body.name?.trim() ?? "";
     const rnc = body.rnc?.trim() ?? "";
     const address = body.address?.trim() ?? "";
     const phone = body.phone?.trim() ?? "";
     const regime = body.regime?.trim() ?? "";
+    const fullName = body.full_name?.trim() ?? "";
+    const cedula = (body.cedula ?? "").replace(/\D/g, "");
     const email = body.email ? normalizeEmail(body.email) : "";
 
-    if (!name || !rnc || !address) {
+    if (!name || !rnc || !address || !fullName || !cedula) {
       return {
         ok: false,
         status: 400,
-        message: "Nombre, RNC y direccion son obligatorios.",
+        message: "Nombre, RNC, direccion, nombre de persona y cedula son obligatorios.",
       };
     }
     if (!isValidRnc(rnc)) {
@@ -221,24 +241,48 @@ export const authService = {
     if (email && !isValidEmailFormat(email)) {
       return { ok: false, status: 400, message: "El correo de la empresa no es valido." };
     }
+    if (phone && !isValidPhoneFormat(phone)) {
+      return {
+        ok: false,
+        status: 400,
+        message: "El telefono de la empresa debe tener formato xxx-xxx-xxxx.",
+      };
+    }
+    if (!isValidCedula(cedula)) {
+      return { ok: false, status: 400, message: "La cedula debe tener 11 digitos." };
+    }
 
     const existingRnc = await prisma.company.findUnique({ where: { rnc } });
     if (existingRnc && existingRnc.id !== companyId) {
       return { ok: false, status: 409, message: "Ya existe una empresa registrada con ese RNC." };
     }
+    const existingCedula = await prisma.user.findUnique({ where: { cedula } });
+    if (existingCedula && existingCedula.id !== userId) {
+      return { ok: false, status: 409, message: "Ya existe una cuenta con esa cedula." };
+    }
 
-    const company = await prisma.company.update({
-      where: { id: companyId },
-      data: {
-        name,
-        rnc,
-        address,
-        phone: phone || null,
-        email: email || null,
-        regime: regime || "Régimen general",
-      },
+    const { company, user } = await prisma.$transaction(async (tx) => {
+      const companyRow = await tx.company.update({
+        where: { id: companyId },
+        data: {
+          name,
+          rnc,
+          address,
+          phone: phone || null,
+          email: email || null,
+          regime: regime || "Régimen general",
+        },
+      });
+      const userRow = await tx.user.update({
+        where: { id: userId },
+        data: {
+          fullName,
+          cedula,
+        },
+      });
+      return { company: companyRow, user: userRow };
     });
 
-    return { ok: true, company: publicCompany(company) };
+    return { ok: true, user: publicUser(user), company: publicCompany(company) };
   },
 };

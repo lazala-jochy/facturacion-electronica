@@ -1,4 +1,5 @@
 import { prisma } from "../prisma";
+import { isValidPhoneFormat } from "../utils/validation";
 
 export type CreateClientInput = {
   name: string;
@@ -31,6 +32,14 @@ export const clientService = {
         message: "RNC o cedula invalida (longitud).",
       };
     }
+    const phone = trimOrNull(input.phone ?? undefined);
+    if (phone && !isValidPhoneFormat(phone)) {
+      return {
+        ok: false as const,
+        status: 400,
+        message: "El telefono del cliente debe tener formato xxx-xxx-xxxx.",
+      };
+    }
 
     const client = await prisma.client.create({
       // Guardamos rnc/cedula por separado para facilitar busquedas.
@@ -44,7 +53,7 @@ export const clientService = {
           rncCedula,
           rnc: isRnc ? doc : null,
           cedula: isCedula ? doc : null,
-          phone: trimOrNull(input.phone ?? undefined),
+          phone,
           email: trimOrNull(input.email ?? undefined),
           companyId,
         };

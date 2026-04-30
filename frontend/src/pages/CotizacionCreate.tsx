@@ -9,6 +9,7 @@ import {
   calculateTotalsFromItems,
   itemLineTotalValue,
 } from "../utils/tax";
+import { formatPhoneInput, isValidPhone } from "../utils/phone";
 
 type ItemRow = CotizacionItemDraft & { key: string };
 
@@ -106,6 +107,10 @@ export default function CotizacionCreate() {
     }
     if (!paymentTerms.trim() || !accountManager.trim()) {
       setError("Condiciones de pago y ejecutivo de cuentas son obligatorios.");
+      return;
+    }
+    if (clientPhone.trim() && !isValidPhone(clientPhone)) {
+      setError("El telefono del cliente debe tener formato xxx-xxx-xxxx.");
       return;
     }
     if (
@@ -290,9 +295,12 @@ export default function CotizacionCreate() {
                   Tel. (opc.)
                 </label>
                 <input
+                  inputMode="numeric"
                   className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
                   value={clientPhone}
-                  onChange={(e) => setClientPhone(e.target.value)}
+                  onChange={(e) => setClientPhone(formatPhoneInput(e.target.value))}
+                  placeholder="xxx-xxx-xxxx"
+                  maxLength={12}
                 />
               </div>
               <div>

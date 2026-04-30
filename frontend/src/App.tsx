@@ -37,10 +37,13 @@ function App() {
     localStorage.removeItem(AUTH_STORAGE_KEY);
   };
 
-  const handleCompanyUpdated = (company: AuthSession["company"]) => {
+  const handleProfileUpdated = (
+    user: AuthSession["user"],
+    company: AuthSession["company"],
+  ) => {
     setSession((prev) => {
       if (!prev) return prev;
-      const next = { ...prev, company };
+      const next = { ...prev, user, company };
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
@@ -67,7 +70,7 @@ function App() {
             element={
               <CompanyProfile
                 session={session}
-                onCompanyUpdated={handleCompanyUpdated}
+                onProfileUpdated={handleProfileUpdated}
               />
             }
           />

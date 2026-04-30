@@ -4,6 +4,7 @@ import {
   registerCompany,
 } from "../services/auth";
 import type { AuthSession } from "../types/session";
+import { formatPhoneInput, isValidPhone } from "../utils/phone";
 type AuthMode = "login" | "register";
 
 export default function Auth({
@@ -19,7 +20,6 @@ export default function Auth({
   const [nombrePersona, setNombrePersona] = useState("");
   const [cedulaPersona, setCedulaPersona] = useState("");
   const [telefonoEmpresa, setTelefonoEmpresa] = useState("");
-  const [correoEmpresa, setCorreoEmpresa] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -39,7 +39,6 @@ export default function Auth({
       setNombrePersona("");
       setCedulaPersona("");
       setTelefonoEmpresa("");
-      setCorreoEmpresa("");
     }
   };
 
@@ -69,20 +68,15 @@ export default function Auth({
       setError("La cedula debe tener 11 digitos.");
       return;
     }
+    if (!isLogin && !isValidPhone(telefonoEmpresa)) {
+      setError("El telefono de la empresa debe tener formato xxx-xxx-xxxx.");
+      return;
+    }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       setError("Ingresa un correo electronico valido.");
       return;
     }
-    if (
-      !isLogin &&
-      correoEmpresa.trim() &&
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correoEmpresa.trim())
-    ) {
-      setError("Ingresa un correo de empresa valido.");
-      return;
-    }
-
     if (password.length < 8) {
       setError("La contrasena debe tener minimo 8 caracteres.");
       return;
@@ -110,7 +104,7 @@ export default function Auth({
           cedula: cedulaPersona.replace(/\D/g, ""),
           email: email.trim(),
           company_phone: telefonoEmpresa.trim(),
-          company_email: correoEmpresa.trim() || email.trim(),
+          company_email: email.trim(),
           password,
         });
         onAuthenticated(session);
@@ -313,6 +307,24 @@ export default function Auth({
                   </>
                 ) : (
                   <div className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
+                    <div className="sm:col-span-2">
+                      <label
+                        htmlFor="direccion"
+                        className="block text-sm font-semibold text-slate-800 mb-2"
+                      >
+                        Direccion
+                      </label>
+                      <input
+                        id="direccion"
+                        type="text"
+                        className="w-full h-12 px-4 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-indigo-100 focus:border-[#3f6ce8] transition-all"
+                        placeholder="Av principal, Santo Domingo, RD"
+                        value={direccion}
+                        onChange={(e) => setDireccion(e.target.value)}
+                        autoComplete="street-address"
+                        required
+                      />
+                    </div>
                     <div className="space-y-5 sm:pr-1">
                       <div>
                         <label
@@ -401,44 +413,9 @@ export default function Auth({
                           />
                         </div>
                       </div>
-                      <div>
-                        <label
-                          htmlFor="telefonoEmpresa"
-                          className="block text-sm font-semibold text-slate-800 mb-2"
-                        >
-                          Telefono empresa
-                        </label>
-                        <input
-                          id="telefonoEmpresa"
-                          type="text"
-                          className="w-full h-12 px-4 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-indigo-100 focus:border-[#3f6ce8] transition-all"
-                          placeholder="+1 809-000-0000"
-                          value={telefonoEmpresa}
-                          onChange={(e) => setTelefonoEmpresa(e.target.value)}
-                          required
-                        />
-                      </div>
                     </div>
 
                     <div className="space-y-5 sm:pl-1">
-                      <div>
-                        <label
-                          htmlFor="direccion"
-                          className="block text-sm font-semibold text-slate-800 mb-2"
-                        >
-                          Direccion
-                        </label>
-                        <input
-                          id="direccion"
-                          type="text"
-                          className="w-full h-12 px-4 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-indigo-100 focus:border-[#3f6ce8] transition-all"
-                          placeholder="Av principal, Santo Domingo, RD"
-                          value={direccion}
-                          onChange={(e) => setDireccion(e.target.value)}
-                          autoComplete="street-address"
-                          required
-                        />
-                      </div>
                       <div>
                         <label
                           htmlFor="nombrePersona"
@@ -458,18 +435,21 @@ export default function Auth({
                       </div>
                       <div>
                         <label
-                          htmlFor="correoEmpresa"
+                          htmlFor="telefonoEmpresa"
                           className="block text-sm font-semibold text-slate-800 mb-2"
                         >
-                          Correo empresa
+                          Telefono empresa
                         </label>
                         <input
-                          id="correoEmpresa"
-                          type="email"
+                          id="telefonoEmpresa"
+                          type="text"
+                          inputMode="numeric"
                           className="w-full h-12 px-4 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-indigo-100 focus:border-[#3f6ce8] transition-all"
-                          placeholder="facturacion@empresa.com"
-                          value={correoEmpresa}
-                          onChange={(e) => setCorreoEmpresa(e.target.value)}
+                          placeholder="xxx-xxx-xxxx"
+                          value={telefonoEmpresa}
+                          onChange={(e) => setTelefonoEmpresa(formatPhoneInput(e.target.value))}
+                          maxLength={12}
+                          required
                         />
                       </div>
                       <div>

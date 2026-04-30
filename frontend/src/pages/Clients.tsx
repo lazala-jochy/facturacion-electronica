@@ -17,6 +17,9 @@ const formatCurrency = (value: number) => {
 };
 
 export default function Clients() {
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator === "undefined" ? true : navigator.onLine,
+  );
   const [clients, setClients] = useState<ClientListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
@@ -33,6 +36,16 @@ export default function Clients() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
   const [detail, setDetail] = useState<CotizacionDetail | null>(null);
+
+  useEffect(() => {
+    const updateOnlineStatus = () => setIsOnline(navigator.onLine);
+    window.addEventListener("online", updateOnlineStatus);
+    window.addEventListener("offline", updateOnlineStatus);
+    return () => {
+      window.removeEventListener("online", updateOnlineStatus);
+      window.removeEventListener("offline", updateOnlineStatus);
+    };
+  }, []);
 
   useEffect(() => {
     const fetchClients = async () => {
@@ -65,6 +78,10 @@ export default function Clients() {
   };
 
   const handleSendEcf = async (cotizacionId: number) => {
+    if (!isOnline) {
+      setEcfError("Debes conectarte a internet para enviar a DGII.");
+      return;
+    }
     setSendingEcfId(cotizacionId);
     setEcfError("");
     setEcfSuccess("");
@@ -192,6 +209,11 @@ export default function Clients() {
       </div>
 
       {/* Tabla Desktop / Cards Mobile */}
+      {!isOnline && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-800 text-sm">
+          Sin conexion a internet. El envio a DGII estara deshabilitado hasta reconectar.
+        </div>
+      )}
       <div className="rounded-3xl border border-gray-200 bg-white shadow-lg overflow-hidden">
         <div className="border-b border-gray-100 bg-gray-50/70 p-4 sm:p-5">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
@@ -327,13 +349,19 @@ export default function Clients() {
                           {last ? (
                             <button
                               onClick={() => handleSendEcf(last.id)}
-                              disabled={sendingEcfId === last.id || alreadySent}
+                              disabled={sendingEcfId === last.id || alreadySent || !isOnline}
                               className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${
                                 alreadySent
                                   ? "border-emerald-200 text-emerald-700 bg-emerald-50"
                                   : "border-indigo-200 text-indigo-700 hover:bg-indigo-50"
                               }`}
-                              title={alreadySent ? "e-CF ya enviado" : "Enviar e-CF"}
+                              title={
+                                !isOnline
+                                  ? "Sin internet: no se puede enviar a DGII"
+                                  : alreadySent
+                                    ? "e-CF ya enviado"
+                                    : "Enviar e-CF"
+                              }
                             >
                               {sendingEcfId === last.id
                                 ? "Enviando..."
@@ -448,13 +476,19 @@ export default function Clients() {
                           </button>
                           <button
                             onClick={() => handleSendEcf(last.id)}
-                            disabled={sendingEcfId === last.id || alreadySent}
+                            disabled={sendingEcfId === last.id || alreadySent || !isOnline}
                             className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${
                               alreadySent
                                 ? "border-emerald-200 text-emerald-700 bg-emerald-50"
                                 : "border-indigo-200 text-indigo-700 hover:bg-indigo-50"
                             }`}
-                            title={alreadySent ? "e-CF ya enviado" : "Enviar e-CF"}
+                            title={
+                              !isOnline
+                                ? "Sin internet: no se puede enviar a DGII"
+                                : alreadySent
+                                  ? "e-CF ya enviado"
+                                  : "Enviar e-CF"
+                            }
                           >
                             {sendingEcfId === last.id
                               ? "..."

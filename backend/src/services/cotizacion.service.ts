@@ -4,6 +4,7 @@ import {
   calculateTotalsFromItems,
   itemLineTotalValue,
 } from "../utils/tax";
+import { isValidPhoneFormat } from "../utils/validation";
 
 export type IncomingItem = {
   quantity: number;
@@ -110,6 +111,14 @@ export const cotizacionService = {
         message: "Cliente: nombre y RNC o cedula validos son obligatorios.",
       };
     }
+    const clientPhone = trimOrNull(input.client.phone ?? undefined);
+    if (clientPhone && !isValidPhoneFormat(clientPhone)) {
+      return {
+        ok: false as const,
+        status: 400,
+        message: "El telefono del cliente debe tener formato xxx-xxx-xxxx.",
+      };
+    }
     const paymentTerms = input.cotizacion.payment_terms?.trim() ?? "";
     const paymentMethod = trimOrNull(input.cotizacion.payment_method ?? undefined);
     const accountManager = input.cotizacion.account_manager?.trim() ?? "";
@@ -176,7 +185,7 @@ export const cotizacionService = {
             rncCedula: cRnc,
             rnc: maybeRnc,
             cedula: maybeCedula,
-            phone: trimOrNull(input.client.phone ?? undefined),
+            phone: clientPhone,
             email: trimOrNull(input.client.email ?? undefined),
             companyId,
           },
