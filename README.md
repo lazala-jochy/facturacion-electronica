@@ -142,6 +142,19 @@ La app de escritorio abrira y cargara el frontend en `http://localhost:5173`, co
 
 ## 5) Build de produccion por modulo
 
+### Opcion rapida (un solo comando desde Electron)
+
+```bash
+cd electron
+npm run build:modules
+```
+
+Este comando ejecuta en orden:
+
+1. `frontend`: `npm run build`
+2. `backend`: `npx tsc --noEmit`
+3. `electron`: `npm run build`
+
 ### Frontend
 
 ```bash
@@ -299,7 +312,7 @@ npm run start
 ```bash
 cd frontend && npm run lint && npm run build
 cd ../backend && npx tsc --noEmit
-cd ../electron && npm run build
+cd ../electron && npm run build:modules
 ```
 
 ---

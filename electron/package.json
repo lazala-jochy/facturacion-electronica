@@ -5,6 +5,7 @@
   "scripts": {
     "build": "tsc",
     "start": "npm run build && electron .",
+    "build:modules": "npm --prefix ../frontend run build && npm --prefix ../backend exec tsc -- --noEmit && npm run build",
     "build:all": "npm --prefix ../frontend run build && npm --prefix ../backend run build && npm run build",
     "dist:win": "npm run build:all && electron-builder --win nsis",
     "dist:dir": "npm run build:all && electron-builder --dir"
@@ -26,6 +27,7 @@
     "productName": "Facturacion Electronica RD",
     "files": [
       "dist/**/*",
+      "assets/**/*",
       "package.json"
     ],
     "asarUnpack": [
@@ -59,6 +61,7 @@
       }
     ],
     "win": {
+      "icon": "assets/ChatGPT Image Apr 30, 2026, 11_28_06 AM.png",
       "target": [
         "nsis"
       ]

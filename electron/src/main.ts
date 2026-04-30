@@ -9,6 +9,22 @@ let backendProcess: ChildProcess | null = null;
 const BACKEND_PORT = 3001;
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const APP_ICON_NAME = "ChatGPT Image Apr 30, 2026, 11_28_06 AM.png";
+const DEBUG_LOG_NAME = "electron-debug.log";
+
+const getAppIconPath = () => path.join(__dirname, "..", "assets", APP_ICON_NAME);
+const isDebugEnabled = process.env.ELECTRON_DEBUG === "1" || app.isPackaged;
+
+const writeDebugLog = (message: string) => {
+  const line = `[${new Date().toISOString()}] ${message}\n`;
+  try {
+    const logPath = path.join(app.getPath("userData"), DEBUG_LOG_NAME);
+    fs.appendFileSync(logPath, line, "utf8");
+  } catch {
+    // ignore logging failures
+  }
+  console.log(message);
+};
 
 const waitForBackend = async () => {
   for (let attempt = 0; attempt < 30; attempt += 1) {
@@ -53,11 +69,13 @@ function startBackend() {
 }
 
 function createWindow() {
+  writeDebugLog("Creating main BrowserWindow.");
   mainWindow = new BrowserWindow({
     width: 1300,
     height: 900,
     minWidth: 1100,
     minHeight: 720,
+    icon: getAppIconPath(),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
     },
@@ -65,25 +83,53 @@ function createWindow() {
 
   if (app.isPackaged) {
     const filePath = path.join(process.resourcesPath, "frontend-dist", "index.html");
+    writeDebugLog(`Loading packaged frontend from: ${filePath}`);
     // `loadFile` maneja mejor rutas relativas del build (Vite) que `file://` + URLs absolutas.
     void mainWindow.loadFile(filePath);
   } else {
+    writeDebugLog("Loading dev frontend URL: http://localhost:5173/");
     mainWindow.loadURL("http://localhost:5173/");
   }
 
-  // Debug: open dev tools
-  //mainWindow.webContents.openDevTools();
+  mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL) => {
+    writeDebugLog(
+      `did-fail-load code=${errorCode} description="${errorDescription}" url="${validatedURL}"`,
+    );
+  });
+  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+    writeDebugLog(`render-process-gone reason=${details.reason} exitCode=${details.exitCode}`);
+  });
+  mainWindow.webContents.on("console-message", (_event, level, message, line, sourceId) => {
+    writeDebugLog(`renderer-console level=${level} source=${sourceId}:${line} msg=${message}`);
+  });
+  mainWindow.webContents.on("did-finish-load", () => {
+    writeDebugLog("Renderer finished load.");
+  });
+  mainWindow.webContents.on("did-stop-loading", () => {
+    writeDebugLog("Renderer stopped loading.");
+  });
+
+  if (isDebugEnabled) {
+    mainWindow.webContents.openDevTools({ mode: "detach" });
+    writeDebugLog("DevTools opened (debug mode).");
+  }
 }
 
 app.whenReady().then(async () => {
   try {
+    writeDebugLog(
+      `App ready. isPackaged=${app.isPackaged} resourcesPath=${process.resourcesPath}`,
+    );
     startBackend();
     if (app.isPackaged) {
+      writeDebugLog("Waiting for backend health check...");
       await waitForBackend();
+      writeDebugLog("Backend health check OK.");
     }
     createWindow();
   } catch (err) {
     const message = err instanceof Error ? err.message : "Error desconocido al iniciar.";
+    writeDebugLog(`Fatal startup error: ${message}`);
     dialog.showErrorBox("No se pudo iniciar la aplicacion", message);
     app.quit();
   }
@@ -97,6 +143,7 @@ app.whenReady().then(async () => {
 
 // IMPORTANT: keep app alive (macOS fix)
 app.on("window-all-closed", () => {
+  writeDebugLog("All windows closed.");
   if (backendProcess) {
     backendProcess.kill();
     backendProcess = null;
