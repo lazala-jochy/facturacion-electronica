@@ -15,6 +15,7 @@ export const buildRouter = () => {
   router.post("/auth/register", asyncHandler(authController.register));
   router.post("/auth/login", asyncHandler(authController.login));
   router.get("/auth/me", requireAuth, asyncHandler(authController.me));
+  router.put("/auth/company", requireAuth, asyncHandler(authController.updateCompany));
 
   router.post("/clients", requireAuth, asyncHandler(clientsController.createClient));
   router.get("/clients", requireAuth, asyncHandler(clientsController.listClients));
@@ -33,6 +34,11 @@ export const buildRouter = () => {
     "/cotizaciones/:id",
     requireAuth,
     asyncHandler(cotizacionesController.getCotizacionById),
+  );
+  router.get(
+    "/cotizaciones/:id/pdf",
+    requireAuth,
+    asyncHandler(cotizacionesController.downloadCotizacionPdf),
   );
 
   return router;

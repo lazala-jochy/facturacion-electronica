@@ -13,6 +13,8 @@ const trimOrNull = (v: string | undefined | null) => {
   return t.length ? t : null;
 };
 
+const toDocDigits = (value: string) => value.replace(/\D/g, "");
+
 export const clientService = {
   /** Crea solo el cliente (sin cotización). Para cotización usar `POST /clients-with-cotizacion`. */
   async createClientOnly(companyId: number, input: CreateClientInput) {
@@ -30,13 +32,21 @@ export const clientService = {
     }
 
     const client = await prisma.client.create({
-      data: {
-        name,
-        rncCedula,
-        phone: trimOrNull(input.phone ?? undefined),
-        email: trimOrNull(input.email ?? undefined),
-        companyId,
-      },
+      // Guardamos rnc/cedula por separado para facilitar busquedas.
+      data: (() => {
+        const doc = toDocDigits(rncCedula);
+        const isCedula = doc.length === 11;
+        const isRnc = doc.length >= 9 && doc.length <= 11;
+        return {
+          name,
+          rncCedula,
+          rnc: isRnc ? doc : null,
+          cedula: isCedula ? doc : null,
+          phone: trimOrNull(input.phone ?? undefined),
+          email: trimOrNull(input.email ?? undefined),
+          companyId,
+        };
+      })(),
     });
 
     return { ok: true as const, client };

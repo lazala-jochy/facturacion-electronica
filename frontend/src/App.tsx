@@ -8,6 +8,7 @@ import Invoices from "./pages/Invoices";
 import Clients from "./pages/Clients";
 import CotizacionCreate from "./pages/CotizacionCreate";
 import { AUTH_STORAGE_KEY, type AuthSession } from "./types/session";
+import CompanyProfile from "./pages/CompanyProfile";
 
 function App() {
   const initialSession = useMemo<AuthSession | null>(() => {
@@ -36,6 +37,15 @@ function App() {
     localStorage.removeItem(AUTH_STORAGE_KEY);
   };
 
+  const handleCompanyUpdated = (company: AuthSession["company"]) => {
+    setSession((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, company };
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+
   if (!session) {
     return <Auth onAuthenticated={handleAuthenticated} />;
   }
@@ -51,6 +61,15 @@ function App() {
           <Route path="/clients" element={<Clients />} />
           <Route path="/cotizaciones/nueva" element={<CotizacionCreate />} />
           <Route path="/invoices" element={<Invoices />} />
+          <Route
+            path="/company-profile"
+            element={
+              <CompanyProfile
+                session={session}
+                onCompanyUpdated={handleCompanyUpdated}
+              />
+            }
+          />
         </Route>
       </Routes>
     </BrowserRouter>

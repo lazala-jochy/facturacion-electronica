@@ -1,11 +1,12 @@
 import type { Company, User } from "@prisma/client";
 import { prisma } from "../prisma";
-import type { LoginBody, RegisterBody } from "../types/auth";
+import type { LoginBody, RegisterBody, UpdateCompanyBody } from "../types/auth";
 import { normalizeEmail } from "../utils/email";
 import { hashPassword, verifyPassword } from "../utils/password";
 import { signSessionToken } from "../utils/jwt";
 import {
   isValidEmailFormat,
+  isValidCedula,
   isValidPasswordLength,
   isValidRnc,
 } from "../utils/validation";
@@ -13,7 +14,12 @@ import {
 export type AuthOk = {
   ok: true;
   token: string;
-  user: Pick<User, "id" | "email">;
+  user: {
+    id: number;
+    email: string;
+    full_name: string;
+    cedula: string;
+  };
   company: Pick<Company, "id" | "name" | "rnc" | "address" | "phone" | "email">;
 };
 
@@ -21,7 +27,17 @@ export type AuthErr = { ok: false; status: number; message: string };
 
 export type MeOk = {
   ok: true;
-  user: Pick<User, "id" | "email">;
+  user: {
+    id: number;
+    email: string;
+    full_name: string;
+    cedula: string;
+  };
+  company: Pick<Company, "id" | "name" | "rnc" | "address" | "phone" | "email">;
+};
+
+export type UpdateCompanyOk = {
+  ok: true;
   company: Pick<Company, "id" | "name" | "rnc" | "address" | "phone" | "email">;
 };
 
@@ -37,6 +53,8 @@ const publicCompany = (c: Company) => ({
 const publicUser = (u: User) => ({
   id: u.id,
   email: u.email,
+  full_name: u.fullName,
+  cedula: u.cedula,
 });
 
 export const authService = {
@@ -44,14 +62,16 @@ export const authService = {
     const name = body.name?.trim();
     const address = body.address?.trim() ?? "";
     const rnc = body.rnc?.trim();
+    const fullName = body.full_name?.trim() ?? "";
+    const cedula = (body.cedula ?? "").replace(/\D/g, "");
     const email = body.email ? normalizeEmail(body.email) : "";
     const password = body.password?.trim() ?? "";
 
-    if (!name || !rnc || !email || !password || !address) {
+    if (!name || !rnc || !email || !password || !address || !fullName || !cedula) {
       return {
         ok: false,
         status: 400,
-        message: "Completa todos los campos requeridos (incluye direccion fiscal).",
+        message: "Completa todos los campos requeridos (empresa y representante).",
       };
     }
     if (!isValidRnc(rnc)) {
@@ -59,6 +79,9 @@ export const authService = {
     }
     if (!isValidEmailFormat(email)) {
       return { ok: false, status: 400, message: "Correo electronico invalido." };
+    }
+    if (!isValidCedula(cedula)) {
+      return { ok: false, status: 400, message: "La cedula debe tener 11 digitos." };
     }
     if (!isValidPasswordLength(password)) {
       return {
@@ -76,10 +99,14 @@ export const authService = {
     if (existingRnc) {
       return { ok: false, status: 409, message: "Ya existe una empresa registrada con ese RNC." };
     }
+    const existingCedula = await prisma.user.findUnique({ where: { cedula } });
+    if (existingCedula) {
+      return { ok: false, status: 409, message: "Ya existe una cuenta con esa cedula." };
+    }
 
     const companyPhone = body.company_phone?.trim() ?? "";
-    const companyEmailRaw = body.company_email?.trim() ?? "";
-    if (companyEmailRaw && !isValidEmailFormat(normalizeEmail(companyEmailRaw))) {
+    const companyEmailRaw = (body.company_email?.trim() || email).trim();
+    if (!isValidEmailFormat(normalizeEmail(companyEmailRaw))) {
       return {
         ok: false,
         status: 400,
@@ -94,11 +121,13 @@ export const authService = {
           rnc,
           address,
           phone: companyPhone || null,
-          email: companyEmailRaw ? normalizeEmail(companyEmailRaw) : null,
+          email: normalizeEmail(companyEmailRaw),
         },
       });
       const userRow = await tx.user.create({
         data: {
+          fullName,
+          cedula,
           email,
           password: hashPassword(password),
           companyId: companyRow.id,
@@ -169,5 +198,47 @@ export const authService = {
       user: publicUser(user),
       company: publicCompany(user.company),
     };
+  },
+
+  async updateCompany(companyId: number, body: UpdateCompanyBody): Promise<UpdateCompanyOk | AuthErr> {
+    const name = body.name?.trim() ?? "";
+    const rnc = body.rnc?.trim() ?? "";
+    const address = body.address?.trim() ?? "";
+    const phone = body.phone?.trim() ?? "";
+    const regime = body.regime?.trim() ?? "";
+    const email = body.email ? normalizeEmail(body.email) : "";
+
+    if (!name || !rnc || !address) {
+      return {
+        ok: false,
+        status: 400,
+        message: "Nombre, RNC y direccion son obligatorios.",
+      };
+    }
+    if (!isValidRnc(rnc)) {
+      return { ok: false, status: 400, message: "El RNC debe tener 9 a 11 digitos." };
+    }
+    if (email && !isValidEmailFormat(email)) {
+      return { ok: false, status: 400, message: "El correo de la empresa no es valido." };
+    }
+
+    const existingRnc = await prisma.company.findUnique({ where: { rnc } });
+    if (existingRnc && existingRnc.id !== companyId) {
+      return { ok: false, status: 409, message: "Ya existe una empresa registrada con ese RNC." };
+    }
+
+    const company = await prisma.company.update({
+      where: { id: companyId },
+      data: {
+        name,
+        rnc,
+        address,
+        phone: phone || null,
+        email: email || null,
+        regime: regime || "Régimen general",
+      },
+    });
+
+    return { ok: true, company: publicCompany(company) };
   },
 };

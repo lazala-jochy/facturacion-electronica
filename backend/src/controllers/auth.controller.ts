@@ -46,3 +46,22 @@ export const me: RequestHandler = async (req, res) => {
     company: result.company,
   });
 };
+
+export const updateCompany: RequestHandler = async (req, res) => {
+  const auth = req.auth;
+  if (!auth) {
+    res.status(401).json({ message: "No autorizado." });
+    return;
+  }
+
+  const result = await authService.updateCompany(auth.companyId, req.body);
+  if (!result.ok) {
+    res.status(result.status).json({ message: result.message });
+    return;
+  }
+
+  res.json({
+    message: "Perfil de empresa actualizado.",
+    company: result.company,
+  });
+};

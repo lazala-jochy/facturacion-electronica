@@ -16,6 +16,10 @@ export default function Auth({
   const [razonSocial, setRazonSocial] = useState("");
   const [direccion, setDireccion] = useState("");
   const [rnc, setRnc] = useState("");
+  const [nombrePersona, setNombrePersona] = useState("");
+  const [cedulaPersona, setCedulaPersona] = useState("");
+  const [telefonoEmpresa, setTelefonoEmpresa] = useState("");
+  const [correoEmpresa, setCorreoEmpresa] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -31,6 +35,12 @@ export default function Auth({
     setSuccess("");
     setPassword("");
     setConfirmPassword("");
+    if (nextMode === "login") {
+      setNombrePersona("");
+      setCedulaPersona("");
+      setTelefonoEmpresa("");
+      setCorreoEmpresa("");
+    }
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -41,7 +51,12 @@ export default function Auth({
     if (
       !email.trim() ||
       !password.trim() ||
-      (!isLogin && (!razonSocial.trim() || !direccion.trim()))
+      (!isLogin &&
+        (!razonSocial.trim() ||
+          !direccion.trim() ||
+          !nombrePersona.trim() ||
+          !cedulaPersona.trim() ||
+          !telefonoEmpresa.trim()))
     ) {
       setError("Completa los campos requeridos.");
       return;
@@ -50,9 +65,21 @@ export default function Auth({
       setError("El RNC debe tener 9 a 11 digitos.");
       return;
     }
+    if (!isLogin && !/^[0-9]{11}$/.test(cedulaPersona.replace(/\D/g, ""))) {
+      setError("La cedula debe tener 11 digitos.");
+      return;
+    }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       setError("Ingresa un correo electronico valido.");
+      return;
+    }
+    if (
+      !isLogin &&
+      correoEmpresa.trim() &&
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correoEmpresa.trim())
+    ) {
+      setError("Ingresa un correo de empresa valido.");
       return;
     }
 
@@ -79,7 +106,11 @@ export default function Auth({
           name: razonSocial.trim(),
           rnc: rnc.trim(),
           address: direccion.trim(),
+          full_name: nombrePersona.trim(),
+          cedula: cedulaPersona.replace(/\D/g, ""),
           email: email.trim(),
+          company_phone: telefonoEmpresa.trim(),
+          company_email: correoEmpresa.trim() || email.trim(),
           password,
         });
         onAuthenticated(session);
@@ -96,23 +127,23 @@ export default function Auth({
   };
 
   return (
-    <main className="min-h-screen [font-family:Inter,system-ui,sans-serif] bg-gradient-to-br from-[#f5f6ff] via-[#f8f9ff] to-[#eef2ff] p-3 md:p-7 flex items-center justify-center overflow-x-auto">
+    <main className="min-h-screen [font-family:Inter,system-ui,sans-serif] bg-gradient-to-br from-[#f5f6ff] via-[#f8f9ff] to-[#eef2ff] p-3 sm:p-6 md:p-7 flex items-center justify-center w-full overflow-x-hidden">
       <section
         className={
           isLogin
-            ? "w-full min-w-[980px] max-w-7xl rounded-2xl border border-indigo-100/80 bg-white/70 backdrop-blur-xl shadow-[0_24px_65px_-24px_rgba(55,65,81,0.32)] overflow-hidden"
-            : "w-full max-w-3xl mx-auto"
+            ? "w-full max-w-7xl rounded-2xl border border-indigo-100/80 bg-white/70 backdrop-blur-xl shadow-[0_24px_65px_-24px_rgba(55,65,81,0.32)] overflow-hidden"
+            : "w-full max-w-3xl mx-auto px-4 sm:px-0"
         }
       >
         <div
           className={
             isLogin
-              ? "grid grid-cols-[1fr_0.95fr] min-h-[680px]"
+              ? "grid grid-cols-1 lg:grid-cols-[1fr_0.95fr] min-h-auto lg:min-h-[680px]"
               : "min-h-[680px] flex items-center justify-center py-2"
           }
         >
           {isLogin && (
-            <aside className="relative flex flex-col justify-between p-[clamp(1.25rem,2.8vw,3.5rem)] bg-gradient-to-br from-[#eff1ff] via-[#f3f4ff] to-[#eaedff]">
+            <aside className="hidden lg:flex relative flex-col justify-between p-[clamp(1.25rem,2.8vw,3.5rem)] bg-gradient-to-br from-[#eff1ff] via-[#f3f4ff] to-[#eaedff]">
               <div className="absolute -top-20 -right-20 h-64 w-64 rounded-full bg-indigo-200/30 blur-3xl" />
               <div className="absolute -bottom-24 -left-16 h-72 w-72 rounded-full bg-blue-200/20 blur-3xl" />
 
@@ -156,8 +187,8 @@ export default function Auth({
           <div
             className={
               isLogin
-                ? "flex w-full items-center justify-center p-[clamp(1rem,2.6vw,3rem)]"
-                : "flex w-full items-center justify-center px-0 py-0 sm:px-2"
+                ? "flex w-full items-center justify-center p-4 sm:p-6 lg:p-[clamp(1rem,2.6vw,3rem)]"
+                : "flex w-full items-center justify-center px-4 sm:px-2 py-6 sm:py-0"
             }
           >
             <div
@@ -321,6 +352,24 @@ export default function Auth({
                       </div>
                       <div>
                         <label
+                          htmlFor="cedulaPersona"
+                          className="block text-sm font-semibold text-slate-800 mb-2"
+                        >
+                          Cedula
+                        </label>
+                        <input
+                          id="cedulaPersona"
+                          type="text"
+                          inputMode="numeric"
+                          className="w-full h-12 px-4 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-indigo-100 focus:border-[#3f6ce8] transition-all"
+                          placeholder="00112345678"
+                          value={cedulaPersona}
+                          onChange={(e) => setCedulaPersona(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label
                           htmlFor="email"
                           className="block text-sm font-semibold text-slate-800 mb-2"
                         >
@@ -352,6 +401,23 @@ export default function Auth({
                           />
                         </div>
                       </div>
+                      <div>
+                        <label
+                          htmlFor="telefonoEmpresa"
+                          className="block text-sm font-semibold text-slate-800 mb-2"
+                        >
+                          Telefono empresa
+                        </label>
+                        <input
+                          id="telefonoEmpresa"
+                          type="text"
+                          className="w-full h-12 px-4 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-indigo-100 focus:border-[#3f6ce8] transition-all"
+                          placeholder="+1 809-000-0000"
+                          value={telefonoEmpresa}
+                          onChange={(e) => setTelefonoEmpresa(e.target.value)}
+                          required
+                        />
+                      </div>
                     </div>
 
                     <div className="space-y-5 sm:pl-1">
@@ -371,6 +437,39 @@ export default function Auth({
                           onChange={(e) => setDireccion(e.target.value)}
                           autoComplete="street-address"
                           required
+                        />
+                      </div>
+                      <div>
+                        <label
+                          htmlFor="nombrePersona"
+                          className="block text-sm font-semibold text-slate-800 mb-2"
+                        >
+                          Nombre de la persona
+                        </label>
+                        <input
+                          id="nombrePersona"
+                          type="text"
+                          className="w-full h-12 px-4 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-indigo-100 focus:border-[#3f6ce8] transition-all"
+                          placeholder="Ej: Maria Altagracia Sanchez"
+                          value={nombrePersona}
+                          onChange={(e) => setNombrePersona(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label
+                          htmlFor="correoEmpresa"
+                          className="block text-sm font-semibold text-slate-800 mb-2"
+                        >
+                          Correo empresa
+                        </label>
+                        <input
+                          id="correoEmpresa"
+                          type="email"
+                          className="w-full h-12 px-4 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-indigo-100 focus:border-[#3f6ce8] transition-all"
+                          placeholder="facturacion@empresa.com"
+                          value={correoEmpresa}
+                          onChange={(e) => setCorreoEmpresa(e.target.value)}
                         />
                       </div>
                       <div>

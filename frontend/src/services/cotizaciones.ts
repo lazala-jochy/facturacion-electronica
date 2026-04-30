@@ -1,4 +1,6 @@
 import { apiFetch } from "./api";
+import { apiUrl } from "./api";
+import { AUTH_STORAGE_KEY, type AuthSession } from "../types/session";
 
 export type CotizacionItemDraft = {
   quantity: number;
@@ -40,3 +42,53 @@ export const getCotizacion = (id: number) =>
     `/cotizaciones/${id}`,
     { method: "GET" },
   );
+
+/**
+ * Descarga una cotización en formato PDF
+ */
+export const downloadCotizacionPDF = async (id: number, fileName?: string) => {
+  try {
+    const session = (() => {
+      const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+      if (!raw) return null;
+      try {
+        const s = JSON.parse(raw) as Partial<AuthSession>;
+        if (s?.token && s?.user && s?.company) return s as AuthSession;
+        return null;
+      } catch {
+        return null;
+      }
+    })();
+
+    const headers = new Headers();
+    if (session?.token) {
+      headers.set("Authorization", `Bearer ${session.token}`);
+    }
+
+    const response = await fetch(`${apiUrl}/cotizaciones/${id}/pdf`, {
+      method: "GET",
+      headers,
+    });
+
+    if (!response.ok) {
+      throw new Error("No se pudo descargar el PDF");
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName || `cotizacion-${id}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  } catch (error) {
+    throw new Error(
+      error instanceof Error
+        ? error.message
+        : "Error al descargar el PDF"
+    );
+  }
+};
+

@@ -2,6 +2,8 @@ export type RegisterBody = {
   name?: string;
   rnc?: string;
   address?: string;
+  full_name?: string;
+  cedula?: string;
   email?: string;
   password?: string;
   /** Teléfono de la empresa (emisor en cotización). */
@@ -13,4 +15,13 @@ export type RegisterBody = {
 export type LoginBody = {
   email?: string;
   password?: string;
+};
+
+export type UpdateCompanyBody = {
+  name?: string;
+  rnc?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  regime?: string;
 };

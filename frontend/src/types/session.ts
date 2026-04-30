@@ -1,6 +1,8 @@
 export type AuthUser = {
   id: number;
   email: string;
+  full_name: string;
+  cedula: string;
 };
 
 export type AuthCompany = {
@@ -37,6 +39,8 @@ export type RegisterPayload = LoginPayload & {
   name: string;
   rnc: string;
   address: string;
+  full_name: string;
+  cedula: string;
   company_phone?: string;
   company_email?: string;
 };

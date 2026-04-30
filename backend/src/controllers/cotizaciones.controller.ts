@@ -5,6 +5,7 @@ import {
   type IncomingItem,
 } from "../services/cotizacion.service";
 import { generateDGIIData } from "../utils/dgii";
+import { buildCotizacionPdfBuffer } from "../utils/cotizacion-pdf";
 
 const stripTenantFromBody = (body: Record<string, unknown>) => {
   delete body.company_id;
@@ -20,6 +21,8 @@ const serializeCotizacion = (
   company_id: c.companyId,
   payment_terms: c.paymentTerms,
   account_manager: c.accountManager,
+  document_title: c.documentTitle,
+  fiscal_legend: c.fiscalLegend,
   subtotal: c.subtotal,
   itbis: c.itbis,
   total: c.total,
@@ -38,6 +41,7 @@ const serializeCotizacion = (
     address: c.company.address,
     phone: c.company.phone,
     email: c.company.email,
+    regime: c.company.regime,
   },
   items: c.items.map((i) => ({
     id: i.id,
@@ -94,6 +98,10 @@ export const createClientWithCotizacion: RequestHandler = async (req, res) => {
         typeof cot.payment_terms === "string" ? cot.payment_terms : "",
       account_manager:
         typeof cot.account_manager === "string" ? cot.account_manager : "",
+      document_title:
+        typeof cot.document_title === "string" ? cot.document_title : undefined,
+      fiscal_legend:
+        typeof cot.fiscal_legend === "string" ? cot.fiscal_legend : undefined,
     },
     items,
   });
@@ -164,4 +172,31 @@ export const getCotizacionById: RequestHandler = async (req, res) => {
     cotizacion: serializeCotizacion(row),
     dgii_preview: generateDGIIData(row),
   });
+};
+
+export const downloadCotizacionPdf: RequestHandler = async (req, res) => {
+  const companyId = req.auth?.companyId;
+  if (!companyId) {
+    res.status(401).json({ message: "No autorizado." });
+    return;
+  }
+
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ message: "ID invalido." });
+    return;
+  }
+
+  const row = await cotizacionService.getByIdForCompany(id, companyId);
+  if (!row) {
+    res.status(404).json({ message: "Cotizacion no encontrada." });
+    return;
+  }
+
+  const pdfBuffer = await buildCotizacionPdfBuffer(row);
+  const fileName = `cotizacion-${row.number}.pdf`;
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+  res.status(200).send(pdfBuffer);
 };

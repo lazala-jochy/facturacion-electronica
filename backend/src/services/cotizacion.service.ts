@@ -22,6 +22,8 @@ export type CreateClientWithCotizacionInput = {
   cotizacion: {
     payment_terms: string;
     account_manager: string;
+    document_title?: string | null;
+    fiscal_legend?: string | null;
   };
   items?: IncomingItem[];
 };
@@ -31,6 +33,7 @@ const trimOrNull = (v: string | undefined | null) => {
   const t = v.trim();
   return t.length ? t : null;
 };
+const toDocDigits = (value: string) => value.replace(/\D/g, "");
 
 const nextCotizacionNumber = async (
   tx: Prisma.TransactionClient,
@@ -89,6 +92,9 @@ export const cotizacionService = {
   ) {
     const cName = input.client.name?.trim();
     const cRnc = input.client.rnc_cedula?.trim();
+    const docDigits = toDocDigits(cRnc ?? "");
+    const maybeRnc = docDigits.length >= 9 && docDigits.length <= 11 ? docDigits : null;
+    const maybeCedula = docDigits.length === 11 ? docDigits : null;
     if (!cName || !cRnc || cRnc.length < 3) {
       return {
         ok: false as const,
@@ -98,6 +104,10 @@ export const cotizacionService = {
     }
     const paymentTerms = input.cotizacion.payment_terms?.trim() ?? "";
     const accountManager = input.cotizacion.account_manager?.trim() ?? "";
+    const documentTitle =
+      trimOrNull(input.cotizacion.document_title ?? undefined) ?? "Pre-factura";
+    const fiscalLegend =
+      trimOrNull(input.cotizacion.fiscal_legend ?? undefined) ?? "Sin valor fiscal";
     if (!paymentTerms || !accountManager) {
       return {
         ok: false as const,
@@ -112,15 +122,34 @@ export const cotizacionService = {
     );
 
     const result = await prisma.$transaction(async (tx) => {
-      const client = await tx.client.create({
-        data: {
-          name: cName,
-          rncCedula: cRnc,
-          phone: trimOrNull(input.client.phone ?? undefined),
-          email: trimOrNull(input.client.email ?? undefined),
-          companyId,
-        },
-      });
+      const clientByRnc = maybeRnc
+        ? await tx.client.findFirst({
+            where: { companyId, rnc: maybeRnc },
+            orderBy: { id: "desc" },
+          })
+        : null;
+      const clientByCedula =
+        !clientByRnc && maybeCedula
+          ? await tx.client.findFirst({
+              where: { companyId, cedula: maybeCedula },
+              orderBy: { id: "desc" },
+            })
+          : null;
+
+      const client =
+        clientByRnc ||
+        clientByCedula ||
+        (await tx.client.create({
+          data: {
+            name: cName,
+            rncCedula: cRnc,
+            rnc: maybeRnc,
+            cedula: maybeCedula,
+            phone: trimOrNull(input.client.phone ?? undefined),
+            email: trimOrNull(input.client.email ?? undefined),
+            companyId,
+          },
+        }));
 
       const number = await nextCotizacionNumber(tx, companyId);
 
@@ -129,6 +158,8 @@ export const cotizacionService = {
           number,
           clientId: client.id,
           companyId,
+          documentTitle,
+          fiscalLegend,
           paymentTerms,
           accountManager,
           subtotal: totals.subtotal,
