@@ -28,6 +28,37 @@ export type CotizacionListItem = {
   items_count: number;
 };
 
+export type CotizacionDetail = {
+  id: number;
+  number: number;
+  payment_terms?: string;
+  payment_method?: string | null;
+  account_manager?: string;
+  comment?: string | null;
+  subtotal?: number;
+  itbis?: number;
+  total: number;
+  dgii_status?: string | null;
+  dgii_track_id?: string | null;
+  dgii_response?: string | null;
+  signed_xml?: string | null;
+  client: {
+    name: string;
+    rnc_cedula: string;
+    address?: string | null;
+    phone?: string | null;
+    email?: string | null;
+  };
+  items?: Array<{
+    item_number: number;
+    quantity: number;
+    unit: string;
+    description: string;
+    unit_price: number;
+    total_value: number;
+  }>;
+};
+
 export type CreateClientWithCotizacionPayload = {
   client: {
     name: string;
@@ -38,7 +69,13 @@ export type CreateClientWithCotizacionPayload = {
   };
   cotizacion: {
     payment_terms: string;
+    payment_method?: string;
     account_manager: string;
+    comment?: string;
+    calc_mode?: "auto" | "manual";
+    subtotal?: number;
+    itbis?: number;
+    total?: number;
   };
   items: CotizacionItemDraft[];
 };
@@ -58,7 +95,7 @@ export const listCotizaciones = () =>
   apiFetch<{ cotizaciones: CotizacionListItem[] }>("/cotizaciones", { method: "GET" });
 
 export const getCotizacion = (id: number) =>
-  apiFetch<{ cotizacion: unknown; dgii_preview: unknown }>(
+  apiFetch<{ cotizacion: CotizacionDetail; dgii_preview: Record<string, unknown> }>(
     `/cotizaciones/${id}`,
     { method: "GET" },
   );

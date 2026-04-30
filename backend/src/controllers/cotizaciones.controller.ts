@@ -22,7 +22,9 @@ const serializeCotizacion = (
   client_id: c.clientId,
   company_id: c.companyId,
   payment_terms: c.paymentTerms,
+  payment_method: c.paymentMethod,
   account_manager: c.accountManager,
+  comment: c.comment,
   document_title: c.documentTitle,
   fiscal_legend: c.fiscalLegend,
   subtotal: c.subtotal,
@@ -30,6 +32,8 @@ const serializeCotizacion = (
   total: c.total,
   dgii_track_id: c.dgiiTrackId,
   dgii_status: c.dgiiStatus,
+  dgii_response: c.dgiiResponse,
+  signed_xml: c.signedXml,
   dgii_submitted_at: c.dgiiSubmittedAt?.toISOString() ?? null,
   created_at: c.createdAt.toISOString(),
   client: {
@@ -103,12 +107,22 @@ export const createClientWithCotizacion: RequestHandler = async (req, res) => {
     cotizacion: {
       payment_terms:
         typeof cot.payment_terms === "string" ? cot.payment_terms : "",
+      payment_method:
+        typeof cot.payment_method === "string" ? cot.payment_method : undefined,
       account_manager:
         typeof cot.account_manager === "string" ? cot.account_manager : "",
+      comment: typeof cot.comment === "string" ? cot.comment : undefined,
       document_title:
         typeof cot.document_title === "string" ? cot.document_title : undefined,
       fiscal_legend:
         typeof cot.fiscal_legend === "string" ? cot.fiscal_legend : undefined,
+      calc_mode:
+        cot.calc_mode === "manual" || cot.calc_mode === "auto"
+          ? cot.calc_mode
+          : undefined,
+      subtotal: Number(cot.subtotal),
+      itbis: Number(cot.itbis),
+      total: Number(cot.total),
     },
     items,
   });
@@ -149,7 +163,9 @@ export const listCotizaciones: RequestHandler = async (req, res) => {
       client_id: c.clientId,
       company_id: c.companyId,
       payment_terms: c.paymentTerms,
+      payment_method: c.paymentMethod,
       account_manager: c.accountManager,
+      comment: c.comment,
       subtotal: c.subtotal,
       itbis: c.itbis,
       total: c.total,

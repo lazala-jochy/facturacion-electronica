@@ -65,7 +65,9 @@ model Cotizacion {
   documentTitle  String           @default("Pre-factura") @map("document_title")
   fiscalLegend   String           @default("Sin valor fiscal") @map("fiscal_legend")
   paymentTerms   String           @map("payment_terms")
+  paymentMethod  String?          @map("payment_method")
   accountManager String           @map("account_manager")
+  comment        String?          @map("comment")
   subtotal       Float
   itbis          Float
   total          Float

@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { AUTH_STORAGE_KEY, type AuthSession } from "../types/session";
 import {
@@ -40,8 +40,14 @@ export default function CotizacionCreate() {
   const [clientPhone, setClientPhone] = useState("");
   const [clientEmail, setClientEmail] = useState("");
   const [paymentTerms, setPaymentTerms] = useState("50% avance");
+  const [paymentMethod, setPaymentMethod] = useState("Efectivo");
   const [accountManager, setAccountManager] = useState("");
+  const [comment, setComment] = useState("");
   const [items, setItems] = useState<ItemRow[]>(() => [newRow(), newRow()]);
+  const [calcMode, setCalcMode] = useState<"auto" | "manual">("auto");
+  const [manualSubtotal, setManualSubtotal] = useState(0);
+  const [manualItbis, setManualItbis] = useState(0);
+  const [manualTotal, setManualTotal] = useState(0);
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -56,6 +62,22 @@ export default function CotizacionCreate() {
   const totals = calculateTotalsFromItems(
     lineTotals.map((totalValue) => ({ totalValue })),
   );
+  const displayTotals =
+    calcMode === "manual"
+      ? {
+          subtotal: Number.isFinite(manualSubtotal) ? Math.max(0, manualSubtotal) : 0,
+          itbis: Number.isFinite(manualItbis) ? Math.max(0, manualItbis) : 0,
+          total: Number.isFinite(manualTotal) ? Math.max(0, manualTotal) : 0,
+        }
+      : totals;
+
+  useEffect(() => {
+    if (calcMode === "manual") {
+      setManualSubtotal(Number(totals.subtotal.toFixed(2)));
+      setManualItbis(Number(totals.itbis.toFixed(2)));
+      setManualTotal(Number(totals.total.toFixed(2)));
+    }
+  }, [calcMode, totals.subtotal, totals.itbis, totals.total]);
 
   const today = new Date().toLocaleDateString("es-DO", {
     day: "2-digit",
@@ -86,6 +108,16 @@ export default function CotizacionCreate() {
       setError("Condiciones de pago y ejecutivo de cuentas son obligatorios.");
       return;
     }
+    if (
+      calcMode === "manual" &&
+      Math.abs(
+        Number((displayTotals.subtotal + displayTotals.itbis).toFixed(2)) -
+          Number(displayTotals.total.toFixed(2)),
+      ) > 0.01
+    ) {
+      setError("En modo manual, el total debe ser subtotal + ITBIS.");
+      return;
+    }
 
     const payloadItems: CotizacionItemDraft[] = items.map((it) => ({
       quantity: Number(it.quantity) || 0,
@@ -106,7 +138,13 @@ export default function CotizacionCreate() {
         },
         cotizacion: {
           payment_terms: paymentTerms.trim(),
+          payment_method: paymentMethod,
           account_manager: accountManager.trim(),
+          comment: comment.trim() || undefined,
+          calc_mode: calcMode,
+          subtotal: displayTotals.subtotal,
+          itbis: displayTotals.itbis,
+          total: displayTotals.total,
         },
         items: payloadItems,
       });
@@ -120,7 +158,13 @@ export default function CotizacionCreate() {
       setClientRnc("");
       setClientPhone("");
       setClientEmail("");
+      setPaymentMethod("Efectivo");
+      setComment("");
       setItems([newRow(), newRow()]);
+      setCalcMode("auto");
+      setManualSubtotal(0);
+      setManualItbis(0);
+      setManualTotal(0);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al guardar.");
     } finally {
@@ -278,6 +322,20 @@ export default function CotizacionCreate() {
             </div>
             <div>
               <label className="text-xs font-medium text-slate-600">
+                Forma de pago
+              </label>
+              <select
+                className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+              >
+                <option value="Efectivo">Efectivo</option>
+                <option value="Cheque">Cheque</option>
+                <option value="Depósito">Depósito</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600">
                 Ejecutivo de cuentas
               </label>
               <input
@@ -286,6 +344,18 @@ export default function CotizacionCreate() {
                 onChange={(e) => setAccountManager(e.target.value)}
                 placeholder="Nombre del ejecutivo"
                 required
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600">
+                Comentario contable (opc.)
+              </label>
+              <textarea
+                className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                rows={3}
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                placeholder="Ej: Válido por los 15 días del mes"
               />
             </div>
           </div>
@@ -396,21 +466,65 @@ export default function CotizacionCreate() {
           {/* Totales */}
           <div className="mt-3 sm:mt-4 flex justify-end">
             <div className="w-full max-w-xs space-y-1 rounded border border-slate-200 bg-slate-50 p-3 sm:p-4 text-xs sm:text-sm">
+              <div className="mb-2 flex items-center justify-between gap-2 rounded border border-slate-200 bg-white px-2 py-1.5">
+                <span className="text-slate-600">Modo cálculo</span>
+                <select
+                  value={calcMode}
+                  onChange={(e) => setCalcMode(e.target.value as "auto" | "manual")}
+                  className="rounded border border-slate-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
+                >
+                  <option value="auto">Automático</option>
+                  <option value="manual">Manual</option>
+                </select>
+              </div>
               <div className="flex justify-between">
                 <span className="text-slate-600">Subtotal</span>
-                <span className="font-mono font-medium">
-                  RD$ {totals.subtotal.toFixed(2)}
-                </span>
+                {calcMode === "manual" ? (
+                  <input
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    value={manualSubtotal}
+                    onChange={(e) => setManualSubtotal(Number(e.target.value))}
+                    className="w-32 rounded border border-slate-300 px-2 py-1 text-right font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                ) : (
+                  <span className="font-mono font-medium">
+                    RD$ {totals.subtotal.toFixed(2)}
+                  </span>
+                )}
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-600">ITBIS (18%)</span>
-                <span className="font-mono font-medium">
-                  RD$ {totals.itbis.toFixed(2)}
-                </span>
+                {calcMode === "manual" ? (
+                  <input
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    value={manualItbis}
+                    onChange={(e) => setManualItbis(Number(e.target.value))}
+                    className="w-32 rounded border border-slate-300 px-2 py-1 text-right font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                ) : (
+                  <span className="font-mono font-medium">
+                    RD$ {totals.itbis.toFixed(2)}
+                  </span>
+                )}
               </div>
               <div className="flex justify-between border-t border-slate-300 pt-2 font-semibold text-slate-900">
                 <span>Total</span>
-                <span className="font-mono">RD$ {totals.total.toFixed(2)}</span>
+                {calcMode === "manual" ? (
+                  <input
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    value={manualTotal}
+                    onChange={(e) => setManualTotal(Number(e.target.value))}
+                    className="w-32 rounded border border-slate-300 px-2 py-1 text-right font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                ) : (
+                  <span className="font-mono">RD$ {totals.total.toFixed(2)}</span>
+                )}
               </div>
             </div>
           </div>

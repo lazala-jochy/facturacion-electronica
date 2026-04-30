@@ -4,7 +4,9 @@ type CotizacionForPdf = {
   number: number;
   createdAt: Date;
   paymentTerms: string;
+  paymentMethod: string | null;
   accountManager: string;
+  comment: string | null;
   documentTitle: string;
   fiscalLegend: string;
   subtotal: number;
@@ -171,10 +173,20 @@ export const buildCotizacionPdfBuffer = (
       width: summaryWidth,
       align: "left",
     });
+    doc.text(`Forma de pago: ${cotizacion.paymentMethod || "-"}`, summaryLeftX, doc.y, {
+      width: summaryWidth,
+      align: "left",
+    });
     doc.text(`Ejecutivo: ${cotizacion.accountManager}`, summaryLeftX, doc.y, {
       width: summaryWidth,
       align: "left",
     });
+    if (cotizacion.comment?.trim()) {
+      doc.text(`Comentario: ${cotizacion.comment.trim()}`, summaryLeftX, doc.y, {
+        width: summaryWidth,
+        align: "left",
+      });
+    }
     doc.moveDown(0.5);
     doc.text(`Total de lineas: ${cotizacion.items.length}`, summaryLeftX, doc.y, {
       width: summaryWidth,

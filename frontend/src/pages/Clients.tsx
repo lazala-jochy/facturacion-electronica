@@ -1,7 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { listClients, type ClientListItem } from "../services/clients";
-import { downloadCotizacionPDF, submitEcf } from "../services/cotizaciones";
+import {
+  downloadCotizacionPDF,
+  getCotizacion,
+  submitEcf,
+  type CotizacionDetail,
+} from "../services/cotizaciones";
 
 // Helper para formatear moneda
 const formatCurrency = (value: number) => {
@@ -19,6 +24,15 @@ export default function Clients() {
   const [downloadError, setDownloadError] = useState<string>("");
   const [ecfError, setEcfError] = useState<string>("");
   const [ecfSuccess, setEcfSuccess] = useState<string>("");
+  const [query, setQuery] = useState("");
+  const [sortBy, setSortBy] = useState<"name" | "rnc" | "number" | "total" | "status">("name");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(5);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState("");
+  const [detail, setDetail] = useState<CotizacionDetail | null>(null);
 
   useEffect(() => {
     const fetchClients = async () => {
@@ -82,6 +96,80 @@ export default function Clients() {
     }
   };
 
+  const handleOpenDetail = async (cotizacionId: number) => {
+    setDetailOpen(true);
+    setDetailLoading(true);
+    setDetailError("");
+    setDetail(null);
+    try {
+      const out = await getCotizacion(cotizacionId);
+      setDetail(out.cotizacion);
+    } catch (error) {
+      setDetailError(
+        error instanceof Error ? error.message : "No se pudo cargar el detalle.",
+      );
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const rows = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    const withLast = clients
+      .map((client) => {
+        const last = client.cotizaciones?.[0];
+        return { client, last };
+      })
+      .filter(({ client, last }) => {
+        if (!normalizedQuery) return true;
+        const raw = [
+          client.name,
+          client.rnc_cedula,
+          client.phone ?? "",
+          client.email ?? "",
+          last ? String(last.number) : "",
+          last ? String(last.total) : "",
+          last?.dgii_status ?? "",
+          last?.dgii_track_id ?? "",
+        ]
+          .join(" ")
+          .toLowerCase();
+        return raw.includes(normalizedQuery);
+      });
+
+    const sorted = [...withLast].sort((a, b) => {
+      const aStatus = a.last?.dgii_status ?? "";
+      const bStatus = b.last?.dgii_status ?? "";
+      const aNumber = a.last?.number ?? -1;
+      const bNumber = b.last?.number ?? -1;
+      const aTotal = a.last?.total ?? -1;
+      const bTotal = b.last?.total ?? -1;
+
+      let compare = 0;
+      if (sortBy === "name") compare = a.client.name.localeCompare(b.client.name);
+      if (sortBy === "rnc") compare = a.client.rnc_cedula.localeCompare(b.client.rnc_cedula);
+      if (sortBy === "number") compare = aNumber - bNumber;
+      if (sortBy === "total") compare = aTotal - bTotal;
+      if (sortBy === "status") compare = aStatus.localeCompare(bStatus);
+      return sortDir === "asc" ? compare : -compare;
+    });
+    return sorted;
+  }, [clients, query, sortBy, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const pageRows = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return rows.slice(start, start + pageSize);
+  }, [rows, page, pageSize]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, sortBy, sortDir, pageSize]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
   return (
     <div className="w-full px-4 sm:px-6 md:px-8 py-6 sm:py-8">
       {/* Header */}
@@ -105,13 +193,54 @@ export default function Clients() {
 
       {/* Tabla Desktop / Cards Mobile */}
       <div className="rounded-3xl border border-gray-200 bg-white shadow-lg overflow-hidden">
+        <div className="border-b border-gray-100 bg-gray-50/70 p-4 sm:p-5">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar por nombre, RNC, correo, estado..."
+              className="md:col-span-2 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+            />
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as "name" | "rnc" | "number" | "total" | "status")}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+            >
+              <option value="name">Ordenar por Nombre</option>
+              <option value="rnc">Ordenar por RNC/Cedula</option>
+              <option value="number">Ordenar por No. Cotizacion</option>
+              <option value="total">Ordenar por Total</option>
+              <option value="status">Ordenar por Estado e-CF</option>
+            </select>
+            <div className="flex gap-2">
+              <select
+                value={sortDir}
+                onChange={(e) => setSortDir(e.target.value as "asc" | "desc")}
+                className="w-1/2 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+              >
+                <option value="asc">Asc</option>
+                <option value="desc">Desc</option>
+              </select>
+              <select
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                className="w-1/2 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+              >
+                <option value={5}>5</option>
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+              </select>
+            </div>
+          </div>
+        </div>
         {loading ? (
           <div className="p-6 sm:p-8 text-gray-500 text-center">
             Cargando clientes...
           </div>
-        ) : clients.length === 0 ? (
+        ) : rows.length === 0 ? (
           <div className="p-6 sm:p-8 text-gray-500 text-center">
-            No hay clientes registrados.
+            No hay resultados para ese filtro.
           </div>
         ) : (
           <>
@@ -126,14 +255,14 @@ export default function Clients() {
                     <th className="hidden xl:table-cell px-4 sm:px-6 py-4 text-left">Correo</th>
                     <th className="px-4 sm:px-6 py-4 text-left">N° Cotización</th>
                     <th className="px-4 sm:px-6 py-4 text-left">Total</th>
+                    <th className="px-4 sm:px-6 py-4 text-center">Detalle</th>
                     <th className="px-4 sm:px-6 py-4 text-center">e-CF</th>
                     <th className="px-4 sm:px-6 py-4 text-center">PDF</th>
                   </tr>
                 </thead>
 
                 <tbody className="divide-y divide-gray-100">
-                  {clients.map((client) => {
-                    const last = client.cotizaciones?.[0];
+                  {pageRows.map(({ client, last }) => {
                     const alreadySent =
                       last?.dgii_status === "accepted" || last?.dgii_status === "rejected";
 
@@ -162,6 +291,37 @@ export default function Clients() {
                         <td className="px-4 sm:px-6 py-4 text-gray-700 font-medium text-sm">
                           {last ? formatCurrency(last.total) : "-"}
                         </td>
+                        <td className="px-4 sm:px-6 py-4 text-center">
+                          {last ? (
+                            <button
+                              onClick={() => handleOpenDetail(last.id)}
+                              className="rounded-lg border border-slate-200 p-2 text-slate-700 hover:bg-slate-50"
+                              title="Ver detalle"
+                            >
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="h-4 w-4"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                                />
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                                />
+                              </svg>
+                            </button>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
 
                         <td className="px-4 sm:px-6 py-4 text-center">
                           {last ? (
@@ -179,7 +339,7 @@ export default function Clients() {
                                 ? "Enviando..."
                                 : alreadySent
                                   ? "Enviado"
-                                  : "Enviar"}
+                                  : "Enviar DGII"}
                             </button>
                           ) : (
                             <span className="text-gray-400">-</span>
@@ -246,8 +406,7 @@ export default function Clients() {
 
             {/* Mobile Cards */}
             <div className="md:hidden divide-y divide-gray-100">
-              {clients.map((client) => {
-                const last = client.cotizaciones?.[0];
+              {pageRows.map(({ client, last }) => {
                 const alreadySent =
                   last?.dgii_status === "accepted" || last?.dgii_status === "rejected";
 
@@ -263,6 +422,31 @@ export default function Clients() {
                       {last ? (
                         <div className="flex items-center gap-2">
                           <button
+                            onClick={() => handleOpenDetail(last.id)}
+                            className="rounded-lg border border-slate-200 p-2 text-slate-700 hover:bg-slate-50"
+                            title="Ver detalle de cotización"
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              className="h-4 w-4"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              strokeWidth={2}
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                              />
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                              />
+                            </svg>
+                          </button>
+                          <button
                             onClick={() => handleSendEcf(last.id)}
                             disabled={sendingEcfId === last.id || alreadySent}
                             className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${
@@ -272,7 +456,11 @@ export default function Clients() {
                             }`}
                             title={alreadySent ? "e-CF ya enviado" : "Enviar e-CF"}
                           >
-                            {sendingEcfId === last.id ? "..." : alreadySent ? "Enviado" : "Enviar"}
+                            {sendingEcfId === last.id
+                              ? "..."
+                              : alreadySent
+                                ? "Enviado"
+                                : "Enviar DGII"}
                           </button>
                           <button
                             onClick={() => handleDownload(last.id, client.name)}
@@ -345,6 +533,32 @@ export default function Clients() {
                 );
               })}
             </div>
+            <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3 text-sm text-gray-600">
+              <span>
+                Mostrando {pageRows.length} de {rows.length} registros
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="rounded border border-gray-300 px-2.5 py-1 disabled:opacity-50"
+                >
+                  Anterior
+                </button>
+                <span>
+                  Pagina {page} de {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="rounded border border-gray-300 px-2.5 py-1 disabled:opacity-50"
+                >
+                  Siguiente
+                </button>
+              </div>
+            </div>
           </>
         )}
       </div>
@@ -365,6 +579,121 @@ export default function Clients() {
         <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-700 text-sm">
           <p className="font-semibold">Flujo e-CF listo</p>
           <p className="mt-1">{ecfSuccess}</p>
+        </div>
+      )}
+      {detailOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="mx-auto w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-xl bg-white p-4 sm:p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">
+                Detalle de cotización
+              </h3>
+              <button
+                type="button"
+                onClick={() => setDetailOpen(false)}
+                className="rounded px-2 py-1 text-slate-500 hover:bg-slate-100"
+              >
+                Cerrar
+              </button>
+            </div>
+            {detailLoading && (
+              <p className="text-sm text-slate-500">Cargando detalle...</p>
+            )}
+            {detailError && <p className="text-sm text-red-600">{detailError}</p>}
+            {!detailLoading && !detailError && detail && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+                  <p>
+                    <span className="font-semibold">Cotización:</span> #{detail.number}
+                  </p>
+                  <p>
+                    <span className="font-semibold">Estado DGII:</span>{" "}
+                    {detail.dgii_status ?? "Pendiente"}
+                  </p>
+                  <p>
+                    <span className="font-semibold">Cliente:</span> {detail.client.name}
+                  </p>
+                  <p>
+                    <span className="font-semibold">RNC/Cédula:</span>{" "}
+                    {detail.client.rnc_cedula}
+                  </p>
+                  <p>
+                    <span className="font-semibold">Forma de pago:</span>{" "}
+                    {detail.payment_method ?? "-"}
+                  </p>
+                  <p>
+                    <span className="font-semibold">Condiciones:</span>{" "}
+                    {detail.payment_terms ?? "-"}
+                  </p>
+                  <p>
+                    <span className="font-semibold">Ejecutivo:</span>{" "}
+                    {detail.account_manager ?? "-"}
+                  </p>
+                  <p>
+                    <span className="font-semibold">Track ID:</span>{" "}
+                    {detail.dgii_track_id ?? "-"}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-slate-200 p-3">
+                  <p className="text-sm font-semibold text-slate-800">
+                    Comentario
+                  </p>
+                  <p className="mt-1 text-sm text-slate-700">
+                    {detail.comment?.trim() || "-"}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-slate-200 p-3">
+                  <p className="mb-2 text-sm font-semibold text-slate-800">Items</p>
+                  {detail.items && detail.items.length > 0 ? (
+                    <div className="max-h-56 overflow-auto">
+                      <table className="w-full text-xs sm:text-sm">
+                        <thead className="text-slate-500">
+                          <tr>
+                            <th className="text-left py-1">#</th>
+                            <th className="text-left py-1">Descripción</th>
+                            <th className="text-right py-1">Cant.</th>
+                            <th className="text-right py-1">P. unitario</th>
+                            <th className="text-right py-1">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {detail.items.map((item) => (
+                            <tr key={item.item_number} className="border-t border-slate-100">
+                              <td className="py-1">{item.item_number}</td>
+                              <td className="py-1">{item.description}</td>
+                              <td className="py-1 text-right">{item.quantity}</td>
+                              <td className="py-1 text-right">
+                                {formatCurrency(item.unit_price)}
+                              </td>
+                              <td className="py-1 text-right">
+                                {formatCurrency(item.total_value)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-600">Sin items registrados.</p>
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-sm">
+                  <p className="rounded bg-slate-50 p-2">
+                    <span className="font-semibold">Subtotal:</span>{" "}
+                    {formatCurrency(detail.subtotal ?? 0)}
+                  </p>
+                  <p className="rounded bg-slate-50 p-2">
+                    <span className="font-semibold">ITBIS:</span>{" "}
+                    {formatCurrency(detail.itbis ?? 0)}
+                  </p>
+                  <p className="rounded bg-slate-50 p-2">
+                    <span className="font-semibold">Total:</span>{" "}
+                    {formatCurrency(detail.total)}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

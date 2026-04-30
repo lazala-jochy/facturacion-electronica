@@ -22,9 +22,15 @@ export type CreateClientWithCotizacionInput = {
   };
   cotizacion: {
     payment_terms: string;
+    payment_method?: string | null;
     account_manager: string;
+    comment?: string | null;
     document_title?: string | null;
     fiscal_legend?: string | null;
+    calc_mode?: "auto" | "manual";
+    subtotal?: number;
+    itbis?: number;
+    total?: number;
   };
   items?: IncomingItem[];
 };
@@ -35,6 +41,7 @@ const trimOrNull = (v: string | undefined | null) => {
   return t.length ? t : null;
 };
 const toDocDigits = (value: string) => value.replace(/\D/g, "");
+const round2 = (value: number) => Math.round(value * 100) / 100;
 
 const nextCotizacionNumber = async (
   tx: Prisma.TransactionClient,
@@ -104,7 +111,9 @@ export const cotizacionService = {
       };
     }
     const paymentTerms = input.cotizacion.payment_terms?.trim() ?? "";
+    const paymentMethod = trimOrNull(input.cotizacion.payment_method ?? undefined);
     const accountManager = input.cotizacion.account_manager?.trim() ?? "";
+    const comment = trimOrNull(input.cotizacion.comment ?? undefined);
     const documentTitle =
       trimOrNull(input.cotizacion.document_title ?? undefined) ?? "Pre-factura";
     const fiscalLegend =
@@ -118,9 +127,29 @@ export const cotizacionService = {
     }
 
     const lines = normalizeIncomingItems(input.items);
-    const totals = calculateTotalsFromItems(
+    const autoTotals = calculateTotalsFromItems(
       lines.map((l) => ({ totalValue: l.totalValue })),
     );
+    const calcMode = input.cotizacion.calc_mode === "manual" ? "manual" : "auto";
+    const manualSubtotal = Number(input.cotizacion.subtotal);
+    const manualItbis = Number(input.cotizacion.itbis);
+    const manualTotal = Number(input.cotizacion.total);
+    const hasValidManualTotals =
+      Number.isFinite(manualSubtotal) &&
+      Number.isFinite(manualItbis) &&
+      Number.isFinite(manualTotal) &&
+      manualSubtotal >= 0 &&
+      manualItbis >= 0 &&
+      manualTotal >= 0 &&
+      Math.abs(round2(manualSubtotal + manualItbis) - round2(manualTotal)) <= 0.01;
+    const totals =
+      calcMode === "manual" && hasValidManualTotals
+        ? {
+            subtotal: round2(manualSubtotal),
+            itbis: round2(manualItbis),
+            total: round2(manualTotal),
+          }
+        : autoTotals;
 
     const result = await prisma.$transaction(async (tx) => {
       const clientByRnc = maybeRnc
@@ -163,7 +192,9 @@ export const cotizacionService = {
           documentTitle,
           fiscalLegend,
           paymentTerms,
+          paymentMethod,
           accountManager,
+          comment,
           subtotal: totals.subtotal,
           itbis: totals.itbis,
           total: totals.total,
