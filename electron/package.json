@@ -3,10 +3,12 @@
   "version": "1.0.0",
   "main": "dist/main.js",
   "scripts": {
-    "build": "tsc",
-    "start": "npm run build && electron .",
-    "build:modules": "npm --prefix ../frontend run build && npm --prefix ../backend exec tsc -- --noEmit && npm run build",
-    "build:all": "npm --prefix ../frontend run build && npm --prefix ../backend run build && npm run build",
+    "compile": "tsc",
+    "start": "npm run compile && electron .",
+    "build:modules": "npm --prefix ../frontend run build && npm --prefix ../backend exec tsc -- --noEmit && npm run compile",
+    "build:all": "npm --prefix ../frontend run build && npm --prefix ../backend run build && npm run compile",
+    "build": "npm run build:all && dotenv -e .env -- electron-builder --publish never",
+    "release": "npm run build:all && dotenv -e .env -- electron-builder --publish always",
     "dist:win": "npm run build:all && electron-builder --win nsis",
     "dist:dir": "npm run build:all && electron-builder --dir"
   },
@@ -14,9 +16,15 @@
   "author": "",
   "license": "ISC",
   "description": "",
+  "dependencies": {
+    "electron-updater": "^6.6.2"
+  },
   "devDependencies": {
     "@types/electron": "^1.4.38",
     "@types/node": "^25.6.0",
+    "@types/semver": "^7.7.1",
+    "dotenv": "^17.2.3",
+    "dotenv-cli": "^10.0.0",
     "electron": "^41.3.0",
     "electron-builder": "^26.0.12",
     "ts-node-dev": "^2.0.0",
@@ -29,6 +37,13 @@
       "dist/**/*",
       "assets/**/*",
       "package.json"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "lazala-jochy",
+        "repo": "facturacion-electronica"
+      }
     ],
     "asarUnpack": [
       "**/*.node",

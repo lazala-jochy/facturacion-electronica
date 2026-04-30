@@ -3,6 +3,8 @@ import path from "path";
 import { spawn, type ChildProcess } from "child_process";
 import { pathToFileURL } from "url";
 import fs from "fs";
+import "dotenv/config";
+import { autoUpdater } from "electron-updater";
 
 let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess | null = null;
@@ -12,6 +14,7 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const APP_ICON_NAME = "ChatGPT Image Apr 30, 2026, 11_28_06 AM.png";
 
 const getAppIconPath = () => path.join(__dirname, "..", "assets", APP_ICON_NAME);
+const isProduction = app.isPackaged;
 
 const waitForBackend = async () => {
   for (let attempt = 0; attempt < 30; attempt += 1) {
@@ -76,6 +79,40 @@ function createWindow() {
   }
 }
 
+const setupAutoUpdater = () => {
+  if (!isProduction) {
+    return;
+  }
+
+  autoUpdater.on("update-available", (info) => {
+    console.log(`[auto-update] Update available: v${info.version}`);
+  });
+
+  autoUpdater.on("download-progress", (progressObj) => {
+    console.log(`[auto-update] Download progress: ${progressObj.percent.toFixed(2)}%`);
+  });
+
+  autoUpdater.on("update-downloaded", async () => {
+    console.log("[auto-update] Update downloaded.");
+    const { response } = await dialog.showMessageBox({
+      type: "info",
+      buttons: ["Restart Now", "Later"],
+      defaultId: 0,
+      cancelId: 1,
+      title: "Update ready",
+      message: "A new version is ready. Restart now?",
+    });
+
+    if (response === 0) {
+      autoUpdater.quitAndInstall();
+    }
+  });
+
+  autoUpdater.on("error", (error) => {
+    console.error("[auto-update] Error:", error);
+  });
+};
+
 app.whenReady().then(async () => {
   try {
     app.setName("Facturacion Electronica RD");
@@ -87,6 +124,10 @@ app.whenReady().then(async () => {
       await waitForBackend();
     }
     createWindow();
+    setupAutoUpdater();
+    if (isProduction) {
+      void autoUpdater.checkForUpdatesAndNotify();
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Error desconocido al iniciar.";
     dialog.showErrorBox("No se pudo iniciar la aplicacion", message);

@@ -153,7 +153,7 @@ Este comando ejecuta en orden:
 
 1. `frontend`: `npm run build`
 2. `backend`: `npx tsc --noEmit`
-3. `electron`: `npm run build`
+3. `electron`: `npm run compile`
 
 ### Frontend
 
@@ -175,14 +175,85 @@ npx tsc --noEmit
 
 ```bash
 cd electron
-npm run build
+npm run compile
 ```
 
 Genera: `electron/dist`
 
 ---
 
-## 6) Generar instaladores por sistema operativo
+## 6) Auto updates (electron-updater + GitHub Releases)
+
+La app de Electron ya esta configurada para buscar updates en GitHub Releases usando `electron-updater`.
+
+### Dónde va cada parte
+
+- **Main process**: `electron/src/main.ts`
+  - Importa `autoUpdater` de `electron-updater`
+  - Registra eventos: `update-available`, `download-progress`, `update-downloaded`, `error`
+  - Llama `checkForUpdatesAndNotify()` cuando la app esta lista
+  - Solo en produccion (`app.isPackaged`)
+- **Builder config**: `electron/package.json` → `build`
+  - `appId`, `productName`, `publish.provider = github`, `owner`, `repo`
+- **Variables de entorno**: `.env` dentro de `electron/`
+  - `GH_TOKEN=...`
+  - Los scripts `build` y `release` cargan `.env` con `dotenv-cli`
+
+### Uso de `.env` para publicar
+
+Crear `electron/.env`:
+
+```bash
+GH_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
+```
+
+> El token debe tener permisos para crear/actualizar releases del repositorio.
+
+### Scripts relevantes (electron/package.json)
+
+```bash
+# compila solo TypeScript de Electron
+npm run compile
+
+# build de frontend + backend + electron, luego empaqueta sin publicar
+npm run build
+
+# build de todo y publica en GitHub Releases (produccion)
+npm run release
+```
+
+### Flujo de release recomendado
+
+1. Aumentar version en `electron/package.json` (ej: `1.0.0` -> `1.0.1`)
+2. Commit + tag (opcional pero recomendado)
+3. Ejecutar:
+
+```bash
+cd electron
+npm run release
+```
+
+4. `electron-builder` sube artefactos y metadata de update a GitHub Releases
+5. Usuarios en version anterior reciben update automaticamente al abrir la app
+
+### Estrategia de versionado (best practice)
+
+- **Patch** (`1.0.x`): fixes menores / hotfixes
+- **Minor** (`1.x.0`): nuevas features compatibles
+- **Major** (`x.0.0`): cambios incompatibles
+- Subir version **en cada release** que quieras distribuir a usuarios
+
+### Notas de produccion
+
+- Las actualizaciones se consultan **solo en produccion** (`app.isPackaged`), nunca en dev.
+- Cuando el update termina de descargar, la app muestra:
+  - `"A new version is ready. Restart now?"`
+  - Si aceptas, ejecuta `autoUpdater.quitAndInstall()`.
+- En desarrollo usa `npm run start`; en release usa `npm run release`.
+
+---
+
+## 7) Generar instaladores por sistema operativo
 
 Ya esta configurado con `electron-builder`.
 
@@ -240,7 +311,7 @@ Archivos generados (aprox):
 
 ---
 
-## 7) Instalacion por sistema operativo (usuario final)
+## 8) Instalacion por sistema operativo (usuario final)
 
 En la maquina destino el usuario final **NO necesita Node.js**.
 
@@ -280,7 +351,7 @@ La app en produccion:
 
 ---
 
-## 8) Desarrollo en diferentes OS
+## 9) Desarrollo en diferentes OS
 
 Los comandos de desarrollo son los mismos en Windows, macOS y Linux:
 
@@ -307,7 +378,7 @@ npm run start
 
 ---
 
-## 9) Comandos de verificacion rapida
+## 10) Comandos de verificacion rapida
 
 ```bash
 cd frontend && npm run lint && npm run build
@@ -317,7 +388,7 @@ cd ../electron && npm run build:modules
 
 ---
 
-## 10) Estructura del proyecto
+## 11) Estructura del proyecto
 
 ```text
 facturacion-electronica/
@@ -327,9 +398,7 @@ facturacion-electronica/
   shared/
 ```
 
----
-
-## 11) Troubleshooting
+## 12) Troubleshooting
 
 - **No abre estilos Tailwind**: verifica que frontend este corriendo (`npm run dev`) y que `src/index.css` tenga `@import "tailwindcss";`.
 - **Error de login/register**: confirma backend en `http://localhost:3001`.
