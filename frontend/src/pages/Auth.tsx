@@ -159,7 +159,7 @@ export default function Auth({
 
                 <h1 className="mt-7 text-[clamp(2.1rem,4.3vw,3.5rem)] leading-[1.06] font-bold tracking-tight text-slate-900">
                   Facturación
-                  <span className="block text-[#3f6ce8]">Electrónica</span>
+                  <span className="block text-[#3f6ce8]">Electrónica.</span>
                 </h1>
                 <p className="mt-5 text-[clamp(1rem,1.5vw,1.5rem)] leading-relaxed text-slate-600">
                   La solución inteligente para gestionar tu facturación de manera
