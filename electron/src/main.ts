@@ -83,8 +83,19 @@ const setupAutoUpdater = () => {
     return;
   }
 
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on("checking-for-update", () => {
+    console.log("[auto-update] Checking for updates...");
+  });
+
   autoUpdater.on("update-available", (info) => {
     console.log(`[auto-update] Update available: v${info.version}`);
+  });
+
+  autoUpdater.on("update-not-available", (info) => {
+    console.log(`[auto-update] No updates. Current channel version: v${info.version}`);
   });
 
   autoUpdater.on("download-progress", (progressObj) => {
@@ -109,6 +120,10 @@ const setupAutoUpdater = () => {
 
   autoUpdater.on("error", (error) => {
     console.error("[auto-update] Error:", error);
+    dialog.showErrorBox(
+      "Error de actualizacion",
+      `No se pudo buscar/descargar la actualizacion.\n\n${error?.message ?? String(error)}`,
+    );
   });
 };
 
@@ -125,7 +140,10 @@ app.whenReady().then(async () => {
     createWindow();
     setupAutoUpdater();
     if (isProduction) {
-      void autoUpdater.checkForUpdatesAndNotify();
+      void autoUpdater.checkForUpdates();
+      setInterval(() => {
+        void autoUpdater.checkForUpdates();
+      }, 1000 * 60 * 30);
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Error desconocido al iniciar.";

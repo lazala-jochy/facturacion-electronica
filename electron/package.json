@@ -1,6 +1,6 @@
 {
   "name": "facturacion-electronica-rd",
-  "version": "1.0.1",
+  "version": "1.1.1",
   "main": "dist/main.js",
   "scripts": {
     "compile": "tsc",
@@ -9,6 +9,7 @@
     "build:all": "npm --prefix ../frontend run build && npm --prefix ../backend run build && npm run compile",
     "build": "npm run build:all && dotenv -e .env -- electron-builder --publish never",
     "release": "npm run build:all && dotenv -e .env -- electron-builder --publish always",
+    "realase": "npm run release",
     "dist:win": "npm run build:all && electron-builder --win nsis",
     "dist:dir": "npm run build:all && electron-builder --dir"
   },

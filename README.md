@@ -230,6 +230,9 @@ npm run build
 # build de todo y publica en GitHub Releases (produccion)
 npm run release
 
+# alias del proyecto (si escribes "realase" por costumbre)
+npm run realase
+
 # empaqueta instalador Windows (NSIS)
 npm run dist:win
 
@@ -245,7 +248,7 @@ npm run dist:dir
 
 ```bash
 cd electron
-npm run release
+npm run realase
 ```
 
 4. `electron-builder` sube artefactos y metadata de update a GitHub Releases
@@ -264,7 +267,8 @@ npm run release
 - Cuando el update termina de descargar, la app muestra:
   - `"A new version is ready. Restart now?"`
   - Si aceptas, ejecuta `autoUpdater.quitAndInstall()`.
-- En desarrollo usa `npm run start`; en release usa `npm run release`.
+- En desarrollo usa `npm run start`; en release usa `npm run realase` (o `npm run release`).
+- En **macOS**, auto-update requiere app firmada (`Developer ID Application`). Si sale `0 valid identities found`, el release puede publicarse pero la actualizacion puede fallar al aplicarse.
 
 ---
 
