@@ -5,6 +5,7 @@ import {
 } from "../services/auth";
 import type { AuthSession } from "../types/session";
 import { formatPhoneInput, isValidPhone } from "../utils/phone";
+import { cedulaDigits, formatCedulaInput } from "../utils/cedula";
 type AuthMode = "login" | "register";
 
 export default function Auth({
@@ -64,7 +65,7 @@ export default function Auth({
       setError("El RNC debe tener 9 a 11 digitos.");
       return;
     }
-    if (!isLogin && !/^[0-9]{11}$/.test(cedulaPersona.replace(/\D/g, ""))) {
+    if (!isLogin && !/^[0-9]{11}$/.test(cedulaDigits(cedulaPersona))) {
       setError("La cedula debe tener 11 digitos.");
       return;
     }
@@ -101,7 +102,7 @@ export default function Auth({
           rnc: rnc.trim(),
           address: direccion.trim(),
           full_name: nombrePersona.trim(),
-          cedula: cedulaPersona.replace(/\D/g, ""),
+          cedula: cedulaDigits(cedulaPersona),
           email: email.trim(),
           company_phone: telefonoEmpresa.trim(),
           company_email: email.trim(),
@@ -374,9 +375,10 @@ export default function Auth({
                           type="text"
                           inputMode="numeric"
                           className="w-full h-12 px-4 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-indigo-100 focus:border-[#3f6ce8] transition-all"
-                          placeholder="00112345678"
+                          placeholder="001-1234567-8"
                           value={cedulaPersona}
-                          onChange={(e) => setCedulaPersona(e.target.value)}
+                          onChange={(e) => setCedulaPersona(formatCedulaInput(e.target.value))}
+                          maxLength={13}
                           required
                         />
                       </div>

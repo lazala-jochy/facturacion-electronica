@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { apiFetch } from "../services/api";
 import type { AuthCompany, AuthSession, AuthUser } from "../types/session";
 import { formatPhoneInput, isValidPhone } from "../utils/phone";
+import { cedulaDigits, formatCedulaInput } from "../utils/cedula";
 
 type Props = {
   session: AuthSession;
@@ -29,7 +30,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
       setError("El telefono debe tener formato xxx-xxx-xxxx.");
       return;
     }
-    if (!/^[0-9]{11}$/.test(cedula.replace(/\D/g, ""))) {
+    if (!/^[0-9]{11}$/.test(cedulaDigits(cedula))) {
       setError("La cedula debe tener 11 digitos.");
       return;
     }
@@ -44,7 +45,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
         method: "PUT",
         body: JSON.stringify({
           full_name: fullName.trim(),
-          cedula: cedula.replace(/\D/g, ""),
+          cedula: cedulaDigits(cedula),
           name: name.trim(),
           rnc: rnc.trim(),
           address: address.trim(),
@@ -86,8 +87,9 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
               inputMode="numeric"
               className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm font-mono"
               value={cedula}
-              onChange={(e) => setCedula(e.target.value.replace(/\D/g, "").slice(0, 11))}
-              placeholder="00112345678"
+              onChange={(e) => setCedula(formatCedulaInput(e.target.value))}
+              placeholder="001-1234567-8"
+              maxLength={13}
               required
             />
           </div>
