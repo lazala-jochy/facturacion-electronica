@@ -1,5 +1,5 @@
 {
-  "name": "electron",
+  "name": "facturacion-electronica-rd",
   "version": "1.0.0",
   "main": "dist/main.js",
   "scripts": {
@@ -64,6 +64,13 @@
       "icon": "assets/ChatGPT Image Apr 30, 2026, 11_28_06 AM.png",
       "target": [
         "nsis"
+      ]
+    },
+    "mac": {
+      "icon": "assets/app-icon.icns",
+      "target": [
+        "dmg",
+        "zip"
       ]
     },
     "nsis": {
