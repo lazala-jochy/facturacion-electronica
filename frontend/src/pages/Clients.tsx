@@ -16,6 +16,16 @@ const formatCurrency = (value: number) => {
   }).format(value);
 };
 
+const formatDate = (value?: string) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString("es-DO", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+};
+
 export default function Clients() {
   const [isOnline, setIsOnline] = useState(
     typeof navigator === "undefined" ? true : navigator.onLine,
@@ -650,6 +660,10 @@ export default function Clients() {
                   <p>
                     <span className="font-semibold">RNC/Cédula:</span>{" "}
                     {detail.client.rnc_cedula}
+                  </p>
+                  <p>
+                    <span className="font-semibold">Fecha de cotización:</span>{" "}
+                    {formatDate(detail.created_at)}
                   </p>
                   <p>
                     <span className="font-semibold">Forma de pago:</span>{" "}

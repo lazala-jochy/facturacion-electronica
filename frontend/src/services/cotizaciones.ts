@@ -31,6 +31,7 @@ export type CotizacionListItem = {
 export type CotizacionDetail = {
   id: number;
   number: number;
+  created_at?: string;
   payment_terms?: string;
   payment_method?: string | null;
   account_manager?: string;
