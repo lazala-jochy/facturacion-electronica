@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, dialog } from "electron";
 import path from "path";
 import { spawn, type ChildProcess } from "child_process";
 import { pathToFileURL } from "url";
@@ -13,7 +13,7 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const waitForBackend = async () => {
   for (let attempt = 0; attempt < 30; attempt += 1) {
     try {
-      const response = await fetch(`http://localhost:${BACKEND_PORT}/health`);
+      const response = await fetch(`http://127.0.0.1:${BACKEND_PORT}/health`);
       if (response.ok) return;
     } catch {
       // backend still booting
@@ -33,6 +33,7 @@ function startBackend() {
   const userDataPath = app.getPath("userData");
   const dbDir = path.join(userDataPath, "db");
   const dbPath = path.join(dbDir, "facturacion.db");
+  const databaseUrl = pathToFileURL(dbPath).href;
 
   if (!fs.existsSync(dbDir)) {
     fs.mkdirSync(dbDir, { recursive: true });
@@ -45,7 +46,7 @@ function startBackend() {
       ELECTRON_RUN_AS_NODE: "1",
       NODE_ENV: "production",
       PORT: String(BACKEND_PORT),
-      DATABASE_URL: `file:${dbPath}`,
+      DATABASE_URL: databaseUrl,
     },
     stdio: "inherit",
   });
@@ -64,7 +65,8 @@ function createWindow() {
 
   if (app.isPackaged) {
     const filePath = path.join(process.resourcesPath, "frontend-dist", "index.html");
-    mainWindow.loadURL(pathToFileURL(filePath).toString());
+    // `loadFile` maneja mejor rutas relativas del build (Vite) que `file://` + URLs absolutas.
+    void mainWindow.loadFile(filePath);
   } else {
     mainWindow.loadURL("http://localhost:5173/");
   }
@@ -74,11 +76,17 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
-  startBackend();
-  if (app.isPackaged) {
-    await waitForBackend();
+  try {
+    startBackend();
+    if (app.isPackaged) {
+      await waitForBackend();
+    }
+    createWindow();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Error desconocido al iniciar.";
+    dialog.showErrorBox("No se pudo iniciar la aplicacion", message);
+    app.quit();
   }
-  createWindow();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

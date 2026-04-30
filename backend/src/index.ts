@@ -1,12 +1,30 @@
 import "./types/express-auth.augment";
 import cors from "cors";
 import express from "express";
+import { execFileSync } from "child_process";
+import path from "path";
 import { buildRouter } from "./routes";
 import { prisma } from "./prisma";
 
 const PORT = Number(process.env.PORT ?? 3001);
 
+const maybeMigrate = () => {
+  if (process.env.NODE_ENV !== "production") return;
+  const runtimeRoot = path.join(__dirname, "..");
+  const prismaCli = path.join(runtimeRoot, "node_modules", "prisma", "build", "index.js");
+  const schemaPath = path.join(runtimeRoot, "prisma", "schema.prisma");
+  execFileSync(process.execPath, [prismaCli, "migrate", "deploy", "--schema", schemaPath], {
+    cwd: runtimeRoot,
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: "1",
+    },
+  });
+};
+
 const bootstrap = async () => {
+  maybeMigrate();
   const companyCount = await prisma.company.count();
   console.log("Backend ready. Companies:", companyCount);
 

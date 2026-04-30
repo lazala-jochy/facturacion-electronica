@@ -46,16 +46,16 @@
         "to": "backend-runtime/package.json"
       },
       {
-        "from": "../backend/node_modules/@prisma",
-        "to": "backend-runtime/node_modules/@prisma"
+        "from": "../backend/package-lock.json",
+        "to": "backend-runtime/package-lock.json"
       },
       {
-        "from": "../backend/node_modules/.prisma",
-        "to": "backend-runtime/node_modules/.prisma"
+        "from": "../backend/node_modules",
+        "to": "backend-runtime/node_modules"
       },
       {
-        "from": "../backend/node_modules/@prisma/client",
-        "to": "backend-runtime/node_modules/@prisma/client"
+        "from": "../backend/prisma",
+        "to": "backend-runtime/prisma"
       }
     ],
     "win": {

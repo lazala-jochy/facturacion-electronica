@@ -92,7 +92,7 @@ export default function Dashboard({
   }, [cotizaciones]);
 
   return (
-    <div className="w-full space-y-5 px-4 sm:px-0">
+    <div className="w-full space-y-5 px-4 pt-3 sm:px-0 sm:pt-4">
       <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm transition-all duration-300 hover:shadow-md hover:-translate-y-0.5">
         <h2 className="text-xl sm:text-2xl font-semibold text-slate-900">
           Inicio - {company.name}
