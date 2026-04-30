@@ -1,29 +1,13 @@
-import { prisma } from "../prisma";
+import { companyRepository, type CreateCompanyData } from "../repositories/company.repository";
 
-export type CreateCompanyInput = {
-  rnc: string;
-  razonSocial: string;
-  email: string;
-  password: string;
-  direccion: string;
-};
+export type CreateCompanyInput = CreateCompanyData;
 
-export const createCompany = async (data: CreateCompanyInput) => {
-  return prisma.company.create({ data });
-};
+export const companyService = {
+  create: (data: CreateCompanyInput) => companyRepository.create(data),
 
-export const getCompanies = async () => {
-  return prisma.company.findMany();
-};
+  list: () => companyRepository.findMany(),
 
-export const findCompanyByEmail = async (email: string) => {
-  return prisma.company.findFirst({
-    where: { email },
-  });
-};
+  findByEmail: (email: string) => companyRepository.findByEmail(email),
 
-export const findCompanyByRnc = async (rnc: string) => {
-  return prisma.company.findFirst({
-    where: { rnc },
-  });
+  findByRnc: (rnc: string) => companyRepository.findByRnc(rnc),
 };
