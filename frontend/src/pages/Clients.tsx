@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { listClients, type ClientListItem } from "../services/clients";
+import { AUTH_STORAGE_KEY, type AuthSession } from "../types/session";
 import {
   deleteCotizacion,
   downloadCotizacionPDF,
@@ -28,6 +29,17 @@ const formatDate = (value?: string) => {
 };
 
 export default function Clients() {
+  const session = useMemo<AuthSession | null>(() => {
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) return null;
+    try {
+      const s = JSON.parse(raw) as AuthSession;
+      return s?.token && s?.company ? s : null;
+    } catch {
+      return null;
+    }
+  }, []);
+  const company = session?.company;
   const [isOnline, setIsOnline] = useState(
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
@@ -231,22 +243,19 @@ export default function Clients() {
   }, [page, totalPages]);
 
   return (
-    <div className="w-full px-4 sm:px-6 md:px-8 py-6 sm:py-8">
+    <div className="w-full px-4 sm:px-6 md:px-8 py-6 sm:py-8 pt-4 sm:pt-5">
       {/* Header */}
-      <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-            Clientes
-          </h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Gestiona tus clientes y sus cotizaciones
-          </p>
-        </div>
+      <div className="mb-6 sm:mb-8 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h1 className="text-3xl font-extrabold text-[#0b57d0]">Clientes</h1>
+        <p className="text-slate-600">Gestiona tus clientes y sus cotizaciones</p>
+        {company ? (
+          <p className="text-xs text-slate-500 mt-1">{company.name} · RNC {company.rnc}</p>
+        ) : null}
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <Link
             to="/cotizaciones/nueva"
-            className="rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 px-4 sm:px-5 py-2.5 text-sm font-semibold text-white shadow-md hover:from-indigo-700 hover:to-indigo-600 transition whitespace-nowrap"
+            className="rounded-xl bg-[#0b57d0] px-4 sm:px-5 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-[#0948ad] transition whitespace-nowrap"
           >
             + Nueva cotización
           </Link>

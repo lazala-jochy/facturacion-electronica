@@ -205,11 +205,13 @@ export default function CotizacionEdit() {
   }
 
   return (
-    <div className="w-full pb-16 px-4 sm:px-0">
+    <div className="w-full pb-16 px-4 sm:px-0 pt-4 sm:pt-5">
       <div className="mx-auto max-w-5xl">
-        <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
-          <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Editar cotización</h1>
-          <Link to="/clients" className="text-sm font-medium text-indigo-600 hover:underline whitespace-nowrap">
+        <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h1 className="text-3xl font-extrabold text-[#0b57d0]">Editar cotización</h1>
+          <p className="text-slate-600">Actualiza los datos de la cotización seleccionada.</p>
+          <p className="text-xs text-slate-500 mt-1">{company.name} · RNC {company.rnc}</p>
+          <Link to="/clients" className="mt-3 inline-block text-sm font-medium text-[#0b57d0] hover:underline whitespace-nowrap">
             Ver clientes
           </Link>
         </div>

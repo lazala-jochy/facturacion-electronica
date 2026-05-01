@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { listCotizaciones } from "../services/cotizaciones";
+import { AUTH_STORAGE_KEY, type AuthSession } from "../types/session";
 
 type CotizacionListRow = {
   id: number;
@@ -56,6 +57,17 @@ const parseCotizacionRows = (raw: unknown[]): CotizacionListRow[] =>
     });
 
 export default function Invoices() {
+  const session = useMemo<AuthSession | null>(() => {
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) return null;
+    try {
+      const s = JSON.parse(raw) as AuthSession;
+      return s?.token && s?.company ? s : null;
+    } catch {
+      return null;
+    }
+  }, []);
+  const company = session?.company;
   const [allMovements, setAllMovements] = useState<Movement[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -155,12 +167,13 @@ export default function Invoices() {
   }, [filtered]);
 
   return (
-    <div className="w-full px-4 sm:px-0 pb-10">
-      <div className="mb-6">
-        <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900">Reporte financiero</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Consulta ingresos, salidas y movimientos económicos con filtros avanzados.
-        </p>
+    <div className="w-full px-4 sm:px-0 pb-10 pt-4 sm:pt-5">
+      <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h1 className="text-3xl font-extrabold text-[#0b57d0]">Reporte financiero</h1>
+        <p className="text-slate-600">Consulta ingresos, salidas y movimientos económicos con filtros avanzados.</p>
+        {company ? (
+          <p className="text-xs text-slate-500 mt-1">{company.name} · RNC {company.rnc}</p>
+        ) : null}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">

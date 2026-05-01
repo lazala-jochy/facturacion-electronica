@@ -116,14 +116,11 @@ export default function ECF({ company }: { company: AuthCompany }) {
   };
 
   return (
-    <div className="w-full space-y-4 sm:space-y-6 px-4 sm:px-0">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0">
-        <div className="min-w-0">
-          <h2 className="text-xl sm:text-2xl font-semibold truncate">e-CF</h2>
-          <p className="mt-1 text-xs sm:text-sm text-slate-500 truncate">
-            Empresa: {company.name} · RNC {company.rnc}
-          </p>
-        </div>
+    <div className="w-full space-y-4 sm:space-y-6 px-4 sm:px-0 pt-4 sm:pt-5">
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-3xl font-extrabold text-[#0b57d0]">e-CF</h2>
+        <p className="text-slate-600">Gestiona el flujo de comprobantes electrónicos.</p>
+        <p className="text-xs text-slate-500 mt-1">{company.name} · RNC {company.rnc}</p>
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">

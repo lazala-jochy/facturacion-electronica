@@ -122,7 +122,7 @@ export default function Auth({
   };
 
   return (
-    <main className="min-h-screen [font-family:Inter,system-ui,sans-serif] bg-gradient-to-br from-[#f5f6ff] via-[#f8f9ff] to-[#eef2ff] p-3 sm:p-6 md:p-7 flex items-center justify-center w-full overflow-x-hidden">
+    <main className="min-h-screen [font-family:Inter,system-ui,sans-serif] bg-gradient-to-br from-[#eef7ff] via-[#f7fbff] to-[#eefcf3] p-3 sm:p-6 md:p-7 flex items-center justify-center w-full overflow-x-hidden">
       <section
         className={
           isLogin
@@ -138,23 +138,13 @@ export default function Auth({
           }
         >
           {isLogin && (
-            <aside className="hidden lg:flex relative flex-col justify-between p-[clamp(1.25rem,2.8vw,3.5rem)] bg-gradient-to-br from-[#eff1ff] via-[#f3f4ff] to-[#eaedff]">
+            <aside className="hidden lg:flex relative flex-col justify-between p-[clamp(1.25rem,2.8vw,3.5rem)] bg-gradient-to-br from-[#edf6ff] via-[#f7fbff] to-[#ecfaf2]">
               <div className="absolute -top-20 -right-20 h-64 w-64 rounded-full bg-indigo-200/30 blur-3xl" />
               <div className="absolute -bottom-24 -left-16 h-72 w-72 rounded-full bg-blue-200/20 blur-3xl" />
 
               <div className="relative z-10 max-w-sm">
-                <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-500 text-white grid place-items-center shadow-lg shadow-indigo-300/60">
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-8 w-8"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <path d="M8 3h7l5 5v13H4V3h4z" />
-                    <path d="M15 3v5h5" />
-                    <path d="M8 13h8M8 17h6M8 9h3" />
-                  </svg>
+                <div className="h-16 w-16 rounded-2xl bg-white grid place-items-center shadow-lg shadow-slate-300/50 ring-1 ring-slate-200">
+                  <img src="/icon.png" alt="Logo ETECA" className="h-12 w-12 object-contain" />
                 </div>
 
                 <h1 className="mt-7 text-[clamp(2.1rem,4.3vw,3.5rem)] leading-[1.06] font-bold tracking-tight">
@@ -168,9 +158,9 @@ export default function Auth({
                 </p>
               </div>
 
-              <div className="relative z-10 rounded-2xl border border-indigo-100 bg-white/75 p-4 shadow-lg shadow-slate-200/80">
-                <div className="h-48 rounded-xl bg-gradient-to-br from-slate-50 to-indigo-50 border border-slate-200/80 p-3">
-                  <div className="h-full w-full rounded-lg border border-dashed border-indigo-200/80 bg-white/50" />
+              <div className="relative z-10 rounded-2xl border border-[#c7e3d2] bg-white/85 p-4 shadow-lg shadow-slate-200/80">
+                <div className="h-48 rounded-xl bg-gradient-to-br from-[#edf6ff] to-[#e9f9ef] border border-[#d5e8f7] p-3 grid place-items-center">
+                  <img src="/icon.png" alt="Logo ETECA" className="h-32 w-auto object-contain" />
                 </div>
               </div>
             </aside>
@@ -188,18 +178,8 @@ export default function Auth({
                 isLogin ? "max-w-xl" : "max-w-none"
               }`}
             >
-              <div className="mx-auto h-16 w-16 rounded-full bg-indigo-50 text-[#3f6ce8] grid place-items-center">
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-8 w-8"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                >
-                  <rect x="4" y="11" width="16" height="10" rx="2" />
-                  <path d="M8 11V8a4 4 0 1 1 8 0v3" />
-                  <circle cx="12" cy="16" r="1.2" />
-                </svg>
+              <div className="mx-auto h-16 w-16 rounded-full bg-[#e8f0ff] text-[#0b57d0] grid place-items-center ring-1 ring-[#c8dbff]">
+                <img src="/icon.png" alt="Logo ETECA" className="h-10 w-10 object-contain" />
               </div>
 
               <h2 className="mt-6 text-center text-[clamp(2rem,3.2vw,3rem)] font-bold tracking-tight text-slate-900">
@@ -562,7 +542,7 @@ export default function Auth({
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="w-full h-12 rounded-xl bg-gradient-to-r from-[#3f6ce8] to-[#4b6cf0] text-white text-lg font-semibold shadow-md hover:from-[#355fd4] hover:to-[#3e63e8] disabled:cursor-not-allowed disabled:from-indigo-300 disabled:to-blue-300 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-200 transition-all duration-200"
+                    className="w-full h-12 rounded-xl bg-gradient-to-r from-[#0b57d0] to-[#16a34a] text-white text-lg font-semibold shadow-md hover:from-[#0948ad] hover:to-[#15803d] disabled:cursor-not-allowed disabled:from-indigo-300 disabled:to-green-300 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-200 transition-all duration-200"
                   >
                     {isSubmitting
                       ? "Procesando..."

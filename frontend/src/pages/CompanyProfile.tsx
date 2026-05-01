@@ -64,12 +64,13 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
   };
 
   return (
-    <div className="w-full px-4 sm:px-0 pb-10 pt-8 sm:pt-12">
+    <div className="w-full px-4 sm:px-0 pb-10 pt-4 sm:pt-5">
+      <div className="mx-auto max-w-2xl mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h1 className="text-3xl font-extrabold text-[#0b57d0]">Perfil de empresa</h1>
+        <p className="text-slate-600">Actualiza los datos que se muestran en cotizaciones y PDF.</p>
+        <p className="text-xs text-slate-500 mt-1">{session.company.name} · RNC {session.company.rnc}</p>
+      </div>
       <div className="mx-auto max-w-2xl rounded-xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
-        <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Perfil de empresa</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Actualiza los datos que se muestran en cotizaciones y PDF.
-        </p>
 
         <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
           <div>
