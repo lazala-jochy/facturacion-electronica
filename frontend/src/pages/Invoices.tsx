@@ -56,6 +56,12 @@ const parseCotizacionRows = (raw: unknown[]): CotizacionListRow[] =>
       );
     });
 
+const monthLabel = (key: string) => {
+  const [year, month] = key.split("-");
+  const d = new Date(Number(year), Number(month) - 1, 1);
+  return d.toLocaleDateString("es-DO", { month: "short", year: "2-digit" });
+};
+
 export default function Invoices() {
   const session = useMemo<AuthSession | null>(() => {
     const raw = localStorage.getItem(AUTH_STORAGE_KEY);
@@ -155,6 +161,10 @@ export default function Invoices() {
       .sort((a, b) => a.period.localeCompare(b.period))
       .slice(-8);
     const monthlyMax = monthly.reduce((acc, row) => Math.max(acc, row.total), 1);
+    const monthlyTicks = [1, 0.75, 0.5, 0.25, 0].map((ratio) => ({
+      ratio,
+      value: monthlyMax * ratio,
+    }));
 
     const ranges = {
       Alto: filtered.filter((m) => m.amount >= 10000).length,
@@ -163,7 +173,7 @@ export default function Invoices() {
     };
     const rangesTotal = ranges.Alto + ranges.Medio + ranges.Bajo;
 
-    return { monthly, monthlyMax, ranges, rangesTotal };
+    return { monthly, monthlyMax, monthlyTicks, ranges, rangesTotal };
   }, [filtered]);
 
   return (
@@ -197,18 +207,40 @@ export default function Invoices() {
           {chartData.monthly.length === 0 ? (
             <p className="mt-3 text-sm text-slate-600">Sin datos para graficar.</p>
           ) : (
-            <div className="mt-4">
-              <div className="flex items-end gap-2 h-52 rounded-lg bg-gradient-to-t from-[#e9f9ef] to-white p-3">
-                {chartData.monthly.map((item) => (
-                  <div key={item.period} className="flex flex-1 flex-col items-center justify-end gap-2">
+            <div className="mt-4 rounded-lg border border-slate-100 bg-slate-50/50 p-3">
+              <div className="relative h-56">
+                <div className="absolute inset-y-0 left-0 w-16 text-[10px] text-slate-500">
+                  {chartData.monthlyTicks.map((tick) => (
                     <div
-                      className="w-full rounded-t bg-[#16a34a]"
-                      style={{ height: `${Math.max(8, (item.total / chartData.monthlyMax) * 150)}px` }}
-                      title={`${item.period}: ${money(item.total)}`}
+                      key={tick.ratio}
+                      className="absolute left-0 -translate-y-1/2"
+                      style={{ top: `${(1 - tick.ratio) * 100}%` }}
+                    >
+                      {money(tick.value)}
+                    </div>
+                  ))}
+                </div>
+                <div className="absolute inset-y-0 left-16 right-0">
+                  {chartData.monthlyTicks.map((tick) => (
+                    <div
+                      key={`line-${tick.ratio}`}
+                      className="absolute left-0 right-0 border-t border-dashed border-slate-200"
+                      style={{ top: `${(1 - tick.ratio) * 100}%` }}
                     />
-                    <span className="text-[10px] text-slate-500">{item.period.slice(5)}</span>
+                  ))}
+                  <div className="absolute bottom-0 left-0 right-0 flex items-end gap-2">
+                    {chartData.monthly.map((item) => (
+                      <div key={item.period} className="flex flex-1 flex-col items-center gap-2">
+                        <div
+                          className="w-full rounded-t bg-[#16a34a]"
+                          style={{ height: `${Math.max(6, (item.total / chartData.monthlyMax) * 180)}px` }}
+                          title={`${monthLabel(item.period)}: ${money(item.total)}`}
+                        />
+                        <span className="text-[10px] text-slate-500">{monthLabel(item.period)}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                </div>
               </div>
             </div>
           )}
@@ -232,9 +264,24 @@ export default function Invoices() {
               <div className="m-5 h-[88px] w-[88px] rounded-full bg-white" />
             </div>
             <div className="space-y-2 text-sm">
-              <Legend label="Alto (>=10k)" color="#0b57d0" value={chartData.ranges.Alto} />
-              <Legend label="Medio (4k-10k)" color="#16a34a" value={chartData.ranges.Medio} />
-              <Legend label="Bajo (<4k)" color="#8be7a7" value={chartData.ranges.Bajo} />
+              <Legend
+                label="Alto (>=10k)"
+                color="#0b57d0"
+                value={chartData.ranges.Alto}
+                percent={chartData.rangesTotal ? Math.round((chartData.ranges.Alto / chartData.rangesTotal) * 100) : 0}
+              />
+              <Legend
+                label="Medio (4k-10k)"
+                color="#16a34a"
+                value={chartData.ranges.Medio}
+                percent={chartData.rangesTotal ? Math.round((chartData.ranges.Medio / chartData.rangesTotal) * 100) : 0}
+              />
+              <Legend
+                label="Bajo (<4k)"
+                color="#8be7a7"
+                value={chartData.ranges.Bajo}
+                percent={chartData.rangesTotal ? Math.round((chartData.ranges.Bajo / chartData.rangesTotal) * 100) : 0}
+              />
             </div>
           </div>
         </div>
@@ -361,14 +408,24 @@ export default function Invoices() {
   );
 }
 
-function Legend({ label, color, value }: { label: string; color: string; value: number }) {
+function Legend({
+  label,
+  color,
+  value,
+  percent,
+}: {
+  label: string;
+  color: string;
+  value: number;
+  percent: number;
+}) {
   return (
     <div className="flex items-center justify-between rounded border border-slate-100 px-3 py-2">
       <div className="flex items-center gap-2">
         <span className="h-3 w-3 rounded-full" style={{ backgroundColor: color }} />
         <span>{label}</span>
       </div>
-      <span className="font-semibold text-slate-700">{value}</span>
+      <span className="font-semibold text-slate-700">{value} ({percent}%)</span>
     </div>
   );
 }
