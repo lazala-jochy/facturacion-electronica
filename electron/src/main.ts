@@ -11,7 +11,7 @@ let backendProcess: ChildProcess | null = null;
 const BACKEND_PORT = 3001;
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-const APP_ICON_NAME = "icon.jpeg";
+const APP_ICON_NAME = "ChatGPT Image 1 may 2026, 01_49_54 p.m..png";
 
 const getAppIconPath = () => path.join(__dirname, "..", "assets", APP_ICON_NAME);
 const isProduction = app.isPackaged;
@@ -179,7 +179,7 @@ const setupAutoUpdater = () => {
 
 app.whenReady().then(async () => {
   try {
-    app.setName("Facturacion Electronica RD");
+    app.setName("Facturación Electrónica ETECA.");
     if (process.platform === "darwin") {
       app.dock?.setIcon(getAppIconPath());
     }

@@ -77,13 +77,13 @@
       }
     ],
     "win": {
-      "icon": "assets/icon.jpeg",
+      "icon": "assets/ChatGPT Image 1 may 2026, 01_49_54 p.m..png",
       "target": [
         "nsis"
       ]
     },
     "mac": {
-      "icon": "assets/icon.jpeg",
+      "icon": "assets/ChatGPT Image 1 may 2026, 01_49_54 p.m..png",
       "target": [
         "dmg",
         "zip"

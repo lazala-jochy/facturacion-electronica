@@ -10,7 +10,7 @@ export default function AppLayout({ onLogout }: { onLogout: () => void }) {
       {/* Mobile Menu Button */}
       <button
         onClick={() => setSidebarOpen(!sidebarOpen)}
-        className="lg:hidden fixed top-4 left-4 z-40 p-2 bg-gray-900 text-white rounded-lg transition hover:scale-105 active:scale-95"
+        className="lg:hidden fixed top-4 left-4 z-40 p-2 bg-white text-[#0b57d0] border border-slate-200 rounded-lg transition hover:scale-105 active:scale-95 shadow-sm"
         aria-label="Toggle menu"
       >
         <svg
@@ -38,17 +38,21 @@ export default function AppLayout({ onLogout }: { onLogout: () => void }) {
 
       {/* Sidebar */}
       <aside
-        className={`fixed lg:relative top-0 left-0 h-screen lg:h-auto w-64 bg-gray-900 text-white p-4 flex flex-col z-40 transition-transform duration-300 lg:translate-x-0 ${
+        className={`fixed lg:relative top-0 left-0 h-screen lg:h-auto w-64 bg-white text-slate-700 p-4 flex flex-col z-40 transition-transform duration-300 lg:translate-x-0 border-r border-slate-200 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         {/* TOP */}
         <div>
           <div className="flex items-center justify-between mb-6">
-            <h1 className="text-xl font-bold">Facturación</h1>
+            <img
+              src="/icon.png"
+              alt="ETECA"
+              className="h-11 w-auto object-contain"
+            />
             <button
               onClick={() => setSidebarOpen(false)}
-              className="lg:hidden text-white p-1"
+              className="lg:hidden text-slate-600 p-1"
               aria-label="Close menu"
             >
               <svg
@@ -74,8 +78,8 @@ export default function AppLayout({ onLogout }: { onLogout: () => void }) {
               className={({ isActive }) =>
                 `block p-2 rounded transition-all duration-200 ${
                   isActive
-                    ? "bg-gray-700 shadow-inner"
-                    : "hover:bg-gray-700 hover:translate-x-1"
+                    ? "bg-[#e9f9ef] text-[#15803d] border border-[#b7e7c7] shadow-inner"
+                    : "hover:bg-slate-50 hover:translate-x-1"
                 }`
               }
             >
@@ -88,8 +92,8 @@ export default function AppLayout({ onLogout }: { onLogout: () => void }) {
               className={({ isActive }) =>
                 `block p-2 rounded transition-all duration-200 ${
                   isActive
-                    ? "bg-gray-700 shadow-inner"
-                    : "hover:bg-gray-700 hover:translate-x-1"
+                    ? "bg-[#e9f9ef] text-[#15803d] border border-[#b7e7c7] shadow-inner"
+                    : "hover:bg-slate-50 hover:translate-x-1"
                 }`
               }
             >
@@ -102,8 +106,8 @@ export default function AppLayout({ onLogout }: { onLogout: () => void }) {
               className={({ isActive }) =>
                 `block p-2 rounded transition-all duration-200 ${
                   isActive
-                    ? "bg-gray-700 shadow-inner"
-                    : "hover:bg-gray-700 hover:translate-x-1"
+                    ? "bg-[#e9f9ef] text-[#15803d] border border-[#b7e7c7] shadow-inner"
+                    : "hover:bg-slate-50 hover:translate-x-1"
                 }`
               }
             >
@@ -116,8 +120,8 @@ export default function AppLayout({ onLogout }: { onLogout: () => void }) {
               className={({ isActive }) =>
                 `block p-2 rounded transition-all duration-200 ${
                   isActive
-                    ? "bg-gray-700 shadow-inner"
-                    : "hover:bg-gray-700 hover:translate-x-1"
+                    ? "bg-[#e9f9ef] text-[#15803d] border border-[#b7e7c7] shadow-inner"
+                    : "hover:bg-slate-50 hover:translate-x-1"
                 }`
               }
             >
@@ -130,8 +134,8 @@ export default function AppLayout({ onLogout }: { onLogout: () => void }) {
               className={({ isActive }) =>
                 `block p-2 rounded transition-all duration-200 ${
                   isActive
-                    ? "bg-gray-700 shadow-inner"
-                    : "hover:bg-gray-700 hover:translate-x-1"
+                    ? "bg-[#e9f9ef] text-[#15803d] border border-[#b7e7c7] shadow-inner"
+                    : "hover:bg-slate-50 hover:translate-x-1"
                 }`
               }
             >
@@ -145,7 +149,7 @@ export default function AppLayout({ onLogout }: { onLogout: () => void }) {
           <button
             type="button"
             onClick={() => setAccountOpen((prev) => !prev)}
-            className="w-full p-2 rounded bg-gray-800 hover:bg-gray-700 transition-all duration-200 hover:scale-[1.02] text-left flex items-center justify-between"
+            className="w-full p-2 rounded bg-slate-100 hover:bg-slate-200 transition-all duration-200 hover:scale-[1.02] text-left flex items-center justify-between text-slate-700"
           >
             <span>Cuenta</span>
             <span className="text-xs">{accountOpen ? "▲" : "▼"}</span>

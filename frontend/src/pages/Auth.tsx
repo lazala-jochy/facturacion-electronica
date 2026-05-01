@@ -157,9 +157,10 @@ export default function Auth({
                   </svg>
                 </div>
 
-                <h1 className="mt-7 text-[clamp(2.1rem,4.3vw,3.5rem)] leading-[1.06] font-bold tracking-tight text-slate-900">
-                  Facturación
-                  <span className="block text-[#3f6ce8]">Electrónica.</span>
+                <h1 className="mt-7 text-[clamp(2.1rem,4.3vw,3.5rem)] leading-[1.06] font-bold tracking-tight">
+                  <span className="bg-gradient-to-r from-[#2e58d6] via-[#3f6ce8] to-[#5a86ff] bg-clip-text text-transparent">
+                    Facturación Electrónica ETECA.
+                  </span>
                 </h1>
                 <p className="mt-5 text-[clamp(1rem,1.5vw,1.5rem)] leading-relaxed text-slate-600">
                   La solución inteligente para gestionar tu facturación de manera
@@ -169,11 +170,7 @@ export default function Auth({
 
               <div className="relative z-10 rounded-2xl border border-indigo-100 bg-white/75 p-4 shadow-lg shadow-slate-200/80">
                 <div className="h-48 rounded-xl bg-gradient-to-br from-slate-50 to-indigo-50 border border-slate-200/80 p-3">
-                  <div className="h-2.5 w-16 rounded-full bg-indigo-200" />
-                  <div className="mt-4 grid grid-cols-3 gap-3">
-                    <div className="h-28 rounded-lg bg-white border border-slate-200" />
-                    <div className="col-span-2 h-28 rounded-lg bg-white border border-slate-200" />
-                  </div>
+                  <div className="h-full w-full rounded-lg border border-dashed border-indigo-200/80 bg-white/50" />
                 </div>
               </div>
             </aside>

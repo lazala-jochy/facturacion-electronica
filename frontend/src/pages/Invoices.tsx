@@ -131,6 +131,29 @@ export default function Invoices() {
     };
   }, [filtered]);
 
+  const chartData = useMemo(() => {
+    const monthlyMap = new Map<string, number>();
+    for (const row of filtered) {
+      const date = new Date(row.date);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+      monthlyMap.set(key, (monthlyMap.get(key) ?? 0) + row.amount);
+    }
+    const monthly = Array.from(monthlyMap.entries())
+      .map(([period, total]) => ({ period, total }))
+      .sort((a, b) => a.period.localeCompare(b.period))
+      .slice(-8);
+    const monthlyMax = monthly.reduce((acc, row) => Math.max(acc, row.total), 1);
+
+    const ranges = {
+      Alto: filtered.filter((m) => m.amount >= 10000).length,
+      Medio: filtered.filter((m) => m.amount >= 4000 && m.amount < 10000).length,
+      Bajo: filtered.filter((m) => m.amount < 4000).length,
+    };
+    const rangesTotal = ranges.Alto + ranges.Medio + ranges.Bajo;
+
+    return { monthly, monthlyMax, ranges, rangesTotal };
+  }, [filtered]);
+
   return (
     <div className="w-full px-4 sm:px-0 pb-10">
       <div className="mb-6">
@@ -152,6 +175,55 @@ export default function Invoices() {
         <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-md">
           <p className="text-xs uppercase font-semibold text-indigo-700">Ganancias</p>
           <p className="mt-1 text-2xl font-bold text-indigo-900">{money(totals.ganancias)}</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr] mb-5">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-slate-900">Tendencia de ingresos</h3>
+          {chartData.monthly.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-600">Sin datos para graficar.</p>
+          ) : (
+            <div className="mt-4">
+              <div className="flex items-end gap-2 h-52 rounded-lg bg-gradient-to-t from-[#e9f9ef] to-white p-3">
+                {chartData.monthly.map((item) => (
+                  <div key={item.period} className="flex flex-1 flex-col items-center justify-end gap-2">
+                    <div
+                      className="w-full rounded-t bg-[#16a34a]"
+                      style={{ height: `${Math.max(8, (item.total / chartData.monthlyMax) * 150)}px` }}
+                      title={`${item.period}: ${money(item.total)}`}
+                    />
+                    <span className="text-[10px] text-slate-500">{item.period.slice(5)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-slate-900">Distribución por monto</h3>
+          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-[140px_1fr]">
+            <div
+              className="mx-auto h-32 w-32 rounded-full"
+              style={{
+                background: `conic-gradient(#0b57d0 0 ${
+                  chartData.rangesTotal ? Math.round((chartData.ranges.Alto / chartData.rangesTotal) * 100) : 0
+                }%, #16a34a 0 ${
+                  chartData.rangesTotal
+                    ? Math.round(((chartData.ranges.Alto + chartData.ranges.Medio) / chartData.rangesTotal) * 100)
+                    : 0
+                }%, #8be7a7 0 100%)`,
+              }}
+            >
+              <div className="m-5 h-[88px] w-[88px] rounded-full bg-white" />
+            </div>
+            <div className="space-y-2 text-sm">
+              <Legend label="Alto (>=10k)" color="#0b57d0" value={chartData.ranges.Alto} />
+              <Legend label="Medio (4k-10k)" color="#16a34a" value={chartData.ranges.Medio} />
+              <Legend label="Bajo (<4k)" color="#8be7a7" value={chartData.ranges.Bajo} />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -272,6 +344,18 @@ export default function Invoices() {
           módulo de egresos, las salidas se reflejarán automáticamente en este reporte.
         </p>
       </div>
+    </div>
+  );
+}
+
+function Legend({ label, color, value }: { label: string; color: string; value: number }) {
+  return (
+    <div className="flex items-center justify-between rounded border border-slate-100 px-3 py-2">
+      <div className="flex items-center gap-2">
+        <span className="h-3 w-3 rounded-full" style={{ backgroundColor: color }} />
+        <span>{label}</span>
+      </div>
+      <span className="font-semibold text-slate-700">{value}</span>
     </div>
   );
 }

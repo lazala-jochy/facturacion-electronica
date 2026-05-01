@@ -1,1 +1,75 @@
 @import "tailwindcss";
+
+:root {
+  --brand-blue: #0b57d0;
+  --brand-blue-strong: #0948ad;
+  --brand-blue-soft: #e8f0ff;
+  --brand-green: #16a34a;
+  --brand-green-strong: #15803d;
+  --brand-green-soft: #e9f9ef;
+}
+
+/* Brand palette override (ETECA: blue + green) */
+.text-indigo-600,
+.text-indigo-700,
+.text-\[\#3f6ce8\],
+.text-\[\#4b6cf0\] {
+  color: var(--brand-blue) !important;
+}
+
+.bg-indigo-50,
+.hover\:bg-indigo-50:hover,
+.hover\:bg-indigo-100:hover {
+  background-color: var(--brand-blue-soft) !important;
+}
+
+.border-indigo-100,
+.border-indigo-200,
+.border-indigo-300,
+.focus\:border-indigo-500:focus {
+  border-color: color-mix(in oklab, var(--brand-blue) 35%, white) !important;
+}
+
+.focus\:ring-indigo-100:focus,
+.focus\:ring-indigo-200:focus,
+.focus\:ring-indigo-500:focus-visible {
+  --tw-ring-color: color-mix(in oklab, var(--brand-blue) 25%, transparent) !important;
+}
+
+.bg-indigo-600,
+.hover\:bg-indigo-700:hover {
+  background-color: var(--brand-blue) !important;
+}
+
+.from-indigo-600,
+.from-indigo-500 {
+  --tw-gradient-from: var(--brand-blue) var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: color-mix(in oklab, var(--brand-blue) 0%, transparent)
+    var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+}
+
+.to-indigo-500,
+.to-indigo-600 {
+  --tw-gradient-to: var(--brand-blue-strong) var(--tw-gradient-to-position) !important;
+}
+
+.hover\:from-indigo-700:hover {
+  --tw-gradient-from: var(--brand-blue-strong) var(--tw-gradient-from-position) !important;
+}
+
+.hover\:to-indigo-600:hover {
+  --tw-gradient-to: var(--brand-blue) var(--tw-gradient-to-position) !important;
+}
+
+.bg-emerald-50 {
+  background-color: var(--brand-green-soft) !important;
+}
+
+.text-emerald-700 {
+  color: var(--brand-green-strong) !important;
+}
+
+.border-emerald-200 {
+  border-color: color-mix(in oklab, var(--brand-green) 35%, white) !important;
+}

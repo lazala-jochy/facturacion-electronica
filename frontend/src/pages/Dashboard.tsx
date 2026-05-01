@@ -2,6 +2,7 @@ import type { AuthCompany } from "../types/session";
 import { useEffect, useMemo, useState } from "react";
 import { listClients } from "../services/clients";
 import { listCotizaciones } from "../services/cotizaciones";
+import { Link } from "react-router-dom";
 
 type CotizacionRow = {
   id: number;
@@ -15,6 +16,11 @@ type CotizacionRow = {
 
 const money = (value: number) =>
   new Intl.NumberFormat("es-DO", { style: "currency", currency: "DOP" }).format(value);
+
+const percent = (value: number, total: number) => {
+  if (!total) return 0;
+  return Math.round((value / total) * 100);
+};
 
 export default function Dashboard({
   company,
@@ -81,6 +87,27 @@ export default function Dashboard({
       .sort((a, b) => b.total - a.total)
       .slice(0, 5);
 
+    const byDayMap = new Map<string, number>();
+    for (const c of inCurrentMonth) {
+      const day = new Date(c.created_at).toLocaleDateString("es-DO", {
+        day: "2-digit",
+        month: "short",
+      });
+      byDayMap.set(day, (byDayMap.get(day) ?? 0) + c.total);
+    }
+    const salesSeries = Array.from(byDayMap.entries())
+      .map(([label, total]) => ({ label, total }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+      .slice(-8);
+    const maxSeries = salesSeries.reduce((acc, item) => Math.max(acc, item.total), 1);
+
+    const docTypes = {
+      Facturas: analyticsCount(cotizaciones, (c) => c.total >= 10000),
+      Boletas: analyticsCount(cotizaciones, (c) => c.total < 10000 && c.total >= 4000),
+      "Notas de Crédito": analyticsCount(cotizaciones, (c) => c.total < 4000),
+    };
+    const totalDocs = docTypes.Facturas + docTypes.Boletas + docTypes["Notas de Crédito"];
+
     return {
       ingresosMes,
       itbisMes,
@@ -88,143 +115,178 @@ export default function Dashboard({
       emitidasMes: inCurrentMonth.length,
       topClients,
       topCotizaciones,
+      salesSeries,
+      maxSeries,
+      docTypes,
+      totalDocs,
     };
   }, [cotizaciones]);
 
   return (
-    <div className="w-full space-y-5 px-4 pt-3 sm:px-0 sm:pt-4">
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm transition-all duration-300 hover:shadow-md hover:-translate-y-0.5">
-        <h2 className="text-xl sm:text-2xl font-semibold text-slate-900">
-          Inicio - {company.name}
-        </h2>
-        <p className="mt-2 text-xs sm:text-sm text-slate-600 space-y-1 sm:space-y-0">
-          <span>RNC: {company.rnc}</span>
-          {company.address && (
-            <>
-              <span className="hidden sm:inline"> | </span>
-              <span className="block sm:inline">{company.address}</span>
-            </>
-          )}
-        </p>
-        {(company.phone || company.email) && (
-          <p className="mt-2 text-xs sm:text-sm text-slate-600 space-y-1 sm:space-y-0">
-            {company.phone?.trim() && (
-              <span>Tel.: {company.phone.trim()}</span>
-            )}
-            {company.phone?.trim() && company.email?.trim() && (
-              <span className="hidden sm:inline"> · </span>
-            )}
-            {company.email?.trim() && (
-              <>
-                <span className="block sm:inline">Email: {company.email.trim()}</span>
-              </>
-            )}
-          </p>
-        )}
-        <p className="mt-2 sm:mt-1 text-xs sm:text-sm text-slate-500">
-          Resumen financiero para decisiones contables del negocio.
-        </p>
+    <div className="w-full space-y-4 px-2 sm:px-0 pt-4 sm:pt-5">
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-3xl font-extrabold text-[#0b57d0]">¡Bienvenido, Admin!</h2>
+        <p className="text-slate-600">Aquí tienes un resumen de tu actividad.</p>
+        <p className="text-xs text-slate-500 mt-1">{company.name} · RNC {company.rnc}</p>
       </div>
 
       {loading ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
-          <p className="text-sm text-slate-600">Cargando indicadores...</p>
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm text-slate-500">
+          Cargando dashboard...
         </div>
       ) : error ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 sm:p-6 shadow-sm">
-          <p className="text-sm text-red-700">{error}</p>
+        <div className="rounded-xl border border-red-200 bg-red-50 p-6 shadow-sm text-red-700">
+          {error}
         </div>
       ) : (
         <>
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm min-h-[124px] flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 hover:shadow-md">
-          <p className="text-xs sm:text-sm text-slate-500 font-medium leading-tight">
-            Ingresos del mes
-          </p>
-          <p className="mt-2 text-[clamp(1.35rem,3.8vw,1.95rem)] font-bold leading-tight text-emerald-700 break-words">
-            {money(analytics.ingresosMes)}
-          </p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm min-h-[124px] flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 hover:shadow-md">
-          <p className="text-xs sm:text-sm text-slate-500 font-medium leading-tight">
-            ITBIS acumulado mes
-          </p>
-          <p className="mt-2 text-[clamp(1.35rem,3.8vw,1.95rem)] font-bold leading-tight text-indigo-700 break-words">
-            {money(analytics.itbisMes)}
-          </p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm min-h-[124px] flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 hover:shadow-md">
-          <p className="text-xs sm:text-sm text-slate-500 font-medium leading-tight">
-            Ticket promedio mes
-          </p>
-          <p className="mt-2 text-[clamp(1.35rem,3.8vw,1.95rem)] font-bold leading-tight text-slate-900 break-words">
-            {money(analytics.ticketPromedio)}
-          </p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm min-h-[124px] flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 hover:shadow-md">
-          <p className="text-xs sm:text-sm text-slate-500 font-medium leading-tight">
-            Facturas emitidas mes
-          </p>
-          <p className="mt-2 text-[clamp(1.35rem,3.8vw,1.95rem)] font-bold leading-tight text-slate-900 break-words">
-            {analytics.emitidasMes}
-          </p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm min-h-[124px] flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 hover:shadow-md">
-          <p className="text-xs sm:text-sm text-slate-500 font-medium leading-tight">
-            Clientes registrados
-          </p>
-          <p className="mt-2 text-[clamp(1.35rem,3.8vw,1.95rem)] font-bold leading-tight text-slate-900 break-words">
-            {clientsCount}
-          </p>
-        </div>
-      </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <MetricCard title="Comprobantes emitidos" value={analytics.emitidasMes} tone="green" />
+            <MetricCard title="Ventas totales" value={money(analytics.ingresosMes)} tone="blue" />
+            <MetricCard title="Clientes activos" value={clientsCount} tone="green" />
+            <MetricCard title="ITBIS del mes" value={money(analytics.itbisMes)} tone="blue" />
+          </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm transition-all duration-300 hover:shadow-md hover:-translate-y-0.5">
-          <h3 className="text-sm font-semibold text-slate-900">Top clientes por facturación</h3>
-          {analytics.topClients.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-600">Sin datos todavía.</p>
-          ) : (
-            <div className="mt-3 space-y-2">
-              {analytics.topClients.map((row, idx) => (
-                <div key={row.name} className="flex items-center justify-between text-sm rounded-md px-2 py-1.5 transition-colors duration-200 hover:bg-slate-50">
-                  <p className="text-slate-700">
-                    {idx + 1}. {row.name}
-                  </p>
-                  <p className="font-semibold text-slate-900">{money(row.total)}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm transition-all duration-300 hover:shadow-md hover:-translate-y-0.5">
-          <h3 className="text-sm font-semibold text-slate-900">Top 5 cotizaciones por ingreso</h3>
-          {analytics.topCotizaciones.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-600">Sin cotizaciones registradas.</p>
-          ) : (
-            <div className="mt-3 space-y-2">
-              {analytics.topCotizaciones.map((row) => (
-                <div key={row.id} className="flex items-center justify-between gap-3 text-sm rounded-md px-2 py-1.5 transition-colors duration-200 hover:bg-slate-50">
-                  <div className="min-w-0">
-                    <p className="truncate text-slate-900">
-                      Cotización #{row.number} - {row.client_name}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {new Date(row.created_at).toLocaleDateString("es-DO")}
-                    </p>
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h3 className="text-lg font-semibold text-slate-900">Resumen de ventas</h3>
+              {analytics.salesSeries.length === 0 ? (
+                <p className="mt-4 text-sm text-slate-500">Sin ventas del mes para graficar.</p>
+              ) : (
+                <div className="mt-4">
+                  <div className="flex items-end gap-2 h-56 rounded-lg bg-gradient-to-t from-[#e9f9ef] to-white p-3">
+                    {analytics.salesSeries.map((item) => (
+                      <div key={item.label} className="flex flex-1 flex-col items-center justify-end gap-2">
+                        <div
+                          className="w-full rounded-t bg-[#16a34a]"
+                          style={{ height: `${Math.max(8, (item.total / analytics.maxSeries) * 160)}px` }}
+                          title={`${item.label}: ${money(item.total)}`}
+                        />
+                        <span className="text-[10px] text-slate-500">{item.label}</span>
+                      </div>
+                    ))}
                   </div>
-                  <p className="font-semibold text-emerald-700 whitespace-nowrap">
-                    {money(row.total)}
-                  </p>
                 </div>
-              ))}
+              )}
             </div>
-          )}
-        </div>
-      </div>
-      </>
+
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-slate-900">Últimos comprobantes</h3>
+                <Link to="/clients" className="text-sm font-semibold text-[#0b57d0]">Ver todos</Link>
+              </div>
+              <div className="space-y-3">
+                {analytics.topCotizaciones.slice(0, 5).map((row) => (
+                  <div key={row.id} className="rounded-lg border border-slate-100 p-2">
+                    <p className="font-semibold text-[#0b57d0]">F{String(row.number).padStart(8, "0")}</p>
+                    <p className="text-xs text-slate-600 truncate">Cliente: {row.client_name}</p>
+                    <p className="text-right font-semibold text-slate-900">{money(row.total)}</p>
+                  </div>
+                ))}
+                {analytics.topCotizaciones.length === 0 && (
+                  <p className="text-sm text-slate-500">Sin comprobantes.</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h3 className="text-lg font-semibold text-slate-900">Comprobantes por tipo</h3>
+              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-[220px_1fr]">
+                <div className="mx-auto h-44 w-44 rounded-full" style={{
+                  background: `conic-gradient(#0b57d0 0 ${percent(analytics.docTypes.Facturas, analytics.totalDocs)}%, #16a34a 0 ${percent(analytics.docTypes.Facturas + analytics.docTypes.Boletas, analytics.totalDocs)}%, #8be7a7 0 100%)`,
+                }}>
+                  <div
+                    className="m-7 rounded-full bg-white"
+                    style={{ width: "120px", height: "120px" }}
+                  />
+                </div>
+                <div className="space-y-2 text-sm">
+                  <Legend label="Facturas" color="#0b57d0" value={analytics.docTypes.Facturas} pct={percent(analytics.docTypes.Facturas, analytics.totalDocs)} />
+                  <Legend label="Boletas" color="#16a34a" value={analytics.docTypes.Boletas} pct={percent(analytics.docTypes.Boletas, analytics.totalDocs)} />
+                  <Legend label="Notas de Crédito" color="#8be7a7" value={analytics.docTypes["Notas de Crédito"]} pct={percent(analytics.docTypes["Notas de Crédito"], analytics.totalDocs)} />
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h3 className="text-lg font-semibold text-slate-900">Acciones rápidas</h3>
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <QuickAction to="/cotizaciones/nueva" label="Nueva Factura" />
+                <QuickAction to="/ecf" label="Flujo e-CF" />
+                <QuickAction to="/clients" label="Nuevo Cliente" />
+                <QuickAction to="/invoices" label="Reporte" />
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
+  );
+}
+
+function analyticsCount(
+  rows: CotizacionRow[],
+  predicate: (row: CotizacionRow) => boolean,
+) {
+  return rows.reduce((acc, row) => acc + (predicate(row) ? 1 : 0), 0);
+}
+
+function MetricCard({
+  title,
+  value,
+  tone,
+}: {
+  title: string;
+  value: string | number;
+  tone: "green" | "blue";
+}) {
+  const classes =
+    tone === "green"
+      ? "bg-[#e9f9ef] text-[#15803d]"
+      : "bg-[#e8f0ff] text-[#0b57d0]";
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${classes}`}>
+        {title}
+      </div>
+      <p className="mt-3 text-3xl font-extrabold text-slate-900">{value}</p>
+    </div>
+  );
+}
+
+function Legend({
+  label,
+  color,
+  value,
+  pct,
+}: {
+  label: string;
+  color: string;
+  value: number;
+  pct: number;
+}) {
+  return (
+    <div className="flex items-center justify-between rounded border border-slate-100 px-3 py-2">
+      <div className="flex items-center gap-2">
+        <span className="h-3 w-3 rounded-full" style={{ backgroundColor: color }} />
+        <span>{label}</span>
+      </div>
+      <span className="font-semibold text-slate-700">
+        {pct}% ({value})
+      </span>
+    </div>
+  );
+}
+
+function QuickAction({ to, label }: { to: string; label: string }) {
+  return (
+    <Link
+      to={to}
+      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-[#e9f9ef] hover:text-[#15803d]"
+    >
+      {label}
+    </Link>
   );
 }
