@@ -7,6 +7,7 @@ import AppLayout from "./layout/AppLayout";
 import Invoices from "./pages/Invoices";
 import Clients from "./pages/Clients";
 import CotizacionCreate from "./pages/CotizacionCreate";
+import CotizacionEdit from "./pages/CotizacionEdit";
 import { AUTH_STORAGE_KEY, type AuthSession } from "./types/session";
 import CompanyProfile from "./pages/CompanyProfile";
 
@@ -64,6 +65,7 @@ function App() {
           <Route path="/ecf" element={<ECF company={company} />} />
           <Route path="/clients" element={<Clients />} />
           <Route path="/cotizaciones/nueva" element={<CotizacionCreate />} />
+          <Route path="/cotizaciones/:id/editar" element={<CotizacionEdit />} />
           <Route path="/invoices" element={<Invoices />} />
           <Route
             path="/company-profile"

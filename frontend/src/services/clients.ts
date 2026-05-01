@@ -10,6 +10,7 @@ export const createClient = (payload: CreateClientPayload) =>
 export type ClientListItem = {
   id: number;
   name: string;
+  address?: string | null;
   rnc_cedula: string;
   phone: string | null;
   email: string | null;
@@ -29,3 +30,14 @@ export type ClientListItem = {
 
 export const listClients = () =>
   apiFetch<{ clients: ClientListItem[] }>("/clients", { method: "GET" });
+
+export const updateClient = (id: number, payload: CreateClientPayload) =>
+  apiFetch<ClientCreatedResponse>(`/clients/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+
+export const deleteClient = (id: number) =>
+  apiFetch<{ message: string }>(`/clients/${id}`, {
+    method: "DELETE",
+  });

@@ -101,6 +101,21 @@ export const getCotizacion = (id: number) =>
     { method: "GET" },
   );
 
+export const updateCotizacion = (id: number, payload: CreateClientWithCotizacionPayload) =>
+  apiFetch<{
+    message: string;
+    cotizacion: CotizacionDetail;
+    dgii_preview: Record<string, unknown>;
+  }>(`/cotizaciones/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+
+export const deleteCotizacion = (id: number) =>
+  apiFetch<{ message: string }>(`/cotizaciones/${id}`, {
+    method: "DELETE",
+  });
+
 export const generateEcfXml = (id: number) =>
   apiFetch<{ message: string; ecf_number: string; xml: string }>(
     `/cotizaciones/${id}/ecf/xml`,

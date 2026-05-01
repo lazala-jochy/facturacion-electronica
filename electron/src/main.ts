@@ -11,7 +11,7 @@ let backendProcess: ChildProcess | null = null;
 const BACKEND_PORT = 3001;
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-const APP_ICON_NAME = "ChatGPT Image Apr 30, 2026, 11_28_06 AM.png";
+const APP_ICON_NAME = "icon.jpeg";
 
 const getAppIconPath = () => path.join(__dirname, "..", "assets", APP_ICON_NAME);
 const isProduction = app.isPackaged;

@@ -202,6 +202,101 @@ export const getCotizacionById: RequestHandler = async (req, res) => {
   });
 };
 
+export const updateCotizacionById: RequestHandler = async (req, res) => {
+  const companyId = req.auth?.companyId;
+  if (!companyId) {
+    res.status(401).json({ message: "No autorizado." });
+    return;
+  }
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ message: "ID invalido." });
+    return;
+  }
+  if (req.body && typeof req.body === "object") {
+    stripTenantFromBody(req.body as Record<string, unknown>);
+  }
+
+  const body = req.body as Record<string, unknown>;
+  const client = body.client as Record<string, unknown> | undefined;
+  const cot = body.cotizacion as Record<string, unknown> | undefined;
+  const itemsRaw = body.items;
+  if (!client || !cot) {
+    res.status(400).json({ message: "Faltan secciones client y cotizacion." });
+    return;
+  }
+  const items: IncomingItem[] | undefined = Array.isArray(itemsRaw)
+    ? (itemsRaw as unknown[]).map((row) => {
+        const r = row as Record<string, unknown>;
+        return {
+          quantity: Number(r.quantity ?? 0),
+          unit: String(r.unit ?? ""),
+          description: String(r.description ?? ""),
+          unit_price: Number(r.unit_price ?? r.unitPrice ?? 0),
+        };
+      })
+    : undefined;
+
+  const out = await cotizacionService.updateCotizacion(id, companyId, {
+    client: {
+      name: typeof client.name === "string" ? client.name : "",
+      address: typeof client.address === "string" ? client.address : undefined,
+      rnc_cedula: String(client.rnc_cedula ?? client.rncCedula ?? ""),
+      phone: typeof client.phone === "string" ? client.phone : undefined,
+      email: typeof client.email === "string" ? client.email : undefined,
+    },
+    cotizacion: {
+      payment_terms: typeof cot.payment_terms === "string" ? cot.payment_terms : "",
+      payment_method:
+        typeof cot.payment_method === "string" ? cot.payment_method : undefined,
+      account_manager:
+        typeof cot.account_manager === "string" ? cot.account_manager : "",
+      comment: typeof cot.comment === "string" ? cot.comment : undefined,
+      document_title:
+        typeof cot.document_title === "string" ? cot.document_title : undefined,
+      fiscal_legend:
+        typeof cot.fiscal_legend === "string" ? cot.fiscal_legend : undefined,
+      calc_mode:
+        cot.calc_mode === "manual" || cot.calc_mode === "auto"
+          ? cot.calc_mode
+          : undefined,
+      subtotal: Number(cot.subtotal),
+      itbis: Number(cot.itbis),
+      total: Number(cot.total),
+    },
+    items,
+  });
+
+  if (!out.ok) {
+    res.status(out.status).json({ message: out.message });
+    return;
+  }
+  res.json({
+    message: "Cotizacion actualizada.",
+    cotizacion: serializeCotizacion(out.cotizacion),
+    dgii_preview: generateDGIIData(out.cotizacion),
+  });
+};
+
+export const deleteCotizacionById: RequestHandler = async (req, res) => {
+  const companyId = req.auth?.companyId;
+  if (!companyId) {
+    res.status(401).json({ message: "No autorizado." });
+    return;
+  }
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ message: "ID invalido." });
+    return;
+  }
+  const out = await cotizacionService.deleteCotizacion(id, companyId);
+  if (!out.ok) {
+    res.status(out.status).json({ message: out.message });
+    return;
+  }
+  res.json({ message: "Cotizacion eliminada." });
+};
+
 export const downloadCotizacionPdf: RequestHandler = async (req, res) => {
   const companyId = req.auth?.companyId;
   if (!companyId) {

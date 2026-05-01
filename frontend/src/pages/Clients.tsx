@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { listClients, type ClientListItem } from "../services/clients";
 import {
+  deleteCotizacion,
   downloadCotizacionPDF,
   getCotizacion,
   submitEcf,
@@ -46,6 +47,8 @@ export default function Clients() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
   const [detail, setDetail] = useState<CotizacionDetail | null>(null);
+  const [crudMessage, setCrudMessage] = useState("");
+  const [crudError, setCrudError] = useState("");
 
   useEffect(() => {
     const updateOnlineStatus = () => setIsOnline(navigator.onLine);
@@ -140,6 +143,36 @@ export default function Clients() {
     }
   };
 
+
+  const refreshClients = async () => {
+    const { clients: out } = await listClients();
+    setClients(out);
+  };
+
+
+  const handleDeleteClient = async (client: ClientListItem) => {
+    const last = client.cotizaciones?.[0];
+    if (!last) {
+      setCrudError("Este cliente no tiene cotización para eliminar.");
+      return;
+    }
+    const confirmed = window.confirm(
+      `¿Seguro que deseas eliminar la cotización #${last.number} de "${client.name}"?`,
+    );
+    if (!confirmed) return;
+    setCrudError("");
+    setCrudMessage("");
+    try {
+      await deleteCotizacion(last.id);
+      await refreshClients();
+      setCrudMessage("Cotización eliminada correctamente.");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "No se pudo eliminar la cotización.";
+      setCrudError(message);
+    }
+  };
+
   const rows = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     const withLast = clients
@@ -210,12 +243,14 @@ export default function Clients() {
           </p>
         </div>
 
-        <Link
-          to="/cotizaciones/nueva"
-          className="rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 px-4 sm:px-5 py-2.5 text-sm font-semibold text-white shadow-md hover:from-indigo-700 hover:to-indigo-600 transition whitespace-nowrap"
-        >
-          + Nueva cotización
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            to="/cotizaciones/nueva"
+            className="rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 px-4 sm:px-5 py-2.5 text-sm font-semibold text-white shadow-md hover:from-indigo-700 hover:to-indigo-600 transition whitespace-nowrap"
+          >
+            + Nueva cotización
+          </Link>
+        </div>
       </div>
 
       {/* Tabla Desktop / Cards Mobile */}
@@ -290,6 +325,7 @@ export default function Clients() {
                     <th className="px-4 sm:px-6 py-4 text-center">Detalle</th>
                     <th className="px-4 sm:px-6 py-4 text-center">e-CF</th>
                     <th className="px-4 sm:px-6 py-4 text-center">PDF</th>
+                    <th className="px-4 sm:px-6 py-4 text-center">Acciones</th>
                   </tr>
                 </thead>
 
@@ -435,6 +471,23 @@ export default function Clients() {
                             <span className="text-gray-400">-</span>
                           )}
                         </td>
+                        <td className="px-4 sm:px-6 py-4 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <Link
+                              to={last ? `/cotizaciones/${last.id}/editar` : "#"}
+                              className="rounded border border-gray-200 px-2.5 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                            >
+                              Editar
+                            </Link>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteClient(client)}
+                              className="rounded border border-red-200 px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     );
                   })}
@@ -573,6 +626,21 @@ export default function Clients() {
                         <p className="text-gray-900 font-medium">{last ? formatCurrency(last.total) : "-"}</p>
                       </div>
                     </div>
+                    <div className="mt-3 flex items-center gap-2">
+                      <Link
+                        to={last ? `/cotizaciones/${last.id}/editar` : "#"}
+                        className="rounded border border-gray-200 px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                      >
+                        Editar
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteClient(client)}
+                        className="rounded border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50"
+                      >
+                        Eliminar
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -607,6 +675,18 @@ export default function Clients() {
         )}
       </div>
 
+      {crudError && (
+        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700 text-sm">
+          <p className="font-semibold">Error en clientes</p>
+          <p className="mt-1">{crudError}</p>
+        </div>
+      )}
+      {crudMessage && (
+        <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-700 text-sm">
+          <p className="font-semibold">Clientes</p>
+          <p className="mt-1">{crudMessage}</p>
+        </div>
+      )}
       {downloadError && (
         <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700 text-sm">
           <p className="font-semibold">Error al descargar</p>

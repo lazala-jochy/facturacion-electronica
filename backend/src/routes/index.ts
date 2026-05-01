@@ -19,6 +19,8 @@ export const buildRouter = () => {
 
   router.post("/clients", requireAuth, asyncHandler(clientsController.createClient));
   router.get("/clients", requireAuth, asyncHandler(clientsController.listClients));
+  router.put("/clients/:id", requireAuth, asyncHandler(clientsController.updateClient));
+  router.delete("/clients/:id", requireAuth, asyncHandler(clientsController.deleteClient));
 
   router.post(
     "/clients-with-cotizacion",
@@ -34,6 +36,16 @@ export const buildRouter = () => {
     "/cotizaciones/:id",
     requireAuth,
     asyncHandler(cotizacionesController.getCotizacionById),
+  );
+  router.put(
+    "/cotizaciones/:id",
+    requireAuth,
+    asyncHandler(cotizacionesController.updateCotizacionById),
+  );
+  router.delete(
+    "/cotizaciones/:id",
+    requireAuth,
+    asyncHandler(cotizacionesController.deleteCotizacionById),
   );
   router.get(
     "/cotizaciones/:id/pdf",

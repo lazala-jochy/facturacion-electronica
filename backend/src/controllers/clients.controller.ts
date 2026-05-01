@@ -82,3 +82,76 @@ export const listClients: RequestHandler = async (req, res) => {
     })),
   });
 };
+
+export const updateClient: RequestHandler = async (req, res) => {
+  const companyId = req.auth?.companyId;
+  if (!companyId) {
+    res.status(401).json({ message: "No autorizado." });
+    return;
+  }
+
+  const clientId = Number(req.params.id);
+  if (!Number.isFinite(clientId) || clientId <= 0) {
+    res.status(400).json({ message: "ID de cliente invalido." });
+    return;
+  }
+
+  if (req.body && typeof req.body === "object") {
+    delete (req.body as Record<string, unknown>).company_id;
+    delete (req.body as Record<string, unknown>).companyId;
+  }
+
+  const name = typeof req.body.name === "string" ? req.body.name : "";
+  const address = typeof req.body.address === "string" ? req.body.address : undefined;
+  const rncCedula = pickRncCedula(req.body);
+  const phone = typeof req.body.phone === "string" ? req.body.phone : undefined;
+  const email = typeof req.body.email === "string" ? req.body.email : undefined;
+
+  const out = await clientService.updateClient(companyId, clientId, {
+    name,
+    address,
+    rncCedula,
+    phone,
+    email,
+  });
+
+  if (!out.ok) {
+    res.status(out.status).json({ message: out.message });
+    return;
+  }
+
+  res.json({
+    message: "Cliente actualizado.",
+    client: {
+      id: out.client.id,
+      name: out.client.name,
+      address: out.client.address,
+      rnc_cedula: out.client.rncCedula,
+      phone: out.client.phone,
+      email: out.client.email,
+      company_id: out.client.companyId,
+    },
+  });
+};
+
+export const deleteClient: RequestHandler = async (req, res) => {
+  const companyId = req.auth?.companyId;
+  if (!companyId) {
+    res.status(401).json({ message: "No autorizado." });
+    return;
+  }
+
+  const clientId = Number(req.params.id);
+  if (!Number.isFinite(clientId) || clientId <= 0) {
+    res.status(400).json({ message: "ID de cliente invalido." });
+    return;
+  }
+
+  const out = await clientService.deleteClient(companyId, clientId);
+  if (!out.ok) {
+    res.status(out.status).json({ message: out.message });
+    return;
+  }
+
+  res.json({ message: "Cliente eliminado." });
+};
