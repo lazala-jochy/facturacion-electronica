@@ -38,7 +38,7 @@ export default function AppLayout({ onLogout }: { onLogout: () => void }) {
 
       {/* Sidebar */}
       <aside
-        className={`fixed lg:relative top-0 left-0 h-screen lg:h-auto w-64 bg-white text-slate-700 p-4 flex flex-col z-40 transition-transform duration-300 lg:translate-x-0 border-r border-slate-200 ${
+        className={`fixed lg:sticky lg:self-start top-0 left-0 h-screen w-64 bg-white text-slate-700 p-4 flex flex-col z-40 transition-transform duration-300 lg:translate-x-0 border-r border-slate-200 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
