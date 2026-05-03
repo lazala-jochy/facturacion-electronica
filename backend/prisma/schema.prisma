@@ -8,15 +8,18 @@ generator client {
 }
 
 model Company {
-  id           Int          @id @default(autoincrement())
-  name         String
-  rnc          String       @unique
-  address      String
-  phone        String?
-  email        String?
-  logoUrl      String?      @map("logo_url")
-  regime       String?      @default("Régimen general")
-  createdAt    DateTime     @default(now()) @map("created_at")
+  id                    Int          @id @default(autoincrement())
+  name                  String
+  rnc                   String       @unique
+  address               String
+  phone                 String?
+  email                 String?
+  logoUrl               String?      @map("logo_url")
+  regime                   String?      @default("Régimen general")
+  certificateSalt          String?      @map("certificate_salt")
+  certificateEncPath       String?      @map("certificate_enc_path")
+  certificatePasswordEnc   String?      @map("certificate_password_enc")
+  createdAt                DateTime     @default(now()) @map("created_at")
   users        User[]
   clients      Client[]
   cotizaciones Cotizacion[]

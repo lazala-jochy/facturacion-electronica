@@ -1,7 +1,17 @@
 import multer from "multer";
 
-/** Opcional logo; formato validado en el controlador si viene archivo. */
-export const registerLogoUpload = multer({
+/** Logo opcional hasta 2 MB (validación en controlador); certificado .p12 hasta 14 MB por archivo. */
+export const authFormUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 2 * 1024 * 1024 },
-});
+  limits: { fileSize: 14 * 1024 * 1024 },
+}).fields([
+  { name: "logo", maxCount: 1 },
+  { name: "certificate", maxCount: 1 },
+]);
+
+/** Solo certificado en envío e-CF (opcional). */
+export const ecfCertificateUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 14 * 1024 * 1024 },
+}).single("certificate");
+

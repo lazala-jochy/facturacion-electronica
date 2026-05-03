@@ -12,16 +12,9 @@ type CertificateMaterial = {
   certPem: string;
 };
 
-const loadPkcs12Material = async (input: CertificateInput): Promise<CertificateMaterial> => {
-  const fs = await import("node:fs/promises");
-  const p12Raw = await fs.readFile(input.p12Path);
-  const p12Asn1 = forge.asn1.fromDer(forge.util.createBuffer(p12Raw.toString("binary")));
-  const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, input.password);
-
+const pkcs12ToMaterial = (p12: forge.pkcs12.Pkcs12Pfx): CertificateMaterial => {
   const keyBag =
-    p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag })[
-      forge.pki.oids.pkcs8ShroudedKeyBag
-    ]?.[0] ??
+    p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag })[forge.pki.oids.pkcs8ShroudedKeyBag]?.[0] ??
     p12.getBags({ bagType: forge.pki.oids.keyBag })[forge.pki.oids.keyBag]?.[0];
   const certBag = p12.getBags({ bagType: forge.pki.oids.certBag })[forge.pki.oids.certBag]?.[0];
 
@@ -35,18 +28,22 @@ const loadPkcs12Material = async (input: CertificateInput): Promise<CertificateM
   };
 };
 
+const loadPkcs12MaterialFromBuffer = async (p12Raw: Buffer, password: string): Promise<CertificateMaterial> => {
+  const p12Asn1 = forge.asn1.fromDer(forge.util.createBuffer(p12Raw.toString("binary")));
+  const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, password);
+  return pkcs12ToMaterial(p12);
+};
+
+export const loadPkcs12Material = async (input: CertificateInput): Promise<CertificateMaterial> => {
+  const fs = await import("node:fs/promises");
+  const p12Raw = await fs.readFile(input.p12Path);
+  return loadPkcs12MaterialFromBuffer(p12Raw, input.password);
+};
+
 const compactCert = (pem: string) =>
   pem.replace("-----BEGIN CERTIFICATE-----", "").replace("-----END CERTIFICATE-----", "").replace(/\s+/g, "");
 
-export const signXml = async (
-  xml: string,
-  certificateInput?: CertificateInput,
-): Promise<string> => {
-  if (!certificateInput) {
-    return xml;
-  }
-
-  const material = await loadPkcs12Material(certificateInput);
+const materialToSignedXml = (xml: string, material: CertificateMaterial): string => {
   const sig = new SignedXml({
     privateKey: material.privateKeyPem,
     publicCert: material.certPem,
@@ -74,4 +71,27 @@ export const signXml = async (
   }
 
   return signedXml;
+};
+
+/** Firma usando un .p12 en disco (retrocompatibilidad). */
+export const signXml = async (
+  xml: string,
+  certificateInput?: CertificateInput,
+): Promise<string> => {
+  if (!certificateInput) {
+    return xml;
+  }
+
+  const material = await loadPkcs12Material(certificateInput);
+  return materialToSignedXml(xml, material);
+};
+
+/** Firma con buffer PKCS#12 descifrado. */
+export const signXmlWithP12Buffer = async (
+  xml: string,
+  p12Buffer: Buffer,
+  password: string,
+): Promise<string> => {
+  const material = await loadPkcs12MaterialFromBuffer(p12Buffer, password);
+  return materialToSignedXml(xml, material);
 };

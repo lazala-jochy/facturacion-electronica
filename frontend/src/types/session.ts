@@ -14,6 +14,8 @@ export type AuthCompany = {
   email?: string | null;
   /** Ruta relativa al API, p. ej. `/uploads/companies/1.png` */
   logoUrl?: string | null;
+  /** Indica si hay certificado DGII (.p12) configurado para la empresa. */
+  certificateConfigured?: boolean;
 };
 
 /** Sesión persistida: JWT + contexto de usuario y empresa (multi-tenant). */

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { listClients, type ClientListItem } from "../services/clients";
 import { AUTH_STORAGE_KEY, type AuthSession } from "../types/session";
+import { ApiError, refreshAuthSessionFromServer } from "../services/api";
 import {
   deleteCotizacion,
   downloadCotizacionPDF,
@@ -28,6 +29,37 @@ const formatDate = (value?: string) => {
   });
 };
 
+/** Icono carpeta + lupa: intención “buscar archivo en el equipo”. */
+function CertBrowseIllustration({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 64 64"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <path
+        d="M10 22h12l4 4h20a4 4 0 014 4v18a4 4 0 01-4 4H14a4 4 0 01-4-4V26a4 4 0 014-4z"
+        stroke="currentColor"
+        strokeWidth={2.5}
+        strokeLinejoin="round"
+        className="text-slate-300"
+      />
+      <path
+        d="M10 22V18a4 4 0 014-4h10l4 4h4"
+        stroke="currentColor"
+        strokeWidth={2.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="text-[#2563eb]"
+      />
+      <circle cx={38} cy={38} r={9} stroke="#2563eb" strokeWidth={2.5} />
+      <path d="M45 45l10 10" stroke="#2563eb" strokeWidth={2.5} strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export default function Clients() {
   const session = useMemo<AuthSession | null>(() => {
     const raw = localStorage.getItem(AUTH_STORAGE_KEY);
@@ -50,6 +82,13 @@ export default function Clients() {
   const [downloadError, setDownloadError] = useState<string>("");
   const [ecfError, setEcfError] = useState<string>("");
   const [ecfSuccess, setEcfSuccess] = useState<string>("");
+  const [ecfNeedCertForId, setEcfNeedCertForId] = useState<number | null>(null);
+  const [modalCertFile, setModalCertFile] = useState<File | null>(null);
+  const [modalCertPassword, setModalCertPassword] = useState("");
+  /** Clave definida al guardar el .p12; obligatoria en cada envío si ya hay certificado. */
+  const [ecfEncryptionSecret, setEcfEncryptionSecret] = useState("");
+  const [modalEncryptionSecret, setModalEncryptionSecret] = useState("");
+  const [ecfCertModalLoading, setEcfCertModalLoading] = useState(false);
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState<"name" | "rnc" | "number" | "total" | "status">("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -71,6 +110,15 @@ export default function Clients() {
       window.removeEventListener("offline", updateOnlineStatus);
     };
   }, []);
+
+  useEffect(() => {
+    const id = company?.id;
+    if (id == null || typeof sessionStorage === "undefined") return;
+    const saved = sessionStorage.getItem(`fe_cert_enc_${id}`);
+    if (saved) {
+      setEcfEncryptionSecret((prev) => (prev.trim().length > 0 ? prev : saved));
+    }
+  }, [company?.id]);
 
   useEffect(() => {
     const fetchClients = async () => {
@@ -110,8 +158,19 @@ export default function Clients() {
     setSendingEcfId(cotizacionId);
     setEcfError("");
     setEcfSuccess("");
+    if (company?.certificateConfigured) {
+      if (ecfEncryptionSecret.trim().length < 8) {
+        setEcfError("Indicá la clave de cifrado del certificado (mín. 8 caracteres) antes de enviar a DGII.");
+        setSendingEcfId(null);
+        return;
+      }
+    }
     try {
-      const out = await submitEcf(cotizacionId);
+      const out = await submitEcf(cotizacionId, {
+        certificateEncryptionSecret: company?.certificateConfigured
+          ? ecfEncryptionSecret.trim()
+          : undefined,
+      });
       setEcfSuccess(`e-CF enviado (Track ID: ${out.track_id}).`);
       setClients((prev) =>
         prev.map((client) => ({
@@ -129,12 +188,84 @@ export default function Clients() {
         })),
       );
     } catch (error) {
+      if (
+        error instanceof ApiError &&
+        (error.status === 428 || error.body?.code === "CERTIFICATE_REQUIRED")
+      ) {
+        setModalCertFile(null);
+        setModalCertPassword("");
+        setModalEncryptionSecret(ecfEncryptionSecret.trim());
+        setEcfNeedCertForId(cotizacionId);
+        return;
+      }
       const errorMsg =
         error instanceof Error ? error.message : "Error al enviar e-CF";
       setEcfError(errorMsg);
       console.error("Error al enviar e-CF:", error);
     } finally {
       setSendingEcfId(null);
+    }
+  };
+
+  const handleSubmitCertAndResend = async () => {
+    const id = ecfNeedCertForId;
+    if (id === null || !modalCertFile) {
+      setEcfError("Seleccioná tu archivo .p12 o .pfx.");
+      return;
+    }
+    if (!modalCertPassword.trim()) {
+      setEcfError("Indicá la contraseña del certificado.");
+      return;
+    }
+    if (modalEncryptionSecret.trim().length < 8) {
+      setEcfError("La clave de cifrado del certificado debe tener al menos 8 caracteres.");
+      return;
+    }
+    if (!isOnline) {
+      setEcfError("Debes conectarte a internet para enviar a DGII.");
+      return;
+    }
+    setEcfCertModalLoading(true);
+    setEcfError("");
+    setEcfSuccess("");
+    try {
+      const out = await submitEcf(id, {
+        certificate: modalCertFile,
+        certificatePassword: modalCertPassword,
+        certificateEncryptionSecret: modalEncryptionSecret.trim(),
+      });
+      if (out.certificate_saved) {
+        await refreshAuthSessionFromServer();
+      }
+      setEcfNeedCertForId(null);
+      setModalCertFile(null);
+      setModalCertPassword("");
+      const enc = modalEncryptionSecret.trim();
+      setModalEncryptionSecret("");
+      setEcfEncryptionSecret(enc);
+      if (company?.id && enc.length >= 8) {
+        sessionStorage.setItem(`fe_cert_enc_${company.id}`, enc);
+      }
+      setEcfSuccess(`e-CF enviado (Track ID: ${out.track_id}).`);
+      setClients((prev) =>
+        prev.map((client) => ({
+          ...client,
+          cotizaciones: client.cotizaciones.map((row) =>
+            row.id === id
+              ? {
+                  ...row,
+                  dgii_status: out.status,
+                  dgii_track_id: out.track_id,
+                  dgii_submitted_at: new Date().toISOString(),
+                }
+              : row,
+          ),
+        })),
+      );
+    } catch (error) {
+      setEcfError(error instanceof Error ? error.message : "Error al enviar e-CF");
+    } finally {
+      setEcfCertModalLoading(false);
     }
   };
 
@@ -268,6 +399,31 @@ export default function Clients() {
           Sin conexion a internet. El envio a DGII estara deshabilitado hasta reconectar.
         </div>
       )}
+      {company?.certificateConfigured ? (
+        <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50/90 p-4 text-sm shadow-sm">
+          <label htmlFor="ecf-enc-clients" className="block font-semibold text-slate-800">
+            Clave de cifrado del certificado (DGII)
+          </label>
+          <p className="mt-1 text-xs text-slate-600">
+            La definiste al subir el .p12 (mín. 8 caracteres). Es necesaria cada vez que presionás «Enviar DGII». Opcionalmente
+            se recuerda en este navegador al salir del campo.
+          </p>
+          <input
+            id="ecf-enc-clients"
+            type="password"
+            autoComplete="new-password"
+            className="mt-2 w-full max-w-md rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-[#2563eb] focus:outline-none focus:ring-2 focus:ring-blue-100"
+            placeholder="Contraseña de cifrado (no es la del .p12)"
+            value={ecfEncryptionSecret}
+            onChange={(e) => setEcfEncryptionSecret(e.target.value)}
+            onBlur={(e) => {
+              if (!company?.id) return;
+              const t = e.target.value.trim();
+              if (t.length >= 8) sessionStorage.setItem(`fe_cert_enc_${company.id}`, t);
+            }}
+          />
+        </div>
+      ) : null}
       <div className="rounded-3xl border border-gray-200 bg-white shadow-lg overflow-hidden">
         <div className="border-b border-gray-100 bg-gray-50/70 p-4 sm:p-5">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
@@ -833,6 +989,112 @@ export default function Clients() {
           </div>
         </div>
       )}
+
+      {ecfNeedCertForId !== null ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-slate-900">Certificado DGII requerido</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Para firmar y enviar el comprobante necesitamos tu certificado .p12 o .pfx. Se guardará cifrado en el servidor.
+              Definí una clave de cifrado (mín. 8 caracteres): la volverás a usar en cada envío a DGII; no se guarda en el servidor.
+            </p>
+            <div className="mt-4 space-y-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                  Certificado en tu computadora
+                </p>
+                <input
+                  id="modal-dgii-cert-file"
+                  type="file"
+                  accept=".p12,.pfx,application/x-pkcs12"
+                  className="sr-only"
+                  onChange={(e) => setModalCertFile(e.target.files?.[0] ?? null)}
+                />
+                <label
+                  htmlFor="modal-dgii-cert-file"
+                  className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 text-center transition focus-within:ring-2 focus-within:ring-[#2563eb] focus-within:ring-offset-2 ${
+                    modalCertFile
+                      ? "border-emerald-400 bg-emerald-50/60"
+                      : "border-slate-300 bg-slate-50/80 hover:border-[#2563eb] hover:bg-blue-50/50"
+                  }`}
+                >
+                  <CertBrowseIllustration className="h-14 w-14 shrink-0" />
+                  <span className="text-sm font-semibold text-slate-900">
+                    Buscar certificado en mi equipo
+                  </span>
+                  <span className="max-w-[280px] text-xs leading-snug text-slate-600">
+                    Tocá o hacé clic aquí para abrir el explorador y elegir el archivo{" "}
+                    <span className="font-medium text-slate-800">.p12</span> o{" "}
+                    <span className="font-medium text-slate-800">.pfx</span> que te dio la DGII.
+                  </span>
+                  {modalCertFile ? (
+                    <span className="mt-1 inline-flex max-w-full items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-emerald-800 shadow-sm ring-1 ring-emerald-200">
+                      <svg className="h-4 w-4 shrink-0 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="truncate" title={modalCertFile.name}>
+                        {modalCertFile.name}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-medium text-[#2563eb]">Elegir archivo…</span>
+                  )}
+                </label>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700" htmlFor="modal-p12-pw">
+                  Contraseña del certificado
+                </label>
+                <input
+                  id="modal-p12-pw"
+                  type="password"
+                  className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                  value={modalCertPassword}
+                  onChange={(e) => setModalCertPassword(e.target.value)}
+                  autoComplete="new-password"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700" htmlFor="modal-cert-enc">
+                  Clave de cifrado (mín. 8 caracteres)
+                </label>
+                <input
+                  id="modal-cert-enc"
+                  type="password"
+                  className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                  placeholder="La misma clave en envíos siguientes"
+                  value={modalEncryptionSecret}
+                  onChange={(e) => setModalEncryptionSecret(e.target.value)}
+                  autoComplete="new-password"
+                />
+              </div>
+            </div>
+            <div className="mt-6 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                onClick={() => {
+                  setEcfNeedCertForId(null);
+                  setModalCertFile(null);
+                  setModalCertPassword("");
+                  setModalEncryptionSecret("");
+                }}
+                disabled={ecfCertModalLoading}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1d4ed8] disabled:opacity-50"
+                onClick={() => void handleSubmitCertAndResend()}
+                disabled={ecfCertModalLoading}
+              >
+                {ecfCertModalLoading ? "Enviando…" : "Guardar y enviar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

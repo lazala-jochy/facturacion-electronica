@@ -30,7 +30,12 @@ const toSession = (data: AuthLoginResponse): AuthSession => ({
 
 export const registerCompany = async (
   payload: RegisterPayload,
-  logoFile?: File | null,
+  opts?: {
+    logoFile?: File | null;
+    certificateFile?: File | null;
+    certificatePassword?: string;
+    certificateEncryptionSecret?: string;
+  },
 ): Promise<AuthSession> => {
   const formData = new FormData();
   formData.append("name", payload.name);
@@ -46,7 +51,16 @@ export const registerCompany = async (
   if (payload.company_email != null && payload.company_email !== "") {
     formData.append("company_email", normalizeEmail(payload.company_email));
   }
-  if (logoFile) formData.append("logo", logoFile);
+  if (opts?.logoFile) formData.append("logo", opts.logoFile);
+  if (opts?.certificateFile) {
+    formData.append("certificate", opts.certificateFile);
+    if (opts.certificatePassword != null && opts.certificatePassword !== "") {
+      formData.append("certificate_password", opts.certificatePassword);
+    }
+    if (opts.certificateEncryptionSecret != null && opts.certificateEncryptionSecret !== "") {
+      formData.append("certificate_encryption_secret", opts.certificateEncryptionSecret);
+    }
+  }
 
   const response = await fetch(`${API_URL}/auth/register`, {
     method: "POST",

@@ -60,6 +60,11 @@ export default function Auth({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  /** Certificado DGII opcional al registrarse (.p12/.pfx). */
+  const [certificateFile, setCertificateFile] = useState<File | null>(null);
+  const [certificatePassword, setCertificatePassword] = useState("");
+  /** Clave definida por el usuario para cifrar el .p12 en disco (no se guarda en el servidor). */
+  const [certificateEncryptionSecret, setCertificateEncryptionSecret] = useState("");
   const [registerStep, setRegisterStep] = useState<RegisterStep>(1);
 
   useEffect(() => {
@@ -86,6 +91,9 @@ export default function Auth({
     if (logoPreview) URL.revokeObjectURL(logoPreview);
     setLogoPreview(null);
     setLogoFile(null);
+    setCertificateFile(null);
+    setCertificatePassword("");
+    setCertificateEncryptionSecret("");
     if (nextMode === "login") {
       setNombrePersona("");
       setCedulaPersona("");
@@ -184,9 +192,17 @@ export default function Auth({
         setError("La contrasena debe tener minimo 8 caracteres.");
         return;
       }
-    } else {
+      } else {
       if (registerStep !== 3) return;
       if (!validateRegisterStep(3)) return;
+      if (certificateFile && !certificatePassword.trim()) {
+        setError("Si subís certificado .p12 o .pfx, indicá su contraseña.");
+        return;
+      }
+      if (certificateFile && certificateEncryptionSecret.trim().length < 8) {
+        setError("Definí una clave de cifrado del certificado de al menos 8 caracteres (la usarás al enviar e-CF).");
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -210,7 +226,13 @@ export default function Auth({
             company_email: email.trim(),
             password,
           },
-          logoFile,
+          {
+            logoFile,
+            certificateFile: certificateFile ?? undefined,
+            certificatePassword: certificatePassword.trim() || undefined,
+            certificateEncryptionSecret:
+              certificateFile ? certificateEncryptionSecret.trim() : undefined,
+          },
         );
         onAuthenticated(session);
       }
@@ -782,6 +804,66 @@ export default function Auth({
                               </svg>
                             </button>
                           </div>
+                        </div>
+                        <div className="sm:col-span-2 rounded-lg border border-slate-200 bg-slate-50/90 p-4">
+                          <p className="text-sm font-semibold text-slate-800">
+                            Certificado digital DGII{" "}
+                            <span className="font-normal text-slate-500">(opcional)</span>
+                          </p>
+                          <p className="mt-1 text-xs text-slate-600">
+                            Archivo .p12 o .pfx para firmar e-CF. Se guarda cifrado en el servidor; definís abajo una{" "}
+                            <span className="font-medium text-slate-700">clave de cifrado</span> que volverás a ingresar
+                            cada vez que envíes a DGII (mínimo 8 caracteres).
+                          </p>
+                          <label className="mt-3 flex cursor-pointer flex-col gap-2">
+                            <span className="text-xs font-medium text-slate-700">Archivo de certificado</span>
+                            <input
+                              type="file"
+                              accept=".p12,.pfx,application/x-pkcs12"
+                              className="text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-[#2563eb] file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white"
+                              onChange={(e) =>
+                                setCertificateFile(e.target.files?.[0] ?? null)
+                              }
+                            />
+                          </label>
+                          {certificateFile ? (
+                            <div className="mt-3 space-y-3">
+                              <div>
+                                <label
+                                  htmlFor="reg-cert-pass"
+                                  className="block text-xs font-semibold text-slate-700 mb-1"
+                                >
+                                  Contraseña del certificado *
+                                </label>
+                                <input
+                                  id="reg-cert-pass"
+                                  type="password"
+                                  autoComplete="new-password"
+                                  className="w-full h-10 px-3 rounded-lg border border-slate-300 bg-white text-sm"
+                                  placeholder="Contraseña del .p12"
+                                  value={certificatePassword}
+                                  onChange={(e) => setCertificatePassword(e.target.value)}
+                                />
+                              </div>
+                              <div>
+                                <label
+                                  htmlFor="reg-cert-enc"
+                                  className="block text-xs font-semibold text-slate-700 mb-1"
+                                >
+                                  Clave de cifrado (mín. 8 caracteres) *
+                                </label>
+                                <input
+                                  id="reg-cert-enc"
+                                  type="password"
+                                  autoComplete="new-password"
+                                  className="w-full h-10 px-3 rounded-lg border border-slate-300 bg-white text-sm"
+                                  placeholder="La misma clave usarás al enviar e-CF"
+                                  value={certificateEncryptionSecret}
+                                  onChange={(e) => setCertificateEncryptionSecret(e.target.value)}
+                                />
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     )}

@@ -4,7 +4,7 @@ import * as clientsController from "../controllers/clients.controller";
 import * as cotizacionesController from "../controllers/cotizaciones.controller";
 import { asyncHandler } from "../middleware/asyncHandler";
 import { requireAuth } from "../middleware/auth.middleware";
-import { registerLogoUpload } from "../middleware/registerUpload.middleware";
+import { authFormUpload, ecfCertificateUpload } from "../middleware/registerUpload.middleware";
 
 export const buildRouter = () => {
   const router = Router();
@@ -13,21 +13,12 @@ export const buildRouter = () => {
     res.json({ ok: true });
   });
 
-  router.post(
-    "/auth/register",
-    registerLogoUpload.single("logo"),
-    asyncHandler(authController.register),
-  );
+  router.post("/auth/register", authFormUpload, asyncHandler(authController.register));
   router.post("/auth/login", asyncHandler(authController.login));
   router.post("/auth/forgot-password", asyncHandler(authController.forgotPassword));
   router.post("/auth/reset-password", asyncHandler(authController.resetPassword));
   router.get("/auth/me", requireAuth, asyncHandler(authController.me));
-  router.put(
-    "/auth/company",
-    requireAuth,
-    registerLogoUpload.single("logo"),
-    asyncHandler(authController.updateCompany),
-  );
+  router.put("/auth/company", requireAuth, authFormUpload, asyncHandler(authController.updateCompany));
 
   router.post("/clients", requireAuth, asyncHandler(clientsController.createClient));
   router.get("/clients", requireAuth, asyncHandler(clientsController.listClients));
@@ -72,6 +63,7 @@ export const buildRouter = () => {
   router.post(
     "/cotizaciones/:id/ecf/submit",
     requireAuth,
+    ecfCertificateUpload,
     asyncHandler(cotizacionesController.submitEcfByCotizacion),
   );
 

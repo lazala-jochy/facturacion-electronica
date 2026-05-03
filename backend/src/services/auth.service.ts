@@ -2,6 +2,12 @@ import { createHash, randomBytes } from "crypto";
 import type { Company, User } from "@prisma/client";
 import { prisma } from "../prisma";
 import type { ForgotPasswordBody, LoginBody, RegisterBody, ResetPasswordBody, UpdateCompanyBody } from "../types/auth";
+import { assertCertificateEncryptionSecret } from "../utils/companyCertificateCrypto";
+import {
+  encryptAndPersistCompanyCertificate,
+  companyHasCertificateRecord,
+  removeStoredCompanyCertificate,
+} from "../utils/companyCertificateStorage";
 import { removeUploadedCompanyLogoFiles, saveCompanyLogoFile } from "../utils/companyLogo";
 import { normalizeEmail } from "../utils/email";
 import { hashPassword, verifyPassword } from "../utils/password";
@@ -14,6 +20,10 @@ import {
   isValidRnc,
 } from "../utils/validation";
 
+export type PublicCompany = Pick<Company, "id" | "name" | "rnc" | "address" | "phone" | "email" | "logoUrl"> & {
+  certificateConfigured: boolean;
+};
+
 export type AuthOk = {
   ok: true;
   token: string;
@@ -23,7 +33,7 @@ export type AuthOk = {
     full_name: string;
     cedula: string;
   };
-  company: Pick<Company, "id" | "name" | "rnc" | "address" | "phone" | "email" | "logoUrl">;
+  company: PublicCompany;
 };
 
 export type AuthErr = { ok: false; status: number; message: string };
@@ -36,7 +46,7 @@ export type MeOk = {
     full_name: string;
     cedula: string;
   };
-  company: Pick<Company, "id" | "name" | "rnc" | "address" | "phone" | "email" | "logoUrl">;
+  company: PublicCompany;
 };
 
 export type UpdateCompanyOk = {
@@ -47,10 +57,10 @@ export type UpdateCompanyOk = {
     full_name: string;
     cedula: string;
   };
-  company: Pick<Company, "id" | "name" | "rnc" | "address" | "phone" | "email" | "logoUrl">;
+  company: PublicCompany;
 };
 
-const publicCompany = (c: Company) => ({
+const publicCompany = (c: Company): PublicCompany => ({
   id: c.id,
   name: c.name,
   rnc: c.rnc,
@@ -58,6 +68,7 @@ const publicCompany = (c: Company) => ({
   phone: c.phone,
   email: c.email,
   logoUrl: c.logoUrl,
+  certificateConfigured: companyHasCertificateRecord(c),
 });
 
 const publicUser = (u: User) => ({
@@ -70,7 +81,14 @@ const publicUser = (u: User) => ({
 export const authService = {
   async register(
     body: RegisterBody,
-    opts?: { logoFile?: { buffer: Buffer; mimetype: string }; uploadsRoot?: string },
+    opts?: {
+      logoFile?: { buffer: Buffer; mimetype: string };
+      certificateFile?: { buffer: Buffer; mimetype?: string };
+      certificatePassword?: string;
+      /** Clave definida por el usuario en la interfaz para cifrar el .p12 guardado en disco. */
+      certificateEncryptionSecret?: string;
+      uploadsRoot?: string;
+    },
   ): Promise<AuthOk | AuthErr> {
     const name = body.name?.trim();
     const address = body.address?.trim() ?? "";
@@ -178,6 +196,51 @@ export const authService = {
       }
     }
 
+    const certBuf = opts?.certificateFile?.buffer;
+    const certPw = opts?.certificatePassword?.trim() ?? "";
+    if (certBuf?.length) {
+      if (!certPw) {
+        return {
+          ok: false,
+          status: 400,
+          message: "Si subís un certificado .p12, la contraseña del certificado es obligatoria.",
+        };
+      }
+      let encryptionSecret: string;
+      try {
+        encryptionSecret = assertCertificateEncryptionSecret(opts?.certificateEncryptionSecret ?? "");
+      } catch (e) {
+        const msg =
+          e instanceof Error
+            ? e.message
+            : "Indicá una clave de cifrado para el certificado (mínimo 8 caracteres; la usarás cada vez que envíes e-CF).";
+        return { ok: false, status: 400, message: msg };
+      }
+      if (!uploadsRoot) {
+        return { ok: false, status: 500, message: "Ruta de almacenamiento no configurada." };
+      }
+      try {
+        const persisted = await encryptAndPersistCompanyCertificate({
+          uploadsRoot,
+          companyId: company.id,
+          p12Buffer: certBuf,
+          p12Password: certPw,
+          encryptionSecret,
+        });
+        companyOut = await prisma.company.update({
+          where: { id: company.id },
+          data: {
+            certificateSalt: persisted.certificateSalt,
+            certificateEncPath: persisted.certificateEncPath,
+            certificatePasswordEnc: persisted.certificatePasswordEnc,
+          },
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "No se pudo guardar el certificado.";
+        return { ok: false, status: 400, message: msg };
+      }
+    }
+
     const token = signSessionToken({
       sub: user.id,
       companyId: company.id,
@@ -248,8 +311,12 @@ export const authService = {
     body: UpdateCompanyBody,
     opts?: {
       logoFile?: { buffer: Buffer; mimetype: string };
+      certificateFile?: { buffer: Buffer; mimetype?: string };
+      certificatePassword?: string;
+      certificateEncryptionSecret?: string;
       uploadsRoot?: string;
       clearLogo?: boolean;
+      clearCertificate?: boolean;
     },
   ): Promise<UpdateCompanyOk | AuthErr> {
     const name = body.name?.trim() ?? "";
@@ -345,6 +412,62 @@ export const authService = {
         });
       } catch (e) {
         console.error("No se pudo quitar el logo de la empresa.", e);
+      }
+    }
+
+    const certUpload = opts?.certificateFile?.buffer;
+    const certPwd = opts?.certificatePassword?.trim() ?? "";
+    if (certUpload?.length && uploadsRoot) {
+      if (!certPwd) {
+        return {
+          ok: false,
+          status: 400,
+          message: "Contraseña del certificado (.p12) obligatoria al subir el archivo.",
+        };
+      }
+      let encryptionSecret: string;
+      try {
+        encryptionSecret = assertCertificateEncryptionSecret(opts?.certificateEncryptionSecret ?? "");
+      } catch (e) {
+        const msg =
+          e instanceof Error
+            ? e.message
+            : "Indicá una clave de cifrado para el certificado (mínimo 8 caracteres; la usarás cada vez que envíes e-CF).";
+        return { ok: false, status: 400, message: msg };
+      }
+      try {
+        const persisted = await encryptAndPersistCompanyCertificate({
+          uploadsRoot,
+          companyId,
+          p12Buffer: certUpload,
+          p12Password: certPwd,
+          encryptionSecret,
+        });
+        companyOut = await prisma.company.update({
+          where: { id: companyId },
+          data: {
+            certificateSalt: persisted.certificateSalt,
+            certificateEncPath: persisted.certificateEncPath,
+            certificatePasswordEnc: persisted.certificatePasswordEnc,
+          },
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "No se pudo guardar el certificado.";
+        return { ok: false, status: 400, message: msg };
+      }
+    } else if (opts?.clearCertificate && uploadsRoot) {
+      try {
+        await removeStoredCompanyCertificate(uploadsRoot, companyId);
+        companyOut = await prisma.company.update({
+          where: { id: companyId },
+          data: {
+            certificateSalt: null,
+            certificateEncPath: null,
+            certificatePasswordEnc: null,
+          },
+        });
+      } catch (e) {
+        console.error("No se pudo eliminar certificado de empresa.", e);
       }
     }
 

@@ -1,8 +1,9 @@
-import { AUTH_STORAGE_KEY, type AuthSession } from "../types/session";
+import { AUTH_STORAGE_KEY, type AuthCompany, type AuthSession, type AuthUser } from "../types/session";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
 
-const readSession = (): AuthSession | null => {
+/** Lectura cruda de la sesión (útil antes de llamadas multipart). */
+export const readAuthSessionFromStorage = (): AuthSession | null => {
   const raw = localStorage.getItem(AUTH_STORAGE_KEY);
   if (!raw) return null;
   try {
@@ -16,7 +17,30 @@ const readSession = (): AuthSession | null => {
 
 export const apiUrl = API_URL;
 
-export const getAuthToken = (): string | null => readSession()?.token ?? null;
+export const getAuthToken = (): string | null => readAuthSessionFromStorage()?.token ?? null;
+
+export class ApiError extends Error {
+  readonly status: number;
+  readonly body?: Record<string, unknown>;
+
+  constructor(message: string, status: number, body?: Record<string, unknown>) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
+/** Actualiza usuario/empresa en localStorage desde `GET /auth/me` (p. ej. tras guardar certificado). */
+export const refreshAuthSessionFromServer = async (): Promise<void> => {
+  const session = readAuthSessionFromStorage();
+  if (!session?.token) return;
+  const data = await apiFetch<{ user: AuthUser; company: AuthCompany }>("/auth/me", {
+    method: "GET",
+  });
+  const next: AuthSession = { ...session, user: data.user, company: data.company };
+  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(next));
+};
 
 /**
  * Fetch autenticado: envía `Authorization: Bearer` desde la sesión guardada.
@@ -26,7 +50,7 @@ export const apiFetch = async <T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> => {
-  const session = readSession();
+  const session = readAuthSessionFromStorage();
   const headers = new Headers(init.headers);
   if (session?.token) {
     headers.set("Authorization", `Bearer ${session.token}`);
@@ -42,7 +66,7 @@ export const apiFetch = async <T>(
     message?: string;
   };
   if (!response.ok) {
-    throw new Error(data.message ?? "Error en la solicitud.");
+    throw new ApiError(data.message ?? "Error en la solicitud.", response.status, data as Record<string, unknown>);
   }
   return data as T;
 };

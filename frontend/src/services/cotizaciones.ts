@@ -1,5 +1,4 @@
-import { apiFetch } from "./api";
-import { apiUrl } from "./api";
+import { apiFetch, apiUrl, ApiError, readAuthSessionFromStorage } from "./api";
 import { AUTH_STORAGE_KEY, type AuthSession } from "../types/session";
 
 export type CotizacionItemDraft = {
@@ -122,20 +121,56 @@ export const generateEcfXml = (id: number) =>
     { method: "GET" },
   );
 
-export const submitEcf = (id: number) =>
-  (typeof navigator !== "undefined" && !navigator.onLine
-    ? Promise.reject(new Error("Debes conectarte a internet para enviar a DGII."))
-    :
-  apiFetch<{
-    message: string;
-    status: "accepted" | "rejected";
-    track_id: string;
-    accepted: boolean;
-    dgii_response: string;
-  }>(`/cotizaciones/${id}/ecf/submit`, {
+export type SubmitEcfResult = {
+  message: string;
+  status: "accepted" | "rejected";
+  track_id: string;
+  accepted: boolean;
+  dgii_response: string;
+  certificate_saved?: boolean;
+};
+
+export const submitEcf = async (
+  id: number,
+  opts?: {
+    certificate?: File;
+    certificatePassword?: string;
+    /** Misma clave que al guardar el .p12; obligatoria si ya hay certificado guardado o al subir uno en este envío. */
+    certificateEncryptionSecret?: string;
+  },
+): Promise<SubmitEcfResult> => {
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    throw new Error("Debes conectarte a internet para enviar a DGII.");
+  }
+  const session = readAuthSessionFromStorage();
+  if (!session?.token) throw new ApiError("No hay sesión.", 401);
+
+  const headers = new Headers();
+  headers.set("Authorization", `Bearer ${session.token}`);
+
+  const fd = new FormData();
+  const enc = opts?.certificateEncryptionSecret?.trim();
+  if (enc) fd.append("certificate_encryption_secret", enc);
+  if (opts?.certificate) {
+    fd.append("certificate", opts.certificate);
+    fd.append("certificate_password", opts.certificatePassword ?? "");
+  }
+
+  const response = await fetch(`${apiUrl}/cotizaciones/${id}/ecf/submit`, {
     method: "POST",
-    body: JSON.stringify({}),
-  }));
+    headers,
+    body: fd,
+  });
+  const data = (await response.json().catch(() => ({}))) as SubmitEcfResult & {
+    message?: string;
+    code?: string;
+  };
+
+  if (!response.ok) {
+    throw new ApiError(data.message ?? "No se pudo enviar.", response.status, data as Record<string, unknown>);
+  }
+  return data as SubmitEcfResult;
+};
 
 /**
  * Descarga una cotización en formato PDF

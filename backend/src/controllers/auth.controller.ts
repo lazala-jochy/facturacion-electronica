@@ -1,12 +1,27 @@
 import "../types/express-auth.augment";
 import path from "path";
-import type { Request, RequestHandler } from "express";
+import type { Express, Request, RequestHandler } from "express";
 import { authService } from "../services/auth.service";
 import type { ForgotPasswordBody, RegisterBody, ResetPasswordBody, UpdateCompanyBody } from "../types/auth";
 import { isAllowedLogoMime } from "../utils/companyLogo";
+import { validateCertificateMulterFile } from "../utils/companyCertificateUpload";
 
 const pickStr = (b: Record<string, unknown>, k: string): string | undefined =>
   typeof b[k] === "string" ? (b[k] as string) : undefined;
+
+type MulterFields = { [fieldname: string]: Express.Multer.File[] } | undefined;
+
+const readAuthFiles = (
+  req: Request,
+): { logo?: Express.Multer.File; certificate?: Express.Multer.File } => {
+  const map = req.files as MulterFields;
+  const logo = map?.logo?.[0];
+  const certificate = map?.certificate?.[0];
+  return {
+    ...(logo?.buffer?.length ? { logo } : {}),
+    ...(certificate?.buffer?.length ? { certificate } : {}),
+  };
+};
 
 const updateCompanyBodyFromReq = (req: Request): UpdateCompanyBody => {
   const b = ((req.body as Record<string, unknown>) ?? {}) as Record<string, unknown>;
@@ -28,29 +43,62 @@ const wantsClearLogo = (req: Request): boolean => {
   return v === true || v === 1 || v === "1" || v === "true";
 };
 
+const wantsClearCertificate = (req: Request): boolean => {
+  const b = (req.body as Record<string, unknown>) ?? {};
+  const v = b.clear_certificate;
+  return v === true || v === 1 || v === "1" || v === "true";
+};
+
 export const register: RequestHandler = async (req, res) => {
-  const file = req.file;
-  if (file && file.buffer.length && !isAllowedLogoMime(file.mimetype)) {
-    res.status(400).json({
-      message: "El logo debe ser PNG, JPG, GIF o WebP de hasta 2 MB.",
+  try {
+    const { logo: logoFileRaw, certificate: certRaw } = readAuthFiles(req);
+    let certificateFile = certRaw;
+    if (certificateFile) certificateFile = validateCertificateMulterFile(certificateFile);
+    let logoCandidate = logoFileRaw;
+    if (logoCandidate && logoCandidate.buffer.length && !isAllowedLogoMime(logoCandidate.mimetype)) {
+      res.status(400).json({
+        message: "El logo debe ser PNG, JPG, GIF o WebP de hasta 2 MB.",
+      });
+      return;
+    }
+    if (logoCandidate && logoCandidate.buffer.length > 2 * 1024 * 1024) {
+      res.status(400).json({ message: "El logo no puede superar 2 MB." });
+      return;
+    }
+    if (logoCandidate && !logoCandidate.buffer.length) logoCandidate = undefined;
+
+    const uploadsRoot = path.join(process.cwd(), "uploads");
+    const body = req.body as RegisterBody & { certificate_password?: string };
+    const certificatePassword = pickStr(
+      (req.body as Record<string, unknown>) ?? {},
+      "certificate_password",
+    );
+    const certificateEncryptionSecret = pickStr(
+      (req.body as Record<string, unknown>) ?? {},
+      "certificate_encryption_secret",
+    );
+
+    const result = await authService.register(body, {
+      logoFile: logoCandidate?.buffer?.length ? logoCandidate : undefined,
+      certificateFile: certificateFile?.buffer?.length ? certificateFile : undefined,
+      certificatePassword,
+      certificateEncryptionSecret,
+      uploadsRoot,
     });
-    return;
+    if (!result.ok) {
+      res.status(result.status).json({ message: result.message });
+      return;
+    }
+    res.status(201).json({
+      message: "Cuenta creada correctamente.",
+      token: result.token,
+      user: result.user,
+      company: result.company,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Solicitud inválida.";
+    res.status(400).json({ message: msg });
   }
-  const uploadsRoot = path.join(process.cwd(), "uploads");
-  const result = await authService.register(req.body as RegisterBody, {
-    logoFile: file?.buffer?.length ? file : undefined,
-    uploadsRoot,
-  });
-  if (!result.ok) {
-    res.status(result.status).json({ message: result.message });
-    return;
-  }
-  res.status(201).json({
-    message: "Cuenta creada correctamente.",
-    token: result.token,
-    user: result.user,
-    company: result.company,
-  });
 };
 
 export const login: RequestHandler = async (req, res) => {
@@ -105,31 +153,60 @@ export const updateCompany: RequestHandler = async (req, res) => {
     return;
   }
 
-  const file = req.file;
-  if (file && file.buffer?.length && !isAllowedLogoMime(file.mimetype)) {
-    res.status(400).json({
-      message: "El logo debe ser PNG, JPG, GIF o WebP de hasta 2 MB.",
+  try {
+    const { logo: logoCandidate, certificate: certCandidate } = readAuthFiles(req);
+
+    let logoFile = logoCandidate;
+    if (logoFile && logoFile.buffer.length && !isAllowedLogoMime(logoFile.mimetype)) {
+      res.status(400).json({
+        message: "El logo debe ser PNG, JPG, GIF o WebP de hasta 2 MB.",
+      });
+      return;
+    }
+    if (logoFile && logoFile.buffer.length > 2 * 1024 * 1024) {
+      res.status(400).json({ message: "El logo no puede superar 2 MB." });
+      return;
+    }
+    if (logoFile && !logoFile.buffer.length) logoFile = undefined;
+
+    let certificateMulter = certCandidate;
+    if (certificateMulter) certificateMulter = validateCertificateMulterFile(certificateMulter);
+
+    const body = updateCompanyBodyFromReq(req);
+    const uploadsRoot = path.join(process.cwd(), "uploads");
+    const clearLogo = wantsClearLogo(req) && !logoCandidate?.buffer?.length;
+    const clearCert = wantsClearCertificate(req) && !certificateMulter?.buffer?.length;
+
+    const certificatePassword = pickStr(
+      (req.body as Record<string, unknown>) ?? {},
+      "certificate_password",
+    );
+    const certificateEncryptionSecret = pickStr(
+      (req.body as Record<string, unknown>) ?? {},
+      "certificate_encryption_secret",
+    );
+
+    const result = await authService.updateCompany(auth.companyId, auth.userId, body, {
+      logoFile: logoFile?.buffer?.length ? logoFile : undefined,
+      certificateFile: certificateMulter?.buffer?.length ? certificateMulter : undefined,
+      certificatePassword,
+      certificateEncryptionSecret,
+      uploadsRoot,
+      clearLogo,
+      clearCertificate: clearCert,
     });
-    return;
+    if (!result.ok) {
+      res.status(result.status).json({ message: result.message });
+      return;
+    }
+
+    res.json({
+      message: "Perfil de empresa actualizado.",
+      user: result.user,
+      company: result.company,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Solicitud inválida.";
+    res.status(400).json({ message: msg });
   }
-
-  const body = updateCompanyBodyFromReq(req);
-  const uploadsRoot = path.join(process.cwd(), "uploads");
-  const clearLogo = wantsClearLogo(req) && !file?.buffer?.length;
-
-  const result = await authService.updateCompany(auth.companyId, auth.userId, body, {
-    logoFile: file?.buffer?.length ? file : undefined,
-    uploadsRoot,
-    clearLogo,
-  });
-  if (!result.ok) {
-    res.status(result.status).json({ message: result.message });
-    return;
-  }
-
-  res.json({
-    message: "Perfil de empresa actualizado.",
-    user: result.user,
-    company: result.company,
-  });
 };

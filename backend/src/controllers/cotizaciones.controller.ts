@@ -356,6 +356,9 @@ export const generateEcfXmlByCotizacion: RequestHandler = async (req, res) => {
   });
 };
 
+const pickStr = (b: Record<string, unknown>, k: string): string | undefined =>
+  typeof b[k] === "string" ? (b[k] as string) : undefined;
+
 export const submitEcfByCotizacion: RequestHandler = async (req, res) => {
   const companyId = req.auth?.companyId;
   if (!companyId) {
@@ -368,28 +371,53 @@ export const submitEcfByCotizacion: RequestHandler = async (req, res) => {
     return;
   }
 
-  const body = (req.body ?? {}) as Record<string, unknown>;
-  const p12Path = typeof body.p12_path === "string" ? body.p12_path.trim() : "";
-  const p12Password = typeof body.p12_password === "string" ? body.p12_password : "";
+  const pathJoin = await import("node:path");
+  const uploadsRoot = pathJoin.join(process.cwd(), "uploads");
 
-  const out = await ecfService.submitForCotizacion(
-    id,
-    companyId,
-    p12Path ? { p12Path, password: p12Password } : undefined,
-  );
-  if (!out.ok) {
-    res.status(out.status).json({
-      message: out.message,
-      errors: "errors" in out ? out.errors : undefined,
-    });
-    return;
+  const certificateEncryptionSecret =
+    pickStr((req.body as Record<string, unknown>) ?? {}, "certificate_encryption_secret") ?? "";
+
+  let oneShotCertificate: { buffer: Buffer; password: string } | undefined;
+  const certMulter = req.file;
+  if (certMulter?.buffer?.length) {
+    try {
+      const { validateCertificateMulterFile } = await import("../utils/companyCertificateUpload");
+      validateCertificateMulterFile(certMulter);
+    } catch (e) {
+      res.status(400).json({ message: e instanceof Error ? e.message : "Certificado invalido." });
+      return;
+    }
+    const certPwd =
+      pickStr((req.body as Record<string, unknown>) ?? {}, "certificate_password") ?? "";
+    oneShotCertificate = { buffer: certMulter.buffer, password: certPwd };
   }
 
-  res.json({
-    message: "e-CF enviado a DGII.",
-    status: out.dgiiResponse.status,
-    track_id: out.dgiiResponse.trackId,
-    accepted: out.dgiiResponse.accepted,
-    dgii_response: out.dgiiResponse.rawResponse,
-  });
+  try {
+    const out = await ecfService.submitForCotizacion(id, companyId, {
+      uploadsRoot,
+      certificateEncryptionSecret,
+      oneShotCertificate,
+    });
+    if (!out.ok) {
+      res.status(out.status).json({
+        message: out.message,
+        errors: "errors" in out ? out.errors : undefined,
+        ...(out.code ? { code: out.code } : {}),
+      });
+      return;
+    }
+
+    res.json({
+      message: "e-CF enviado a DGII.",
+      status: out.dgiiResponse.status,
+      track_id: out.dgiiResponse.trackId,
+      accepted: out.dgiiResponse.accepted,
+      dgii_response: out.dgiiResponse.rawResponse,
+      certificate_saved: Boolean(oneShotCertificate?.buffer?.length),
+    });
+  } catch (e) {
+    res.status(500).json({
+      message: e instanceof Error ? e.message : "Error al enviar e-CF.",
+    });
+  }
 };

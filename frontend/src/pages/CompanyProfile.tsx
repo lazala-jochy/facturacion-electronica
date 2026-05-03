@@ -35,6 +35,11 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
   /** Tras guardar sin logo propio el backend deja logoUrl null (en el panel solo se muestra el ícono pequeño). */
   const [clearCompanyLogo, setClearCompanyLogo] = useState(false);
 
+  const [certificateFile, setCertificateFile] = useState<File | null>(null);
+  const [certificatePassword, setCertificatePassword] = useState("");
+  const [certificateEncryptionSecret, setCertificateEncryptionSecret] = useState("");
+  const [clearCertificate, setClearCertificate] = useState(false);
+
   useEffect(() => {
     return () => {
       if (logoObjectUrl) URL.revokeObjectURL(logoObjectUrl);
@@ -56,6 +61,12 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
     setClearCompanyLogo(false);
   };
 
+  const cancelPendingCertificate = () => {
+    setCertificateFile(null);
+    setCertificatePassword("");
+    setCertificateEncryptionSecret("");
+  };
+
   const onPickLogo = (list: FileList | null) => {
     const f = list?.[0];
     if (!f) return;
@@ -63,6 +74,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
     setLogoObjectUrl(URL.createObjectURL(f));
     setLogoFile(f);
     setClearCompanyLogo(false);
+    setClearCertificate(false);
   };
 
   const onSubmit = async (e: FormEvent) => {
@@ -84,13 +96,28 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
       return;
     }
 
+    if (certificateFile && !certificatePassword.trim()) {
+      setError("Indicá la contraseña del certificado (.p12) que vas a guardar.");
+      return;
+    }
+    if (certificateFile && certificateEncryptionSecret.trim().length < 8) {
+      setError("La clave de cifrado del certificado debe tener al menos 8 caracteres (la usarás al enviar e-CF).");
+      return;
+    }
+
     setLoading(true);
     try {
       type ProfileRes = { message: string; user: AuthUser; company: AuthCompany };
 
       let res: ProfileRes;
 
-      if (logoFile) {
+      const needsMultipart =
+        Boolean(logoFile) ||
+        Boolean(certificateFile) ||
+        clearCompanyLogo ||
+        clearCertificate;
+
+      if (needsMultipart) {
         const fd = new FormData();
         fd.append("full_name", fullName.trim());
         fd.append("cedula", cedulaDigits(cedula));
@@ -100,7 +127,14 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
         fd.append("phone", phone.trim());
         fd.append("email", email.trim());
         fd.append("regime", regime.trim() || "Régimen general");
-        fd.append("logo", logoFile);
+        if (logoFile) fd.append("logo", logoFile);
+        if (certificateFile) {
+          fd.append("certificate", certificateFile);
+          fd.append("certificate_password", certificatePassword.trim());
+          fd.append("certificate_encryption_secret", certificateEncryptionSecret.trim());
+        }
+        if (clearCompanyLogo) fd.append("clear_logo", "true");
+        if (clearCertificate) fd.append("clear_certificate", "true");
 
         const response = await fetch(`${apiUrl}/auth/company`, {
           method: "PUT",
@@ -122,7 +156,6 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
             phone: phone.trim() || undefined,
             email: email.trim() || undefined,
             regime: regime.trim() || undefined,
-            ...(clearCompanyLogo ? { clear_logo: true } : {}),
           }),
         });
       }
@@ -132,6 +165,8 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
       setLogoObjectUrl(null);
       setLogoFile(null);
       setClearCompanyLogo(false);
+      cancelPendingCertificate();
+      setClearCertificate(false);
       setSuccess("Perfil de empresa actualizado.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo actualizar.");
@@ -199,6 +234,88 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
                 </button>
               ) : null}
             </div>
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50/80 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Certificado digital (DGII)
+          </p>
+          <p className="mt-1 text-xs text-slate-600">
+            Para enviar e-CF firmados necesitamos tu .p12 o .pfx. Se almacena cifrado en disco; la contraseña del archivo y
+            una <span className="font-medium text-slate-700">clave de cifrado</span> que definís vos (mín. 8 caracteres) no se
+            guardan en texto plano. Volvé a ingresar esa clave cada vez que envíes a DGII.
+          </p>
+          <p className="mt-2 text-sm font-medium text-slate-800">
+            Estado:{" "}
+            <span className={session.company.certificateConfigured ? "text-emerald-700" : "text-amber-700"}>
+              {session.company.certificateConfigured ? "Certificado configurado" : "Sin certificado"}
+            </span>
+          </p>
+          <div className="mt-3 flex flex-col gap-3">
+            <label className="inline-flex w-fit cursor-pointer items-center rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-900">
+              <input
+                type="file"
+                accept=".p12,.pfx,application/x-pkcs12"
+                className="sr-only"
+                onChange={(e) => {
+                  setClearCertificate(false);
+                  setCertificateFile(e.target.files?.[0] ?? null);
+                }}
+              />
+              {certificateFile ? "Cambiar archivo de certificado" : "Seleccionar .p12 / .pfx"}
+            </label>
+            {certificateFile ? (
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold text-slate-700" htmlFor="cert-pass-prof">
+                  Contraseña del certificado
+                </label>
+                <input
+                  id="cert-pass-prof"
+                  type="password"
+                  autoComplete="new-password"
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                  value={certificatePassword}
+                  onChange={(e) => setCertificatePassword(e.target.value)}
+                />
+                <label className="block text-xs font-semibold text-slate-700" htmlFor="cert-enc-prof">
+                  Clave de cifrado (mín. 8 caracteres)
+                </label>
+                <input
+                  id="cert-enc-prof"
+                  type="password"
+                  autoComplete="new-password"
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                  placeholder="La misma clave al enviar e-CF"
+                  value={certificateEncryptionSecret}
+                  onChange={(e) => setCertificateEncryptionSecret(e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={() => cancelPendingCertificate()}
+                  className="text-sm text-slate-600 hover:text-slate-900"
+                >
+                  Cancelar nueva carga de certificado
+                </button>
+              </div>
+            ) : null}
+            {!certificateFile && session.company.certificateConfigured ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setClearCertificate(true);
+                  cancelPendingCertificate();
+                }}
+                className="w-fit text-sm font-medium text-red-700 hover:underline"
+              >
+                Quitar certificado guardado
+              </button>
+            ) : null}
+            {clearCertificate ? (
+              <p className="text-xs text-amber-800">
+                Se eliminará el certificado al guardar los cambios.
+              </p>
+            ) : null}
           </div>
         </div>
 
