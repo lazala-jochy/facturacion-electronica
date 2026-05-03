@@ -16,6 +16,8 @@ const readSession = (): AuthSession | null => {
 
 export const apiUrl = API_URL;
 
+export const getAuthToken = (): string | null => readSession()?.token ?? null;
+
 /**
  * Fetch autenticado: envía `Authorization: Bearer` desde la sesión guardada.
  * No acepta `company_id` en el cuerpo; el backend usa el JWT.

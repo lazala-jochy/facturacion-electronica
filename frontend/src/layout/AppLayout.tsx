@@ -1,9 +1,19 @@
 import { Outlet, NavLink } from "react-router-dom";
 import { useState } from "react";
+import type { AuthCompany } from "../types/session";
+import { BuildingIcon } from "../icons/branding";
+import { companyUploadedLogoUrl } from "../utils/companyLogo";
 
-export default function AppLayout({ onLogout }: { onLogout: () => void }) {
+export default function AppLayout({
+  company,
+  onLogout,
+}: {
+  company: AuthCompany;
+  onLogout: () => void;
+}) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const sidebarLogoUrl = companyUploadedLogoUrl(company);
 
   return (
     <div className="min-h-screen flex flex-col lg:flex-row bg-gradient-to-br from-[#f5f6ff] via-[#f8f9ff] to-[#eef2ff]">
@@ -44,12 +54,31 @@ export default function AppLayout({ onLogout }: { onLogout: () => void }) {
       >
         {/* TOP */}
         <div>
-          <div className="flex items-center justify-between mb-6">
-            <img
-              src="/icon.png"
-              alt="ETECA"
-              className="h-11 w-auto object-contain"
-            />
+          <div className="flex items-start justify-between gap-2 mb-6">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <div className="h-11 w-11 shrink-0 rounded-lg border border-slate-100 bg-white grid place-items-center overflow-hidden text-[#2563eb]">
+                {sidebarLogoUrl ? (
+                  <img
+                    src={sidebarLogoUrl}
+                    alt={company.name ? `${company.name} logo` : "Logo empresa"}
+                    className="h-full w-full object-contain object-center p-1.5"
+                  />
+                ) : (
+                  <BuildingIcon className="h-6 w-6 shrink-0" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <p
+                  className="text-sm font-semibold leading-snug text-slate-900 line-clamp-2"
+                  title={company.name}
+                >
+                  {company.name || "Empresa"}
+                </p>
+                <p className="mt-0.5 text-[11px] font-medium text-slate-500 tabular-nums truncate" title={`RNC ${company.rnc}`}>
+                  RNC {company.rnc}
+                </p>
+              </div>
+            </div>
             <button
               onClick={() => setSidebarOpen(false)}
               className="lg:hidden text-slate-600 p-1"

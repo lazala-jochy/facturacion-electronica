@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import ECF from "./pages/ECF";
+import ForgotPassword from "./pages/ForgotPassword";
 import { BrowserRouter, HashRouter, Routes, Route } from "react-router-dom";
 import AppLayout from "./layout/AppLayout";
 import Invoices from "./pages/Invoices";
@@ -10,6 +11,7 @@ import CotizacionCreate from "./pages/CotizacionCreate";
 import CotizacionEdit from "./pages/CotizacionEdit";
 import { AUTH_STORAGE_KEY, type AuthSession } from "./types/session";
 import CompanyProfile from "./pages/CompanyProfile";
+import { documentTitleWithCompany } from "./utils/productBranding";
 
 function App() {
   const initialSession = useMemo<AuthSession | null>(() => {
@@ -27,6 +29,11 @@ function App() {
   }, []);
 
   const [session, setSession] = useState<AuthSession | null>(initialSession);
+
+  useEffect(() => {
+    if (!session?.company?.name) return;
+    document.title = documentTitleWithCompany(session.company.name);
+  }, [session?.company?.name]);
 
   const handleAuthenticated = (next: AuthSession) => {
     setSession(next);
@@ -50,17 +57,25 @@ function App() {
     });
   };
 
+  const RouterComponent = window.location.protocol === "file:" ? HashRouter : BrowserRouter;
+
   if (!session) {
-    return <Auth onAuthenticated={handleAuthenticated} />;
+    return (
+      <RouterComponent>
+        <Routes>
+          <Route path="/recuperar" element={<ForgotPassword />} />
+          <Route path="*" element={<Auth onAuthenticated={handleAuthenticated} />} />
+        </Routes>
+      </RouterComponent>
+    );
   }
 
   const { company } = session;
-  const RouterComponent = window.location.protocol === "file:" ? HashRouter : BrowserRouter;
 
   return (
     <RouterComponent>
       <Routes>
-        <Route element={<AppLayout onLogout={handleLogout} />}>
+        <Route element={<AppLayout company={company} onLogout={handleLogout} />}>
           <Route path="/" element={<Dashboard company={company} />} />
           <Route path="/ecf" element={<ECF company={company} />} />
           <Route path="/clients" element={<Clients />} />

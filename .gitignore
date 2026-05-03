@@ -16,6 +16,10 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Company logos (keep .gitkeep only)
+backend/uploads/companies/*
+!backend/uploads/companies/.gitkeep
+
 # OS / editor files
 .DS_Store
 Thumbs.db

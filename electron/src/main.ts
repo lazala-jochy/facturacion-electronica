@@ -11,9 +11,15 @@ let backendProcess: ChildProcess | null = null;
 const BACKEND_PORT = 3001;
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-const APP_ICON_NAME = "ChatGPT Image 1 may 2026, 01_49_54 p.m..png";
-
-const getAppIconPath = () => path.join(__dirname, "..", "assets", APP_ICON_NAME);
+/** Icono de ventana / dock (`electron/assets/`). Sin espacios en el nombre para evitar rutas rotas en build. */
+const getAppIconPath = (): string => {
+  const assetsDir = path.join(__dirname, "..", "assets");
+  const primary = path.join(assetsDir, "default.png");
+  if (fs.existsSync(primary)) return primary;
+  const fallback512 = path.join(assetsDir, "icon.iconset", "icon_512x512.png");
+  if (fs.existsSync(fallback512)) return fallback512;
+  return primary;
+};
 const isProduction = app.isPackaged;
 const UPDATE_CHECK_INTERVAL_MS = 1000 * 60 * 30;
 
@@ -179,7 +185,8 @@ const setupAutoUpdater = () => {
 
 app.whenReady().then(async () => {
   try {
-    app.setName("Facturación Electrónica ETECA.");
+    const org = process.env.VITE_ORGANIZATION_NAME?.trim() || process.env.ORGANIZATION_NAME?.trim();
+    app.setName(org ? `Facturación Electrónica ${org}.` : "Facturación Electrónica.");
     if (process.platform === "darwin") {
       app.dock?.setIcon(getAppIconPath());
     }

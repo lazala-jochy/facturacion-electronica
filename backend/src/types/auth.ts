@@ -17,6 +17,15 @@ export type LoginBody = {
   password?: string;
 };
 
+export type ForgotPasswordBody = {
+  email?: string;
+};
+
+export type ResetPasswordBody = {
+  token?: string;
+  password?: string;
+};
+
 export type UpdateCompanyBody = {
   name?: string;
   rnc?: string;

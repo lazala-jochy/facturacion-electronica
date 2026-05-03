@@ -30,11 +30,32 @@ const toSession = (data: AuthLoginResponse): AuthSession => ({
 
 export const registerCompany = async (
   payload: RegisterPayload,
+  logoFile?: File | null,
 ): Promise<AuthSession> => {
-  const data = await postJson<AuthLoginResponse>("/auth/register", {
-    ...payload,
-    email: normalizeEmail(payload.email),
+  const formData = new FormData();
+  formData.append("name", payload.name);
+  formData.append("rnc", payload.rnc);
+  formData.append("address", payload.address);
+  formData.append("full_name", payload.full_name);
+  formData.append("cedula", payload.cedula);
+  formData.append("email", normalizeEmail(payload.email));
+  formData.append("password", payload.password);
+  if (payload.company_phone != null && payload.company_phone !== "") {
+    formData.append("company_phone", payload.company_phone);
+  }
+  if (payload.company_email != null && payload.company_email !== "") {
+    formData.append("company_email", normalizeEmail(payload.company_email));
+  }
+  if (logoFile) formData.append("logo", logoFile);
+
+  const response = await fetch(`${API_URL}/auth/register`, {
+    method: "POST",
+    body: formData,
   });
+  const data = (await response.json()) as AuthLoginResponse & { message?: string };
+  if (!response.ok) {
+    throw new Error(data.message ?? "No se pudo completar la solicitud.");
+  }
   return toSession(data);
 };
 
@@ -46,4 +67,27 @@ export const loginCompany = async (
     email: normalizeEmail(payload.email),
   });
   return toSession(data);
+};
+
+export type PasswordResetLookupResult = {
+  exists: boolean;
+  reset_token?: string;
+};
+
+export const requestPasswordReset = async (
+  email: string,
+): Promise<PasswordResetLookupResult> => {
+  return postJson<PasswordResetLookupResult>("/auth/forgot-password", {
+    email: normalizeEmail(email),
+  });
+};
+
+export const resetPasswordWithToken = async (
+  token: string,
+  password: string,
+): Promise<{ message: string }> => {
+  return postJson<{ message: string }>("/auth/reset-password", {
+    token: token.trim(),
+    password,
+  });
 };

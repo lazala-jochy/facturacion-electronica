@@ -1,6 +1,8 @@
 import "./types/express-auth.augment";
 import cors from "cors";
 import express from "express";
+import fs from "fs/promises";
+import multer from "multer";
 import { execFileSync } from "child_process";
 import path from "path";
 import { buildRouter } from "./routes";
@@ -33,6 +35,9 @@ const bootstrap = async () => {
   const companyCount = await prisma.company.count();
   console.log("Backend ready. Companies:", companyCount);
 
+  const uploadsRoot = path.join(process.cwd(), "uploads");
+  await fs.mkdir(path.join(uploadsRoot, "companies"), { recursive: true });
+
   const app = express();
   app.use(
     cors({
@@ -42,6 +47,7 @@ const bootstrap = async () => {
     }),
   );
   app.use(express.json({ limit: "1mb" }));
+  app.use("/uploads", express.static(uploadsRoot));
   app.use("/", buildRouter());
 
   app.use(
@@ -51,6 +57,10 @@ const bootstrap = async () => {
       res: express.Response,
       _next: express.NextFunction,
     ) => {
+      if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
+        res.status(400).json({ message: "El logo no puede superar 2 MB." });
+        return;
+      }
       console.error(err);
       res.status(500).json({ message: "Error interno del servidor." });
     },

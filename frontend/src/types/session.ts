@@ -12,6 +12,8 @@ export type AuthCompany = {
   address: string;
   phone?: string | null;
   email?: string | null;
+  /** Ruta relativa al API, p. ej. `/uploads/companies/1.png` */
+  logoUrl?: string | null;
 };
 
 /** Sesión persistida: JWT + contexto de usuario y empresa (multi-tenant). */
