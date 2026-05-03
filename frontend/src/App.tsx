@@ -76,7 +76,7 @@ function App() {
     <RouterComponent>
       <Routes>
         <Route element={<AppLayout company={company} onLogout={handleLogout} />}>
-          <Route path="/" element={<Dashboard company={company} />} />
+          <Route path="/" element={<Dashboard company={company} user={session.user} />} />
           <Route path="/ecf" element={<ECF company={company} />} />
           <Route path="/clients" element={<Clients />} />
           <Route path="/cotizaciones/nueva" element={<CotizacionCreate />} />

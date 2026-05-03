@@ -1,4 +1,4 @@
-import type { AuthCompany } from "../types/session";
+import type { AuthCompany, AuthUser } from "../types/session";
 import { useEffect, useMemo, useState } from "react";
 import { listClients } from "../services/clients";
 import { listCotizaciones } from "../services/cotizaciones";
@@ -24,9 +24,12 @@ const percent = (value: number, total: number) => {
 
 export default function Dashboard({
   company,
+  user,
 }: {
   company: AuthCompany;
+  user: AuthUser;
 }) {
+  const displayName = user.full_name?.trim() || user.email || "Usuario";
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [clientsCount, setClientsCount] = useState(0);
@@ -126,7 +129,7 @@ export default function Dashboard({
     <div className="mx-auto w-full min-w-0 max-w-[1600px] space-y-4 pt-1 sm:pt-2 pb-8">
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <h2 className="break-words text-2xl font-extrabold tracking-tight text-[#0b57d0] sm:text-3xl">
-          ¡Bienvenido, Admin!
+          ¡Bienvenido, {displayName}!
         </h2>
         <p className="mt-2 text-sm text-slate-600 sm:text-base">Aquí tienes un resumen de tu actividad.</p>
         <p className="mt-2 break-all text-xs text-slate-500 sm:break-words">
