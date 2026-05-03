@@ -50,6 +50,25 @@ const formatReceiptMoney = (value: number) =>
     maximumFractionDigits: 2,
   })}`;
 
+/** Agrupa líneas por `unit`; encabezado visible = primera forma del tipo visto en la cotización. */
+function groupItemsByUnit(items: CotizacionForPdf["items"]) {
+  const orderNorm: string[] = [];
+  const byNorm = new Map<string, { displayLabel: string; rows: CotizacionForPdf["items"] }>();
+  for (const item of items) {
+    const raw = (item.unit ?? "").trim();
+    const norm = raw.toLowerCase() || "sin categoría";
+    if (!byNorm.has(norm)) {
+      orderNorm.push(norm);
+      byNorm.set(norm, { displayLabel: raw || "Sin categoría", rows: [] });
+    }
+    byNorm.get(norm)!.rows.push(item);
+  }
+  return orderNorm.map((norm) => {
+    const g = byNorm.get(norm)!;
+    return { displayLabel: g.displayLabel, items: g.rows };
+  });
+}
+
 export const buildCotizacionPdfBuffer = (
   cotizacion: CotizacionForPdf,
   issuerPersonName?: string | null,
@@ -105,28 +124,46 @@ export const buildCotizacionPdfBuffer = (
       .stroke();
     doc.moveDown(0.4);
 
-    doc.font("Helvetica-Bold").fontSize(10.5);
     const leftX = doc.page.margins.left;
     const rightX = doc.page.width - doc.page.margins.right;
     const qtyColX = rightX - 165;
     const valueColX = rightX - 5;
-    const headerY = doc.y;
-    doc.text("SERVICIOS", leftX, headerY, { width: qtyColX - leftX - 8 });
-    doc.text("CANT", qtyColX, headerY, { width: 52, align: "right" });
-    doc.text("VALOR", valueColX - 95, headerY, { width: 95, align: "right" });
-    doc.moveDown(0.2);
+
+    const tableHeaderY = doc.y;
+    doc.font("Helvetica-Bold").fontSize(10.5);
+    doc.text("CONCEPTO", leftX, tableHeaderY, { width: qtyColX - leftX - 8 });
+    doc.text("CANT", qtyColX, tableHeaderY, { width: 52, align: "right" });
+    doc.text("VALOR", valueColX - 95, tableHeaderY, { width: 95, align: "right" });
+    doc.y = Math.max(doc.y, tableHeaderY + 14);
+    doc.moveDown(0.15);
+
+    const groups = groupItemsByUnit(cotizacion.items);
     doc.font("Helvetica").fontSize(10);
 
-    for (const item of cotizacion.items) {
-      const label = `${item.description} (${item.unit})`;
-      const rowY = doc.y;
-      doc.text(label, leftX, rowY, { width: qtyColX - leftX - 8 });
-      doc.text(item.quantity.toFixed(2), qtyColX, rowY, { width: 52, align: "right" });
-      doc.text(formatReceiptMoney(item.totalValue), valueColX - 95, rowY, {
-        width: 95,
-        align: "right",
+    for (let gi = 0; gi < groups.length; gi++) {
+      const { displayLabel, items: groupRows } = groups[gi];
+      if (gi > 0) doc.moveDown(0.25);
+
+      doc.font("Helvetica-Bold").fontSize(10.2);
+      const sectionY = doc.y;
+      doc.text(displayLabel.toUpperCase(), leftX, sectionY, {
+        width: qtyColX - leftX - 8,
       });
-      doc.y = Math.max(doc.y, rowY + 14);
+      doc.y = Math.max(doc.y, sectionY + 12);
+      doc.moveDown(0.08);
+
+      doc.font("Helvetica").fontSize(10);
+      for (const item of groupRows) {
+        const label = item.description.trim() || "(Sin descripción)";
+        const rowY = doc.y;
+        doc.text(label, leftX, rowY, { width: qtyColX - leftX - 8 });
+        doc.text(item.quantity.toFixed(2), qtyColX, rowY, { width: 52, align: "right" });
+        doc.text(formatReceiptMoney(item.totalValue), valueColX - 95, rowY, {
+          width: 95,
+          align: "right",
+        });
+        doc.y = Math.max(doc.y, rowY + 14);
+      }
     }
 
     doc.moveDown(0.4);
