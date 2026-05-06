@@ -2,6 +2,7 @@ import { Router } from "express";
 import * as authController from "../controllers/auth.controller";
 import * as clientsController from "../controllers/clients.controller";
 import * as cotizacionesController from "../controllers/cotizaciones.controller";
+import * as ecfExcelBatchController from "../controllers/ecfExcelBatch.controller";
 import { asyncHandler } from "../middleware/asyncHandler";
 import { requireAuth } from "../middleware/auth.middleware";
 import { authFormUpload, ecfCertificateUpload } from "../middleware/registerUpload.middleware";
@@ -70,6 +71,12 @@ export const buildRouter = () => {
     "/cotizaciones/:id/ecf/dgii/query",
     requireAuth,
     asyncHandler(cotizacionesController.queryDgiiEcfByCotizacion),
+  );
+
+  router.post(
+    "/ecf-excel-batch/run",
+    requireAuth,
+    asyncHandler(ecfExcelBatchController.runExcelBatchToDesktopHandler),
   );
 
   return router;

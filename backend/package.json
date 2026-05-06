@@ -8,7 +8,8 @@
     "start": "DATABASE_URL=\"file:./prisma/dev.db\" node dist/index.js",
     "migrate:dev": "DATABASE_URL=\"file:./prisma/dev.db\" prisma migrate dev",
     "migrate:deploy": "DATABASE_URL=\"file:./prisma/dev.db\" prisma migrate deploy",
-    "prisma:generate": "DATABASE_URL=\"file:./prisma/dev.db\" prisma generate"
+    "prisma:generate": "DATABASE_URL=\"file:./prisma/dev.db\" prisma generate",
+    "ecf-excel-batch": "node script/run.js"
   },
   "keywords": [],
   "author": "",
@@ -24,6 +25,7 @@
     "node-forge": "^1.4.0",
     "pdfkit": "^0.18.0",
     "prisma": "^5.22.0",
+    "xlsx": "^0.18.5",
     "xml-crypto": "^6.1.2",
     "xmlbuilder2": "^4.0.3"
   },
