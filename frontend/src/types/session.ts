@@ -16,6 +16,15 @@ export type AuthCompany = {
   logoUrl?: string | null;
   /** Indica si hay certificado DGII (.p12) configurado para la empresa. */
   certificateConfigured?: boolean;
+  /** URL del servicio DGII para envío e-CF (opcional; si no hay, se usa la variable de entorno del servidor). */
+  dgiiEcfEndpoint?: string | null;
+  dgiiUsername?: string | null;
+  dgiiPassword?: string | null;
+  dgiiAuthUrl?: string | null;
+  dgiiReceptionUrl?: string | null;
+  dgiiConsultUrl?: string | null;
+  /** Clave de cifrado del .p12 guardada en perfil (para enviar e-CF sin reingresarla en Cotizaciones). */
+  certificate_keyphrase?: string | null;
 };
 
 /** Sesión persistida: JWT + contexto de usuario y empresa (multi-tenant). */

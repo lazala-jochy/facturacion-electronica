@@ -19,6 +19,15 @@ model Company {
   certificateSalt          String?      @map("certificate_salt")
   certificateEncPath       String?      @map("certificate_enc_path")
   certificatePasswordEnc   String?      @map("certificate_password_enc")
+  // URL servicio DGII e-CF (legacy: recepción directa sin flujo token).
+  dgiiEcfEndpoint            String?      @map("dgii_ecf_endpoint")
+  dgiiUsername               String?      @map("dgii_username")
+  dgiiPassword               String?      @map("dgii_password")
+  dgiiAuthUrl                String?      @map("dgii_auth_url")
+  dgiiReceptionUrl           String?      @map("dgii_reception_url")
+  dgiiConsultUrl             String?      @map("dgii_consult_url")
+  // Clave de cifrado del .p12 (texto en BD; misma que usás al guardar el certificado).
+  certificateKeyphrase       String?      @map("certificate_keyphrase")
   createdAt                DateTime     @default(now()) @map("created_at")
   users        User[]
   clients      Client[]

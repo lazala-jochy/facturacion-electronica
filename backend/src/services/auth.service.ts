@@ -2,10 +2,14 @@ import { createHash, randomBytes } from "crypto";
 import type { Company, User } from "@prisma/client";
 import { prisma } from "../prisma";
 import type { ForgotPasswordBody, LoginBody, RegisterBody, ResetPasswordBody, UpdateCompanyBody } from "../types/auth";
-import { assertCertificateEncryptionSecret } from "../utils/companyCertificateCrypto";
+import {
+  assertCertificateEncryptionSecret,
+  verifyPkcs12Password,
+} from "../utils/companyCertificateCrypto";
 import {
   encryptAndPersistCompanyCertificate,
   companyHasCertificateRecord,
+  loadDecryptedPkcs12ForCompany,
   removeStoredCompanyCertificate,
 } from "../utils/companyCertificateStorage";
 import { removeUploadedCompanyLogoFiles, saveCompanyLogoFile } from "../utils/companyLogo";
@@ -19,9 +23,27 @@ import {
   isValidPhoneFormat,
   isValidRnc,
 } from "../utils/validation";
+import { clearDgiiTokenCache } from "./dgiiEcfApi.service";
 
-export type PublicCompany = Pick<Company, "id" | "name" | "rnc" | "address" | "phone" | "email" | "logoUrl"> & {
+export type PublicCompany = Pick<
+  Company,
+  | "id"
+  | "name"
+  | "rnc"
+  | "address"
+  | "phone"
+  | "email"
+  | "logoUrl"
+  | "dgiiEcfEndpoint"
+  | "dgiiUsername"
+  | "dgiiPassword"
+  | "dgiiAuthUrl"
+  | "dgiiReceptionUrl"
+  | "dgiiConsultUrl"
+> & {
   certificateConfigured: boolean;
+  /** Clave de cifrado del .p12 persistida (misma que al guardar el certificado). */
+  certificate_keyphrase: string | null;
 };
 
 export type AuthOk = {
@@ -68,7 +90,14 @@ const publicCompany = (c: Company): PublicCompany => ({
   phone: c.phone,
   email: c.email,
   logoUrl: c.logoUrl,
+  dgiiEcfEndpoint: c.dgiiEcfEndpoint,
+  dgiiUsername: c.dgiiUsername,
+  dgiiPassword: c.dgiiPassword,
+  dgiiAuthUrl: c.dgiiAuthUrl,
+  dgiiReceptionUrl: c.dgiiReceptionUrl,
+  dgiiConsultUrl: c.dgiiConsultUrl,
   certificateConfigured: companyHasCertificateRecord(c),
+  certificate_keyphrase: c.certificateKeyphrase ?? null,
 });
 
 const publicUser = (u: User) => ({
@@ -233,6 +262,7 @@ export const authService = {
             certificateSalt: persisted.certificateSalt,
             certificateEncPath: persisted.certificateEncPath,
             certificatePasswordEnc: persisted.certificatePasswordEnc,
+            certificateKeyphrase: encryptionSecret,
           },
         });
       } catch (e) {
@@ -328,6 +358,61 @@ export const authService = {
     const cedula = (body.cedula ?? "").replace(/\D/g, "");
     const email = body.email ? normalizeEmail(body.email) : "";
 
+    let dgiiEcfEndpointUpdate: { dgiiEcfEndpoint: string | null } | undefined;
+    if (body.dgii_ecf_endpoint !== undefined) {
+      const dgiiEndpointRaw = (body.dgii_ecf_endpoint ?? "").trim();
+      const nextEndpoint = dgiiEndpointRaw ? dgiiEndpointRaw : null;
+      if (nextEndpoint) {
+        try {
+          // eslint-disable-next-line no-new -- validación de URL absoluta
+          new URL(nextEndpoint);
+        } catch {
+          return { ok: false, status: 400, message: "La URL de DGII debe ser una dirección válida (https://...)." };
+        }
+      }
+      dgiiEcfEndpointUpdate = { dgiiEcfEndpoint: nextEndpoint };
+    }
+
+    const dgiiTenantMerge: Partial<
+      Pick<
+        Company,
+        "dgiiUsername" | "dgiiPassword" | "dgiiAuthUrl" | "dgiiReceptionUrl" | "dgiiConsultUrl"
+      >
+    > = {};
+
+    if (body.dgii_username !== undefined) {
+      dgiiTenantMerge.dgiiUsername = (body.dgii_username ?? "").trim() || null;
+    }
+    if (body.dgii_password !== undefined) {
+      dgiiTenantMerge.dgiiPassword = (body.dgii_password ?? "").trim() || null;
+    }
+    const parseTenantUrl = (raw: string | undefined, label: string): AuthErr | string | null => {
+      const t = (raw ?? "").trim();
+      if (!t) return null;
+      try {
+        // eslint-disable-next-line no-new -- validación de URL absoluta
+        new URL(t);
+      } catch {
+        return { ok: false, status: 400, message: `La URL de ${label} no es válida (usa https://...).` };
+      }
+      return t;
+    };
+    if (body.dgii_auth_url !== undefined) {
+      const v = parseTenantUrl(body.dgii_auth_url, "autenticación DGII");
+      if (v && typeof v === "object" && "ok" in v && v.ok === false) return v;
+      dgiiTenantMerge.dgiiAuthUrl = v === null || typeof v === "string" ? v : null;
+    }
+    if (body.dgii_reception_url !== undefined) {
+      const v = parseTenantUrl(body.dgii_reception_url, "recepción DGII");
+      if (v && typeof v === "object" && "ok" in v && v.ok === false) return v;
+      dgiiTenantMerge.dgiiReceptionUrl = v === null || typeof v === "string" ? v : null;
+    }
+    if (body.dgii_consult_url !== undefined) {
+      const v = parseTenantUrl(body.dgii_consult_url, "consulta DGII");
+      if (v && typeof v === "object" && "ok" in v && v.ok === false) return v;
+      dgiiTenantMerge.dgiiConsultUrl = v === null || typeof v === "string" ? v : null;
+    }
+
     if (!name || !rnc || !address || !fullName || !cedula) {
       return {
         ok: false,
@@ -371,6 +456,8 @@ export const authService = {
           phone: phone || null,
           email: email || null,
           regime: regime || "Régimen general",
+          ...(dgiiEcfEndpointUpdate ?? {}),
+          ...dgiiTenantMerge,
         },
       });
       const userRow = await tx.user.update({
@@ -449,6 +536,7 @@ export const authService = {
             certificateSalt: persisted.certificateSalt,
             certificateEncPath: persisted.certificateEncPath,
             certificatePasswordEnc: persisted.certificatePasswordEnc,
+            certificateKeyphrase: encryptionSecret,
           },
         });
       } catch (e) {
@@ -464,11 +552,107 @@ export const authService = {
             certificateSalt: null,
             certificateEncPath: null,
             certificatePasswordEnc: null,
+            certificateKeyphrase: null,
           },
         });
       } catch (e) {
         console.error("No se pudo eliminar certificado de empresa.", e);
       }
+    }
+
+    const pwdOnly = opts?.certificatePassword?.trim() ?? "";
+    const encForPwdOnly = opts?.certificateEncryptionSecret?.trim() ?? "";
+    if (
+      !certUpload?.length &&
+      pwdOnly &&
+      encForPwdOnly &&
+      uploadsRoot &&
+      companyHasCertificateRecord(companyOut) &&
+      !opts?.clearCertificate
+    ) {
+      let encryptionSecret: string;
+      try {
+        encryptionSecret = assertCertificateEncryptionSecret(encForPwdOnly);
+      } catch (e) {
+        const msg =
+          e instanceof Error
+            ? e.message
+            : "La clave de cifrado del certificado debe tener al menos 8 caracteres.";
+        return { ok: false, status: 400, message: msg };
+      }
+      try {
+        const loaded = await loadDecryptedPkcs12ForCompany(companyOut, uploadsRoot, encryptionSecret);
+        if (!loaded) {
+          return {
+            ok: false,
+            status: 400,
+            message: "No hay certificado guardado para actualizar la contraseña.",
+          };
+        }
+        verifyPkcs12Password(loaded.p12Buffer, pwdOnly);
+        const persisted = await encryptAndPersistCompanyCertificate({
+          uploadsRoot,
+          companyId,
+          p12Buffer: loaded.p12Buffer,
+          p12Password: pwdOnly,
+          encryptionSecret,
+        });
+        companyOut = await prisma.company.update({
+          where: { id: companyId },
+          data: {
+            certificateSalt: persisted.certificateSalt,
+            certificateEncPath: persisted.certificateEncPath,
+            certificatePasswordEnc: persisted.certificatePasswordEnc,
+            certificateKeyphrase: encryptionSecret,
+          },
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "No se pudo actualizar la contraseña del certificado.";
+        return { ok: false, status: 400, message: msg };
+      }
+    }
+
+    if (body.certificate_keyphrase !== undefined && uploadsRoot) {
+      const t = (body.certificate_keyphrase ?? "").trim();
+      if (t.length > 0 && t.length < 8) {
+        return {
+          ok: false,
+          status: 400,
+          message: "La clave de cifrado guardada debe tener al menos 8 caracteres.",
+        };
+      }
+      if (t.length >= 8) {
+        if (companyHasCertificateRecord(companyOut)) {
+          try {
+            await loadDecryptedPkcs12ForCompany(companyOut, uploadsRoot, t);
+          } catch {
+            return {
+              ok: false,
+              status: 400,
+              message:
+                "La clave de cifrado no coincide con el certificado guardado. Revisá o volvé a subir el .p12 con esa clave.",
+            };
+          }
+        }
+        companyOut = await prisma.company.update({
+          where: { id: companyId },
+          data: { certificateKeyphrase: t },
+        });
+      } else if (t.length === 0 && !companyHasCertificateRecord(companyOut)) {
+        companyOut = await prisma.company.update({
+          where: { id: companyId },
+          data: { certificateKeyphrase: null },
+        });
+      }
+    }
+
+    if (
+      body.dgii_username !== undefined ||
+      body.dgii_password !== undefined ||
+      body.dgii_auth_url !== undefined ||
+      body.dgii_reception_url !== undefined
+    ) {
+      clearDgiiTokenCache(companyId);
     }
 
     return { ok: true, user: publicUser(user), company: publicCompany(companyOut) };

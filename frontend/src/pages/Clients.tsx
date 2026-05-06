@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { listClients, type ClientListItem } from "../services/clients";
-import { AUTH_STORAGE_KEY, type AuthSession } from "../types/session";
-import { ApiError, refreshAuthSessionFromServer } from "../services/api";
+import { ApiError, readAuthSessionFromStorage, refreshAuthSessionFromServer } from "../services/api";
 import {
   deleteCotizacion,
   downloadCotizacionPDF,
@@ -61,16 +60,7 @@ function CertBrowseIllustration({ className }: { className?: string }) {
 }
 
 export default function Clients() {
-  const session = useMemo<AuthSession | null>(() => {
-    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
-    if (!raw) return null;
-    try {
-      const s = JSON.parse(raw) as AuthSession;
-      return s?.token && s?.company ? s : null;
-    } catch {
-      return null;
-    }
-  }, []);
+  const session = readAuthSessionFromStorage();
   const company = session?.company;
   const [isOnline, setIsOnline] = useState(
     typeof navigator === "undefined" ? true : navigator.onLine,
@@ -115,10 +105,13 @@ export default function Clients() {
     const id = company?.id;
     if (id == null || typeof sessionStorage === "undefined") return;
     const saved = sessionStorage.getItem(`fe_cert_enc_${id}`);
-    if (saved) {
+    const fromProfile = company?.certificate_keyphrase?.trim() ?? "";
+    if (fromProfile) {
+      setEcfEncryptionSecret((prev) => (prev.trim().length > 0 ? prev : fromProfile));
+    } else if (saved) {
       setEcfEncryptionSecret((prev) => (prev.trim().length > 0 ? prev : saved));
     }
-  }, [company?.id]);
+  }, [company?.id, company?.certificate_keyphrase]);
 
   useEffect(() => {
     const fetchClients = async () => {
@@ -158,18 +151,19 @@ export default function Clients() {
     setSendingEcfId(cotizacionId);
     setEcfError("");
     setEcfSuccess("");
-    if (company?.certificateConfigured) {
-      if (ecfEncryptionSecret.trim().length < 8) {
-        setEcfError("Indicá la clave de cifrado del certificado (mín. 8 caracteres) antes de enviar a DGII.");
-        setSendingEcfId(null);
-        return;
-      }
+    const encForSend =
+      ecfEncryptionSecret.trim() || company?.certificate_keyphrase?.trim() || "";
+    if (company?.certificateConfigured && encForSend.length < 8) {
+      setEcfError(
+        "No hay clave de cifrado del certificado. Guardala en Perfil de empresa (mín. 8 caracteres) o ingresala abajo antes de enviar.",
+      );
+      setSendingEcfId(null);
+      return;
     }
     try {
       const out = await submitEcf(cotizacionId, {
-        certificateEncryptionSecret: company?.certificateConfigured
-          ? ecfEncryptionSecret.trim()
-          : undefined,
+        certificateEncryptionSecret:
+          company?.certificateConfigured && encForSend.length >= 8 ? encForSend : undefined,
       });
       setEcfSuccess(`e-CF enviado (Track ID: ${out.track_id}).`);
       setClients((prev) =>
@@ -405,8 +399,9 @@ export default function Clients() {
             Clave de cifrado del certificado (DGII)
           </label>
           <p className="mt-1 text-xs text-slate-600">
-            La definiste al subir el .p12 (mín. 8 caracteres). Es necesaria cada vez que presionás «Enviar DGII». Opcionalmente
-            se recuerda en este navegador al salir del campo.
+            Si la guardaste en <strong className="font-medium text-slate-800">Perfil de empresa</strong>, no hace falta
+            volver a escribirla. Podés sobreescribirla acá solo para esta sesión; también se puede recordar en este
+            navegador al salir del campo.
           </p>
           <input
             id="ecf-enc-clients"

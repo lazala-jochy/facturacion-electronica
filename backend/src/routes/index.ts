@@ -66,6 +66,11 @@ export const buildRouter = () => {
     ecfCertificateUpload,
     asyncHandler(cotizacionesController.submitEcfByCotizacion),
   );
+  router.get(
+    "/cotizaciones/:id/ecf/dgii/query",
+    requireAuth,
+    asyncHandler(cotizacionesController.queryDgiiEcfByCotizacion),
+  );
 
   return router;
 };

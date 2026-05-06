@@ -421,3 +421,31 @@ export const submitEcfByCotizacion: RequestHandler = async (req, res) => {
     });
   }
 };
+
+export const queryDgiiEcfByCotizacion: RequestHandler = async (req, res) => {
+  const companyId = req.auth?.companyId;
+  if (!companyId) {
+    res.status(401).json({ message: "No autorizado." });
+    return;
+  }
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ message: "ID invalido." });
+    return;
+  }
+
+  const out = await ecfService.consultDgiiForCotizacion(id, companyId);
+  if (!out.ok) {
+    res.status(out.status).json({
+      message: out.message,
+      ...(out.code ? { code: out.code } : {}),
+    });
+    return;
+  }
+
+  res.json({
+    message: "Consulta DGII actualizada.",
+    http_status: out.http_status,
+    dgii_response: out.dgii_response,
+  });
+};

@@ -121,6 +121,13 @@ export const generateEcfXml = (id: number) =>
     { method: "GET" },
   );
 
+/** Consulta estado en DGII por trackId guardado en la cotización (GET). */
+export const queryDgiiEcfForCotizacion = (id: number) =>
+  apiFetch<{ message: string; http_status: number; dgii_response: string }>(
+    `/cotizaciones/${id}/ecf/dgii/query`,
+    { method: "GET" },
+  );
+
 export type SubmitEcfResult = {
   message: string;
   status: "accepted" | "rejected";
@@ -149,8 +156,9 @@ export const submitEcf = async (
   headers.set("Authorization", `Bearer ${session.token}`);
 
   const fd = new FormData();
-  const enc = opts?.certificateEncryptionSecret?.trim();
-  if (enc) fd.append("certificate_encryption_secret", enc);
+  const fromCompany = session.company?.certificate_keyphrase?.trim() ?? "";
+  const enc = (opts?.certificateEncryptionSecret?.trim() || fromCompany || "").trim();
+  if (enc.length >= 8) fd.append("certificate_encryption_secret", enc);
   if (opts?.certificate) {
     fd.append("certificate", opts.certificate);
     fd.append("certificate_password", opts.certificatePassword ?? "");

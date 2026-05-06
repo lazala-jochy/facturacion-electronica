@@ -43,22 +43,24 @@ export const loadPkcs12Material = async (input: CertificateInput): Promise<Certi
 const compactCert = (pem: string) =>
   pem.replace("-----BEGIN CERTIFICATE-----", "").replace("-----END CERTIFICATE-----", "").replace(/\s+/g, "");
 
+const C14N_INCLUSIVE = "http://www.w3.org/TR/2001/REC-xml-c14n-20010315";
+const RSA_SHA256 = "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256";
+
 const materialToSignedXml = (xml: string, material: CertificateMaterial): string => {
   const sig = new SignedXml({
     privateKey: material.privateKeyPem,
     publicCert: material.certPem,
+    signatureAlgorithm: RSA_SHA256,
+    // xml-crypto v6 exige canonicalización explícita para SignedInfo (antes era implícita).
+    canonicalizationAlgorithm: C14N_INCLUSIVE,
     getKeyInfoContent: () =>
       `<X509Data><X509Certificate>${compactCert(material.certPem)}</X509Certificate></X509Data>`,
   });
   sig.addReference({
     xpath: "/*",
-    transforms: [
-      "http://www.w3.org/2000/09/xmldsig#enveloped-signature",
-      "http://www.w3.org/TR/2001/REC-xml-c14n-20010315",
-    ],
+    transforms: ["http://www.w3.org/2000/09/xmldsig#enveloped-signature", C14N_INCLUSIVE],
     digestAlgorithm: "http://www.w3.org/2001/04/xmlenc#sha256",
   });
-  sig.signatureAlgorithm = "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256";
   sig.computeSignature(xml, {
     location: { reference: "/*", action: "append" },
   });

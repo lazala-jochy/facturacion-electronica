@@ -34,6 +34,13 @@ const updateCompanyBodyFromReq = (req: Request): UpdateCompanyBody => {
     regime: pickStr(b, "regime"),
     full_name: pickStr(b, "full_name"),
     cedula: pickStr(b, "cedula"),
+    dgii_ecf_endpoint: pickStr(b, "dgii_ecf_endpoint"),
+    certificate_keyphrase: pickStr(b, "certificate_keyphrase"),
+    dgii_username: pickStr(b, "dgii_username"),
+    dgii_password: pickStr(b, "dgii_password"),
+    dgii_auth_url: pickStr(b, "dgii_auth_url"),
+    dgii_reception_url: pickStr(b, "dgii_reception_url"),
+    dgii_consult_url: pickStr(b, "dgii_consult_url"),
   };
 };
 

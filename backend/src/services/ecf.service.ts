@@ -1,6 +1,8 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
-import { submitEcfToDgii, type DgiiSubmissionResult } from "./dgiiService";
+import type { DgiiSubmissionResult } from "../types/dgiiEcf";
+import { DgiiEcfError } from "../types/dgiiEcf";
+import { consultDgiiTrackId, submitSignedEcfWithTenantConfig } from "./dgiiEcfApi.service";
 import { signXmlWithP12Buffer } from "./signer";
 import { validateEcfPayload, type EcfPayload } from "./validation";
 import { buildEcfXml } from "./xmlBuilder";
@@ -125,7 +127,8 @@ export const ecfService = {
         return { ok: false, status: 404, message: "Empresa no encontrada." };
       }
 
-      const secretRaw = options.certificateEncryptionSecret?.trim() ?? "";
+      const secretRaw =
+        (options.certificateEncryptionSecret?.trim() || companyRow.certificateKeyphrase?.trim() || "") ?? "";
 
       if (options.oneShotCertificate?.buffer?.length) {
         const pwd = options.oneShotCertificate.password?.trim() ?? "";
@@ -162,6 +165,7 @@ export const ecfService = {
             certificateSalt: persisted.certificateSalt,
             certificateEncPath: persisted.certificateEncPath,
             certificatePasswordEnc: persisted.certificatePasswordEnc,
+            certificateKeyphrase: encSecret,
           },
         });
         companyRow = await prisma.company.findUnique({ where: { id: companyId } });
@@ -228,13 +232,30 @@ export const ecfService = {
 
       let dgiiResponse: DgiiSubmissionResult;
       try {
-        dgiiResponse = await submitEcfToDgii(signedXml);
+        dgiiResponse = await submitSignedEcfWithTenantConfig(companyRow, signedXml);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Error de red al enviar a DGII.";
+        if (error instanceof DgiiEcfError) {
+          const st =
+            error.code === "MISSING_CREDENTIALS" || error.code === "TOKEN_PARSE"
+              ? 400
+              : error.code === "AUTH_FAILED" || error.code === "RECEPTION_FAILED" || error.code === "CONSULT_FAILED"
+                ? error.httpStatus && error.httpStatus >= 400 && error.httpStatus < 600
+                  ? error.httpStatus
+                  : 502
+                : 502;
+          return {
+            ok: false,
+            status: st,
+            message: error.message,
+            code: error.code,
+          };
+        }
+        const message =
+          error instanceof Error ? error.message : "Error desconocido al llamar al servicio DGII.";
         return {
           ok: false,
-          status: 503,
-          message: `No se pudo enviar a DGII. Verifica la conexion a internet. (${message})`,
+          status: 502,
+          message,
         };
       }
 
@@ -260,6 +281,52 @@ export const ecfService = {
         ok: false,
         status: 400,
         message: e instanceof Error ? e.message : "Error al preparar firma XML.",
+      };
+    }
+  },
+
+  async consultDgiiForCotizacion(cotizacionId: number, companyId: number) {
+    const row = await prisma.cotizacion.findFirst({
+      where: { id: cotizacionId, companyId },
+      include: { company: true },
+    });
+    if (!row) {
+      return { ok: false as const, status: 404, message: "Cotizacion no encontrada." };
+    }
+    const trackId = row.dgiiTrackId?.trim();
+    if (!trackId) {
+      return {
+        ok: false as const,
+        status: 400,
+        message: "Esta cotizacion no tiene trackId DGII. Enviá primero el e-CF.",
+      };
+    }
+    try {
+      const out = await consultDgiiTrackId(row.company, trackId);
+      await prisma.cotizacion.update({
+        where: { id: cotizacionId },
+        data: {
+          dgiiResponse: out.body.length > 12000 ? `${out.body.slice(0, 12000)}…` : out.body,
+        },
+      });
+      return {
+        ok: true as const,
+        http_status: out.httpStatus,
+        dgii_response: out.body,
+      };
+    } catch (e) {
+      if (e instanceof DgiiEcfError) {
+        return {
+          ok: false as const,
+          status: e.httpStatus && e.httpStatus >= 400 && e.httpStatus < 600 ? e.httpStatus : 502,
+          message: e.message,
+          code: e.code,
+        };
+      }
+      return {
+        ok: false as const,
+        status: 502,
+        message: e instanceof Error ? e.message : "Error al consultar DGII.",
       };
     }
   },
