@@ -53,14 +53,32 @@ function EyeToggle({
   );
 }
 
-/** Ambiente certificación DGII (sandbox). Producción: reemplazá las URLs en perfil. */
+/** URLs base del paso de pruebas DGII e-CF. */
 const DGII_SANDBOX = {
-  auth: "https://ecf.dgii.gov.do/ecf/autenticacion/api/Autenticacion",
-  reception: "https://ecf.dgii.gov.do/ecf/recepcion/api/RecepcionFC",
-  consult: "https://ecf.dgii.gov.do/ecf/consulta/api/ConsultaResultado",
+  auth: "https://ecf.dgii.gov.do/CerteCF/Autenticacion",
+  reception: "https://ecf.dgii.gov.do/CerteCF/Recepcion",
+  consult: "https://ecf.dgii.gov.do/CerteCF/ConsultaResultado",
+  consumerSummaryReception: "https://fc.dgii.gov.do/CerteCF/RecepcionFC",
   seed: "https://ecf.dgii.gov.do/CerteCF/Autenticacion/api/Autenticacion/Semilla",
   validateSeed: "https://ecf.dgii.gov.do/CerteCF/Autenticacion/api/Autenticacion/ValidarSemilla",
 } as const;
+
+const trimTrailingSlashes = (value: string) => value.trim().replace(/\/+$/, "");
+const normalizeDgiiUrl = (value: string) =>
+  trimTrailingSlashes(value).replace(/^(https?:\/\/[^/\s]+)\.CerteCF(?=\/|$)/i, "$1/CerteCF");
+const normalizeAuthBaseUrl = (value: string) =>
+  normalizeDgiiUrl(value).replace(/\/api\/Autenticacion(?:\/(?:Semilla|ValidarSemilla))?$/i, "");
+const authBaseFromSeedUrl = (seedUrl?: string | null): string | null => {
+  const seed = seedUrl?.trim();
+  const suffix = "/api/Autenticacion/Semilla";
+  if (!seed?.endsWith(suffix)) return null;
+  return seed.slice(0, -suffix.length);
+};
+const resolveProfileUrl = (...values: Array<string | null | undefined>) =>
+  values.map((v) => (v ? normalizeDgiiUrl(v) : "")).find((v): v is string => Boolean(v)) ?? "";
+const seedUrlFromAuthBase = (authBase: string) => `${normalizeAuthBaseUrl(authBase)}/api/Autenticacion/Semilla`;
+const validateSeedUrlFromAuthBase = (authBase: string) =>
+  `${normalizeAuthBaseUrl(authBase)}/api/Autenticacion/ValidarSemilla`;
 
 export default function CompanyProfile({ session, onProfileUpdated }: Props) {
   const [fullName, setFullName] = useState(session.user.full_name);
@@ -71,15 +89,18 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
   const [phone, setPhone] = useState(session.company.phone ?? "");
   const [email, setEmail] = useState(session.company.email ?? "");
   const [regime, setRegime] = useState("Régimen general");
-  const [dgiiEcfEndpoint, setDgiiEcfEndpoint] = useState(session.company.dgiiEcfEndpoint ?? "");
-  const [dgiiAuthUrl, setDgiiAuthUrl] = useState(session.company.dgiiAuthUrl ?? "");
-  const [dgiiReceptionUrl, setDgiiReceptionUrl] = useState(session.company.dgiiReceptionUrl ?? "");
-  const [dgiiConsultUrl, setDgiiConsultUrl] = useState(session.company.dgiiConsultUrl ?? "");
-  const [dgiiSeedUrl, setDgiiSeedUrl] = useState(session.company.dgiiSeedUrl ?? DGII_SANDBOX.seed);
-  const [dgiiValidateSeedUrl, setDgiiValidateSeedUrl] = useState(session.company.dgiiValidateSeedUrl ?? DGII_SANDBOX.validateSeed);
-  const [dgiiEcfReceiveUrl, setDgiiEcfReceiveUrl] = useState(session.company.dgiiEcfReceiveUrl ?? session.company.dgiiReceptionUrl ?? "");
-  const [dgiiTrackUrl, setDgiiTrackUrl] = useState(session.company.dgiiTrackUrl ?? "");
-  const [dgiiStatusUrl, setDgiiStatusUrl] = useState(session.company.dgiiStatusUrl ?? "");
+  const [dgiiEcfEndpoint, setDgiiEcfEndpoint] = useState(
+    resolveProfileUrl(session.company.dgiiEcfEndpoint, DGII_SANDBOX.consumerSummaryReception),
+  );
+  const [dgiiAuthUrl, setDgiiAuthUrl] = useState(
+    resolveProfileUrl(session.company.dgiiAuthUrl, authBaseFromSeedUrl(session.company.dgiiSeedUrl), DGII_SANDBOX.auth),
+  );
+  const [dgiiReceptionUrl, setDgiiReceptionUrl] = useState(
+    resolveProfileUrl(session.company.dgiiReceptionUrl, session.company.dgiiEcfReceiveUrl, DGII_SANDBOX.reception),
+  );
+  const [dgiiConsultUrl, setDgiiConsultUrl] = useState(
+    resolveProfileUrl(session.company.dgiiConsultUrl, session.company.dgiiTrackUrl, session.company.dgiiStatusUrl, DGII_SANDBOX.consult),
+  );
   const [dgiiEnvironment, setDgiiEnvironment] = useState<"CERTIFICACION" | "PRODUCCION">(
     session.company.dgiiEnvironment === "PRODUCCION" ? "PRODUCCION" : "CERTIFICACION",
   );
@@ -120,18 +141,10 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
   }, [logoObjectUrl]);
 
   useEffect(() => {
-    setDgiiEcfEndpoint(session.company.dgiiEcfEndpoint ?? "");
-  }, [session.company.dgiiEcfEndpoint]);
-
-  useEffect(() => {
-    setDgiiAuthUrl(session.company.dgiiAuthUrl ?? "");
-    setDgiiReceptionUrl(session.company.dgiiReceptionUrl ?? "");
-    setDgiiConsultUrl(session.company.dgiiConsultUrl ?? "");
-    setDgiiSeedUrl(session.company.dgiiSeedUrl ?? DGII_SANDBOX.seed);
-    setDgiiValidateSeedUrl(session.company.dgiiValidateSeedUrl ?? DGII_SANDBOX.validateSeed);
-    setDgiiEcfReceiveUrl(session.company.dgiiEcfReceiveUrl ?? session.company.dgiiReceptionUrl ?? "");
-    setDgiiTrackUrl(session.company.dgiiTrackUrl ?? "");
-    setDgiiStatusUrl(session.company.dgiiStatusUrl ?? "");
+    setDgiiEcfEndpoint(resolveProfileUrl(session.company.dgiiEcfEndpoint, DGII_SANDBOX.consumerSummaryReception));
+    setDgiiAuthUrl(resolveProfileUrl(session.company.dgiiAuthUrl, authBaseFromSeedUrl(session.company.dgiiSeedUrl), DGII_SANDBOX.auth));
+    setDgiiReceptionUrl(resolveProfileUrl(session.company.dgiiReceptionUrl, session.company.dgiiEcfReceiveUrl, DGII_SANDBOX.reception));
+    setDgiiConsultUrl(resolveProfileUrl(session.company.dgiiConsultUrl, session.company.dgiiTrackUrl, session.company.dgiiStatusUrl, DGII_SANDBOX.consult));
     setDgiiEnvironment(session.company.dgiiEnvironment === "PRODUCCION" ? "PRODUCCION" : "CERTIFICACION");
     setDgiiUsername(session.company.dgiiUsername ?? "");
     setDgiiPassword(session.company.dgiiPassword ?? "");
@@ -140,8 +153,8 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
     session.company.dgiiReceptionUrl,
     session.company.dgiiConsultUrl,
     session.company.dgiiSeedUrl,
-    session.company.dgiiValidateSeedUrl,
     session.company.dgiiEcfReceiveUrl,
+    session.company.dgiiEcfEndpoint,
     session.company.dgiiTrackUrl,
     session.company.dgiiStatusUrl,
     session.company.dgiiEnvironment,
@@ -220,6 +233,10 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
       setFieldErrors({ certificatePassword: "Primero subí el archivo .p12/.pfx." });
       return;
     }
+    const dgiiAuthBase = normalizeAuthBaseUrl(dgiiAuthUrl || DGII_SANDBOX.auth);
+    const dgiiReceptionBase = normalizeDgiiUrl(dgiiReceptionUrl || DGII_SANDBOX.reception);
+    const dgiiConsultBase = normalizeDgiiUrl(dgiiConsultUrl || DGII_SANDBOX.consult);
+    const dgiiConsumerSummaryBase = normalizeDgiiUrl(dgiiEcfEndpoint || DGII_SANDBOX.consumerSummaryReception);
 
     setLoading(true);
     try {
@@ -243,15 +260,15 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
         fd.append("phone", phone.trim());
         fd.append("email", email.trim());
         fd.append("regime", regime.trim() || "Régimen general");
-        fd.append("dgii_ecf_endpoint", dgiiEcfEndpoint.trim());
-        fd.append("dgii_auth_url", dgiiAuthUrl.trim());
-        fd.append("dgii_reception_url", dgiiReceptionUrl.trim());
-        fd.append("dgii_consult_url", dgiiConsultUrl.trim());
-        fd.append("dgii_seed_url", dgiiSeedUrl.trim());
-        fd.append("dgii_validate_seed_url", dgiiValidateSeedUrl.trim());
-        fd.append("dgii_ecf_receive_url", dgiiEcfReceiveUrl.trim());
-        fd.append("dgii_track_url", dgiiTrackUrl.trim());
-        fd.append("dgii_status_url", dgiiStatusUrl.trim());
+        fd.append("dgii_ecf_endpoint", dgiiConsumerSummaryBase);
+        fd.append("dgii_auth_url", dgiiAuthBase);
+        fd.append("dgii_reception_url", dgiiReceptionBase);
+        fd.append("dgii_consult_url", dgiiConsultBase);
+        fd.append("dgii_seed_url", seedUrlFromAuthBase(dgiiAuthBase));
+        fd.append("dgii_validate_seed_url", validateSeedUrlFromAuthBase(dgiiAuthBase));
+        fd.append("dgii_ecf_receive_url", dgiiReceptionBase);
+        fd.append("dgii_track_url", "");
+        fd.append("dgii_status_url", "");
         fd.append("dgii_environment", dgiiEnvironment);
         fd.append("dgii_username", dgiiUsername.trim());
         fd.append("dgii_password", dgiiPassword.trim());
@@ -290,15 +307,15 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
             phone: phone.trim() || undefined,
             email: email.trim() || undefined,
             regime: regime.trim() || undefined,
-            dgii_ecf_endpoint: dgiiEcfEndpoint.trim(),
-            dgii_auth_url: dgiiAuthUrl.trim(),
-            dgii_reception_url: dgiiReceptionUrl.trim(),
-            dgii_consult_url: dgiiConsultUrl.trim(),
-            dgii_seed_url: dgiiSeedUrl.trim(),
-            dgii_validate_seed_url: dgiiValidateSeedUrl.trim(),
-            dgii_ecf_receive_url: dgiiEcfReceiveUrl.trim(),
-            dgii_track_url: dgiiTrackUrl.trim(),
-            dgii_status_url: dgiiStatusUrl.trim(),
+            dgii_ecf_endpoint: dgiiConsumerSummaryBase,
+            dgii_auth_url: dgiiAuthBase,
+            dgii_reception_url: dgiiReceptionBase,
+            dgii_consult_url: dgiiConsultBase,
+            dgii_seed_url: seedUrlFromAuthBase(dgiiAuthBase),
+            dgii_validate_seed_url: validateSeedUrlFromAuthBase(dgiiAuthBase),
+            dgii_ecf_receive_url: dgiiReceptionBase,
+            dgii_track_url: "",
+            dgii_status_url: "",
             dgii_environment: dgiiEnvironment,
             dgii_username: dgiiUsername.trim(),
             dgii_password: dgiiPassword.trim(),
@@ -319,18 +336,13 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
       setClearCompanyLogo(false);
       setCertificateFile(null);
       setCertificatePassword(res.company.certificate_keyphrase ?? "");
-      setDgiiAuthUrl(res.company.dgiiAuthUrl ?? "");
-      setDgiiReceptionUrl(res.company.dgiiReceptionUrl ?? "");
-      setDgiiConsultUrl(res.company.dgiiConsultUrl ?? "");
-      setDgiiSeedUrl(res.company.dgiiSeedUrl ?? DGII_SANDBOX.seed);
-      setDgiiValidateSeedUrl(res.company.dgiiValidateSeedUrl ?? DGII_SANDBOX.validateSeed);
-      setDgiiEcfReceiveUrl(res.company.dgiiEcfReceiveUrl ?? res.company.dgiiReceptionUrl ?? "");
-      setDgiiTrackUrl(res.company.dgiiTrackUrl ?? "");
-      setDgiiStatusUrl(res.company.dgiiStatusUrl ?? "");
+      setDgiiAuthUrl(resolveProfileUrl(res.company.dgiiAuthUrl, authBaseFromSeedUrl(res.company.dgiiSeedUrl), DGII_SANDBOX.auth));
+      setDgiiReceptionUrl(resolveProfileUrl(res.company.dgiiReceptionUrl, res.company.dgiiEcfReceiveUrl, DGII_SANDBOX.reception));
+      setDgiiConsultUrl(resolveProfileUrl(res.company.dgiiConsultUrl, DGII_SANDBOX.consult));
       setDgiiEnvironment(res.company.dgiiEnvironment === "PRODUCCION" ? "PRODUCCION" : "CERTIFICACION");
       setDgiiUsername(res.company.dgiiUsername ?? "");
       setDgiiPassword(res.company.dgiiPassword ?? "");
-      setDgiiEcfEndpoint(res.company.dgiiEcfEndpoint ?? "");
+      setDgiiEcfEndpoint(resolveProfileUrl(res.company.dgiiEcfEndpoint, DGII_SANDBOX.consumerSummaryReception));
       setClearCertificate(false);
       setSuccess("Perfil de empresa actualizado.");
     } catch (err) {
@@ -472,44 +484,8 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700" htmlFor="dgii-seed-url">
-              URL semilla
-            </label>
-            <input
-              id="dgii-seed-url"
-              type="url"
-              className={`mt-1 w-full rounded border px-3 py-2 text-sm font-mono text-[13px] ${
-                fieldErrors.dgiiSeedUrl ? "border-red-400 bg-red-50" : "border-slate-300"
-              }`}
-              placeholder={DGII_SANDBOX.seed}
-              value={dgiiSeedUrl}
-              onChange={(e) => setDgiiSeedUrl(e.target.value)}
-            />
-            {fieldErrors.dgiiSeedUrl ? (
-              <p className="mt-1 text-xs text-red-700">{fieldErrors.dgiiSeedUrl}</p>
-            ) : null}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700" htmlFor="dgii-validate-seed-url">
-              URL validar semilla
-            </label>
-            <input
-              id="dgii-validate-seed-url"
-              type="url"
-              className={`mt-1 w-full rounded border px-3 py-2 text-sm font-mono text-[13px] ${
-                fieldErrors.dgiiValidateSeedUrl ? "border-red-400 bg-red-50" : "border-slate-300"
-              }`}
-              placeholder={DGII_SANDBOX.validateSeed}
-              value={dgiiValidateSeedUrl}
-              onChange={(e) => setDgiiValidateSeedUrl(e.target.value)}
-            />
-            {fieldErrors.dgiiValidateSeedUrl ? (
-              <p className="mt-1 text-xs text-red-700">{fieldErrors.dgiiValidateSeedUrl}</p>
-            ) : null}
-          </div>
-          <div>
             <label className="block text-sm font-medium text-slate-700" htmlFor="dgii-auth-url">
-              URL autenticación
+              Servicio de autenticación
             </label>
             <input
               id="dgii-auth-url"
@@ -522,7 +498,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700" htmlFor="dgii-reception-url">
-              URL recepción (XML firmado)
+              Servicio de recepción e-CF
             </label>
             <input
               id="dgii-reception-url"
@@ -535,7 +511,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700" htmlFor="dgii-consult-url">
-              URL consulta resultado
+              Servicio de consulta de envío
             </label>
             <input
               id="dgii-consult-url"
@@ -547,42 +523,17 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700" htmlFor="dgii-ecf-receive-url">
-              URL recepción e-CF (nuevo)
+            <label className="block text-sm font-medium text-slate-700" htmlFor="dgii-fc-reception-url">
+              Servicio de recepción de resúmenes de factura de consumo menor a RD$ 250,000.00
             </label>
             <input
-              id="dgii-ecf-receive-url"
+              id="dgii-fc-reception-url"
               type="url"
               className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm font-mono text-[13px]"
-              value={dgiiEcfReceiveUrl}
-              onChange={(e) => setDgiiEcfReceiveUrl(e.target.value)}
+              placeholder={DGII_SANDBOX.consumerSummaryReception}
+              value={dgiiEcfEndpoint}
+              onChange={(e) => setDgiiEcfEndpoint(e.target.value)}
             />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-slate-700" htmlFor="dgii-track-url">
-                URL track
-              </label>
-              <input
-                id="dgii-track-url"
-                type="url"
-                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm font-mono text-[13px]"
-                value={dgiiTrackUrl}
-                onChange={(e) => setDgiiTrackUrl(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700" htmlFor="dgii-status-url">
-                URL status
-              </label>
-              <input
-                id="dgii-status-url"
-                type="url"
-                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm font-mono text-[13px]"
-                value={dgiiStatusUrl}
-                onChange={(e) => setDgiiStatusUrl(e.target.value)}
-              />
-            </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -624,20 +575,6 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
             El RNC del emisor es el de la empresa (campo RNC más abajo). Con usuario y contraseña, el backend obtiene un
             token en memoria por empresa y envía el e-CF firmado a la URL de recepción.
           </p>
-          <div>
-            <label className="block text-sm font-medium text-slate-700" htmlFor="dgii-url-legacy">
-              URL recepción legacy (opcional)
-            </label>
-            <input
-              id="dgii-url-legacy"
-              type="url"
-              inputMode="url"
-              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm font-mono text-[13px]"
-              placeholder="Solo si usás envío directo sin credenciales DGII"
-              value={dgiiEcfEndpoint}
-              onChange={(e) => setDgiiEcfEndpoint(e.target.value)}
-            />
-          </div>
         </div>
 
         <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50/80 p-4">

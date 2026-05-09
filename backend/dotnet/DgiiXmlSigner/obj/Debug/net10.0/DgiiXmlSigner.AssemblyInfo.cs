@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("DgiiXmlSigner")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+bdfeeed87b42ae5c14a540f72832e397696fb4fd")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+62b69e580b7746b7ad95bbeed158ce1ca3ae8e49")]
 [assembly: System.Reflection.AssemblyProductAttribute("DgiiXmlSigner")]
 [assembly: System.Reflection.AssemblyTitleAttribute("DgiiXmlSigner")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

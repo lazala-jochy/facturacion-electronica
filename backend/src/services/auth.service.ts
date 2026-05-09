@@ -24,6 +24,7 @@ import {
   isValidRnc,
 } from "../utils/validation";
 import { clearDgiiTokenCache } from "./dgiiEcfApi.service";
+import { normalizeDgiiEcfUrl } from "../config/dgiiEcf.constants";
 
 export type PublicCompany = Pick<
   Company,
@@ -418,7 +419,7 @@ export const authService = {
       dgiiTenantMerge.dgiiPassword = (body.dgii_password ?? "").trim() || null;
     }
     const parseTenantUrl = (raw: string | undefined, label: string): AuthErr | string | null => {
-      const t = (raw ?? "").trim();
+      const t = normalizeDgiiEcfUrl(raw);
       if (!t) return null;
       try {
         // eslint-disable-next-line no-new -- validación de URL absoluta

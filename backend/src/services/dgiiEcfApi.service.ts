@@ -8,7 +8,7 @@
 import type { Company } from "@prisma/client";
 import fs from "node:fs";
 import path from "node:path";
-import { DGII_ECF_SANDBOX_DEFAULTS } from "../config/dgiiEcf.constants";
+import { DGII_ECF_SANDBOX_DEFAULTS, normalizeDgiiEcfUrl } from "../config/dgiiEcf.constants";
 import type { DgiiSubmissionResult } from "../types/dgiiEcf";
 import { DgiiEcfError } from "../types/dgiiEcf";
 import { describeFetchFailure, submitEcfToDgii } from "./dgiiService";
@@ -40,30 +40,30 @@ export function clearDgiiTokenCache(companyId: number): void {
 const rncDigits = (rnc: string) => rnc.replace(/\D/g, "");
 
 export function resolveDgiiAuthUrl(company: Pick<Company, "dgiiAuthUrl">): string {
-  return (company.dgiiAuthUrl?.trim() || DGII_ECF_SANDBOX_DEFAULTS.auth).trim();
+  return normalizeDgiiEcfUrl(company.dgiiAuthUrl || DGII_ECF_SANDBOX_DEFAULTS.auth);
 }
 
 export function resolveDgiiReceptionUrl(
   company: Pick<Company, "dgiiEcfReceiveUrl" | "dgiiReceptionUrl" | "dgiiEcfEndpoint">,
 ): string {
-  return (
+  return normalizeDgiiEcfUrl(
     company.dgiiEcfReceiveUrl?.trim() ||
     company.dgiiReceptionUrl?.trim() ||
     company.dgiiEcfEndpoint?.trim() ||
     process.env.DGII_ECF_ENDPOINT?.trim() ||
-    ""
-  ).trim();
+    "",
+  );
 }
 
 export function resolveDgiiConsultUrl(
   company: Pick<Company, "dgiiStatusUrl" | "dgiiTrackUrl" | "dgiiConsultUrl">,
 ): string {
-  return (
+  return normalizeDgiiEcfUrl(
     company.dgiiStatusUrl?.trim() ||
     company.dgiiTrackUrl?.trim() ||
     company.dgiiConsultUrl?.trim() ||
-    DGII_ECF_SANDBOX_DEFAULTS.consult
-  ).trim();
+    DGII_ECF_SANDBOX_DEFAULTS.consult,
+  );
 }
 
 function tenantHasPasswordAuth(company: Pick<Company, "dgiiUsername" | "dgiiPassword">): boolean {

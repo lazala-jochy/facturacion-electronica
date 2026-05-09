@@ -1,4 +1,5 @@
 import type { DgiiSubmissionResult } from "../types/dgiiEcf";
+import { normalizeDgiiEcfUrl } from "../config/dgiiEcf.constants";
 
 export type { DgiiSubmissionResult } from "../types/dgiiEcf";
 
@@ -62,7 +63,7 @@ export const submitEcfToDgii = async (
     bearerToken?: string | null;
   },
 ): Promise<DgiiSubmissionResult> => {
-  const endpoint = (opts?.endpoint?.trim() || process.env.DGII_ECF_ENDPOINT?.trim()) ?? "";
+  const endpoint = normalizeDgiiEcfUrl(opts?.endpoint || process.env.DGII_ECF_ENDPOINT);
   const token = (opts?.bearerToken?.trim() || process.env.DGII_ECF_TOKEN?.trim()) ?? "";
 
   if (!endpoint) {

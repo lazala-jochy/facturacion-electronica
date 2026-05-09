@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type { Company } from "@prisma/client";
 import { prisma } from "../prisma";
-import { DGII_ECF_SANDBOX_DEFAULTS } from "../config/dgiiEcf.constants";
+import { DGII_ECF_SANDBOX_DEFAULTS, normalizeDgiiEcfUrl } from "../config/dgiiEcf.constants";
 import { DgiiEcfError } from "../types/dgiiEcf";
 import { describeFetchFailure } from "./dgiiService";
 import { signXmlWithP12Buffer, testCertificateCompatibility, type SignatureMode } from "./dgiiXmlSigner";
@@ -126,14 +126,14 @@ function extractExpiration(raw: string): Date {
 
 function resolveSeedUrl(company: Company): string {
   return requireUrl(
-    company.dgiiSeedUrl?.trim() || DGII_ECF_SANDBOX_DEFAULTS.seed,
+    normalizeDgiiEcfUrl(company.dgiiSeedUrl || DGII_ECF_SANDBOX_DEFAULTS.seed),
     "semilla DGII",
   );
 }
 
 function resolveValidateSeedUrl(company: Company): string {
   return requireUrl(
-    company.dgiiValidateSeedUrl?.trim() || DGII_ECF_SANDBOX_DEFAULTS.validateSeed,
+    normalizeDgiiEcfUrl(company.dgiiValidateSeedUrl || DGII_ECF_SANDBOX_DEFAULTS.validateSeed),
     "validación de semilla DGII",
   );
 }
