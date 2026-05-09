@@ -1,0 +1,6 @@
+DgiiEcfError: DGII validación semilla HTTP 400: {"mensaje":"La estructura del archivo XML no es válido, favor proveer un XML con una estructura válida, verificar el XSD correspondiente.","errores":["The 'Id' attribute is not declared."]}
+    at validateSeed (/Users/joserosario/Desktop/facturacion-electronica/backend/src/services/dgiiAuth.service.ts:210:13)
+    at processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at Object.getToken (/Users/joserosario/Desktop/facturacion-electronica/backend/src/services/dgiiAuth.service.ts:291:21)
+    at Object.testConnection (/Users/joserosario/Desktop/facturacion-electronica/backend/src/services/dgiiAuth.service.ts:376:7)
+    at testDgiiConnection (/Users/joserosario/Desktop/facturacion-electronica/backend/src/controllers/auth.controller.ts:237:17)

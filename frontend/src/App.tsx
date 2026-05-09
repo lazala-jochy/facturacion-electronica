@@ -11,6 +11,7 @@ import CotizacionCreate from "./pages/CotizacionCreate";
 import CotizacionEdit from "./pages/CotizacionEdit";
 import { AUTH_STORAGE_KEY, type AuthSession } from "./types/session";
 import CompanyProfile from "./pages/CompanyProfile";
+import EcfExcelBatch from "./pages/EcfExcelBatch";
 import { documentTitleWithCompany } from "./utils/productBranding";
 
 function App() {
@@ -78,6 +79,7 @@ function App() {
         <Route element={<AppLayout company={company} onLogout={handleLogout} />}>
           <Route path="/" element={<Dashboard company={company} user={session.user} />} />
           <Route path="/ecf" element={<ECF company={company} />} />
+          <Route path="/ecf-excel-batch" element={<EcfExcelBatch company={company} />} />
           <Route path="/clients" element={<Clients />} />
           <Route path="/cotizaciones/nueva" element={<CotizacionCreate />} />
           <Route path="/cotizaciones/:id/editar" element={<CotizacionEdit />} />

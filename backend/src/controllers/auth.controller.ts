@@ -2,6 +2,7 @@ import "../types/express-auth.augment";
 import path from "path";
 import type { Express, Request, RequestHandler } from "express";
 import { authService } from "../services/auth.service";
+import { dgiiAuthService } from "../services/dgiiAuth.service";
 import type { ForgotPasswordBody, RegisterBody, ResetPasswordBody, UpdateCompanyBody } from "../types/auth";
 import { isAllowedLogoMime } from "../utils/companyLogo";
 import { validateCertificateMulterFile } from "../utils/companyCertificateUpload";
@@ -41,6 +42,14 @@ const updateCompanyBodyFromReq = (req: Request): UpdateCompanyBody => {
     dgii_auth_url: pickStr(b, "dgii_auth_url"),
     dgii_reception_url: pickStr(b, "dgii_reception_url"),
     dgii_consult_url: pickStr(b, "dgii_consult_url"),
+    dgii_seed_url: pickStr(b, "dgii_seed_url"),
+    dgii_validate_seed_url: pickStr(b, "dgii_validate_seed_url"),
+    dgii_ecf_receive_url: pickStr(b, "dgii_ecf_receive_url"),
+    dgii_track_url: pickStr(b, "dgii_track_url"),
+    dgii_status_url: pickStr(b, "dgii_status_url"),
+    dgii_environment: pickStr(b, "dgii_environment") as "CERTIFICACION" | "PRODUCCION" | undefined,
+    certificate_path: pickStr(b, "certificate_path"),
+    certificate_password: pickStr(b, "certificate_password"),
   };
 };
 
@@ -214,6 +223,21 @@ export const updateCompany: RequestHandler = async (req, res) => {
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Solicitud inválida.";
+    res.status(400).json({ message: msg });
+  }
+};
+
+export const testDgiiConnection: RequestHandler = async (req, res) => {
+  const auth = req.auth;
+  if (!auth) {
+    res.status(401).json({ message: "No autorizado." });
+    return;
+  }
+  try {
+    const out = await dgiiAuthService.testConnection(auth.companyId);
+    res.json(out);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Error al probar conexión DGII.";
     res.status(400).json({ message: msg });
   }
 };

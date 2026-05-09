@@ -23,6 +23,15 @@ export type AuthCompany = {
   dgiiAuthUrl?: string | null;
   dgiiReceptionUrl?: string | null;
   dgiiConsultUrl?: string | null;
+  dgiiSeedUrl?: string | null;
+  dgiiValidateSeedUrl?: string | null;
+  dgiiEcfReceiveUrl?: string | null;
+  dgiiTrackUrl?: string | null;
+  dgiiStatusUrl?: string | null;
+  dgiiEnvironment?: "CERTIFICACION" | "PRODUCCION" | null;
+  certificatePath?: string | null;
+  tokenExpiration?: string | null;
+  token_cached?: boolean;
   /** Clave de cifrado del .p12 guardada en perfil (para enviar e-CF sin reingresarla en Cotizaciones). */
   certificate_keyphrase?: string | null;
 };

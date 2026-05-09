@@ -74,6 +74,10 @@
       {
         "from": "../backend/prisma",
         "to": "backend-runtime/prisma"
+      },
+      {
+        "from": "../backend/assets",
+        "to": "ecf-test-assets"
       }
     ],
     "win": {

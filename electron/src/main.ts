@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, type OpenDialogOptions } from "electron";
 import path from "path";
 import { spawn, type ChildProcess } from "child_process";
 import { pathToFileURL } from "url";
@@ -22,6 +22,25 @@ const getAppIconPath = (): string => {
 };
 const isProduction = app.isPackaged;
 const UPDATE_CHECK_INTERVAL_MS = 1000 * 60 * 30;
+
+/** Ruta del Escritorio (para carpeta de resultados DGII desde la vista web). */
+ipcMain.handle("ecf-desktop-parent", () => app.getPath("desktop"));
+
+/** Selector de carpeta donde se creará `ECF-DGII-Pruebas-…` (subcarpetas xml/ y firmados/). */
+ipcMain.handle("ecf-pick-parent-folder", async (event) => {
+  const parentWindow = BrowserWindow.fromWebContents(event.sender);
+  const defaultPath = app.getPath("desktop");
+  const options: OpenDialogOptions = {
+    title: "Elegir carpeta para guardar los XML de prueba",
+    defaultPath,
+    properties: ["openDirectory", "createDirectory"],
+  };
+  const result = parentWindow
+    ? await dialog.showOpenDialog(parentWindow, options)
+    : await dialog.showOpenDialog(options);
+  if (result.canceled || !result.filePaths.length) return null;
+  return result.filePaths[0];
+});
 
 const waitForBackend = async () => {
   for (let attempt = 0; attempt < 30; attempt += 1) {
@@ -52,6 +71,8 @@ function startBackend() {
     fs.mkdirSync(dbDir, { recursive: true });
   }
 
+  const ecfTestAssets = path.join(process.resourcesPath, "ecf-test-assets");
+
   backendProcess = spawn(process.execPath, [backendEntry], {
     cwd: backendRuntime,
     env: {
@@ -60,6 +81,7 @@ function startBackend() {
       NODE_ENV: "production",
       PORT: String(BACKEND_PORT),
       DATABASE_URL: databaseUrl,
+      ...(fs.existsSync(ecfTestAssets) ? { ECF_TEST_ASSETS_DIR: ecfTestAssets } : {}),
     },
     stdio: "inherit",
   });
@@ -74,6 +96,8 @@ function createWindow() {
     icon: getAppIconPath(),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
     },
   });
 

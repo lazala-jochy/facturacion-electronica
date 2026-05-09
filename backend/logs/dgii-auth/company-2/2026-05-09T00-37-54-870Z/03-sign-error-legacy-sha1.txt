@@ -1,0 +1,7 @@
+Error: La verificación profunda XMLDSig falló.
+    at verifySignedXmlForDgii (/Users/joserosario/Desktop/facturacion-electronica/backend/dist/services/dgiiXmlSigner.js:230:15)
+    at materialToSignedXml (/Users/joserosario/Desktop/facturacion-electronica/backend/dist/services/dgiiXmlSigner.js:332:65)
+    at signXmlWithP12Buffer (/Users/joserosario/Desktop/facturacion-electronica/backend/dist/services/dgiiXmlSigner.js:400:12)
+    at /Users/joserosario/Desktop/facturacion-electronica/backend/dist/services/dgiiAuth.service.js:155:78
+    at Object.getToken (/Users/joserosario/Desktop/facturacion-electronica/backend/dist/services/dgiiAuth.service.js:269:36)
+    at async Object.testConnection (/Users/joserosario/Desktop/facturacion-electronica/backend/dist/services/dgiiAuth.service.js:331:13)

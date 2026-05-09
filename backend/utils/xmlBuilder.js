@@ -56,6 +56,30 @@ const SYN_IND_FACTURACION = ["INDICADORFACTURACION"];
 const SYN_IND_BIEN = ["INDICADORBIENOSERVICIO", "INDICADORBIENOSSERVICIO"];
 const SYN_UNIDAD_MEDIDA = ["UNIDADMEDIDA", "UNIDAD_MEDIDA"];
 
+/** Orden canónico DGII del bloque Emisor. */
+const EMISOR_FIELD_ORDER = [
+  "RNCEmisor",
+  "RazonSocialEmisor",
+  "NombreComercial",
+  "DireccionEmisor",
+  "Municipio",
+  "Provincia",
+  "CorreoEmisor",
+  "FechaEmision",
+];
+
+/** Orden canónico DGII del bloque Item. */
+const ITEM_FIELD_ORDER = [
+  "NumeroLinea",
+  "IndicadorFacturacion",
+  "NombreItem",
+  "IndicadorBienoServicio",
+  "CantidadItem",
+  "UnidadMedida",
+  "PrecioUnitarioItem",
+  "MontoItem",
+];
+
 /**
  * @param {string} s
  */
@@ -214,13 +238,30 @@ function formatQtyDisplay(val, fallbackNum) {
 }
 
 /**
+ * Inserta elementos en el orden exacto especificado por `order`.
+ * @param {import("xmlbuilder2/lib/interfaces").XMLBuilder} parent
+ * @param {Record<string, string>} values
+ * @param {string[]} order
+ */
+function appendFieldsInOrder(parent, values, order) {
+  for (const key of order) {
+    parent.ele(key).txt(values[key] ?? "");
+  }
+}
+
+/**
  * @param {Record<string, string>} row
- * @param {{ defaultRncEmisor?: string }} [opts]
+ * @param {{ defaultRncEmisor?: string; tipoEcf?: string }} [opts]
  * @returns {{ xml: string, enf: string }}
  */
 function buildEcfXml(row, opts = {}) {
   const version = lookup(row, SYN_VERSION) || "1.0";
-  const tipoeCf = lookup(row, SYN_TIPOECF);
+  const tipoFromOpts = typeof opts.tipoEcf === "string" ? opts.tipoEcf.trim() : "";
+  const tipoFromEnv =
+    typeof process.env.DGII_TIPOECF === "string" ? process.env.DGII_TIPOECF.trim() : "";
+  /** Prioridad: `opts.tipoEcf` &gt; `DGII_TIPOECF` en entorno &gt; columna Excel TipoeCF. */
+  const tipoeCf =
+    tipoFromOpts || tipoFromEnv || lookup(row, SYN_TIPOECF);
   const enf = resolveEncf(row);
   const tipoIngresos = lookup(row, SYN_TIPO_INGRESOS) || "01";
   const tipoPago = lookup(row, SYN_TIPO_PAGO) || "1";
@@ -311,14 +352,20 @@ function buildEcfXml(row, opts = {}) {
   idDoc.up();
 
   const em = enc.ele("Emisor");
-  em.ele("RNCEmisor").txt(String(rncEmisor));
-  em.ele("RazonSocialEmisor").txt(String(razonSocialEmisor));
-  em.ele("NombreComercial").txt(String(nombreComercial));
-  em.ele("DireccionEmisor").txt(String(direccionEmisor));
-  em.ele("Municipio").txt(String(municipio));
-  em.ele("Provincia").txt(String(provincia));
-  em.ele("CorreoEmisor").txt(String(correoEmisor));
-  em.ele("FechaEmision").txt(fechaEmisionDdMmYyyy(row));
+  appendFieldsInOrder(
+    em,
+    {
+      RNCEmisor: String(rncEmisor),
+      RazonSocialEmisor: String(razonSocialEmisor),
+      NombreComercial: String(nombreComercial),
+      DireccionEmisor: String(direccionEmisor),
+      Municipio: String(municipio),
+      Provincia: String(provincia),
+      CorreoEmisor: String(correoEmisor),
+      FechaEmision: fechaEmisionDdMmYyyy(row),
+    },
+    EMISOR_FIELD_ORDER,
+  );
   em.up();
 
   const comp = enc.ele("Comprador");
@@ -332,14 +379,20 @@ function buildEcfXml(row, opts = {}) {
 
   const detalles = root.ele("DetallesItems");
   const item = detalles.ele("Item");
-  item.ele("NumeroLinea").txt("1");
-  item.ele("IndicadorFacturacion").txt(String(indicadorFacturacion));
-  item.ele("NombreItem").txt(String(nombreItem));
-  item.ele("IndicadorBienoServicio").txt(String(indicadorBienServicio));
-  item.ele("CantidadItem").txt(cantidadDisplay);
-  item.ele("UnidadMedida").txt(String(unidadMedida));
-  item.ele("PrecioUnitarioItem").txt(precioUnitStr);
-  item.ele("MontoItem").txt(montoItemStr);
+  appendFieldsInOrder(
+    item,
+    {
+      NumeroLinea: "1",
+      IndicadorFacturacion: String(indicadorFacturacion),
+      NombreItem: String(nombreItem),
+      IndicadorBienoServicio: String(indicadorBienServicio),
+      CantidadItem: cantidadDisplay,
+      UnidadMedida: String(unidadMedida),
+      PrecioUnitarioItem: precioUnitStr,
+      MontoItem: montoItemStr,
+    },
+    ITEM_FIELD_ORDER,
+  );
   item.up();
   detalles.up();
 

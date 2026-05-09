@@ -20,6 +20,7 @@ export const buildRouter = () => {
   router.post("/auth/reset-password", asyncHandler(authController.resetPassword));
   router.get("/auth/me", requireAuth, asyncHandler(authController.me));
   router.put("/auth/company", requireAuth, authFormUpload, asyncHandler(authController.updateCompany));
+  router.post("/auth/company/dgii/test", requireAuth, asyncHandler(authController.testDgiiConnection));
 
   router.post("/clients", requireAuth, asyncHandler(clientsController.createClient));
   router.get("/clients", requireAuth, asyncHandler(clientsController.listClients));
@@ -77,6 +78,11 @@ export const buildRouter = () => {
     "/ecf-excel-batch/run",
     requireAuth,
     asyncHandler(ecfExcelBatchController.runExcelBatchToDesktopHandler),
+  );
+  router.post(
+    "/ecf-excel-batch/send",
+    requireAuth,
+    asyncHandler(ecfExcelBatchController.sendExcelBatchSignedToDgiiHandler),
   );
 
   return router;

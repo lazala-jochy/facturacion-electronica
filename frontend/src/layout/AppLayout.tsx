@@ -130,6 +130,20 @@ export default function AppLayout({
             </NavLink>
 
             <NavLink
+              to="/ecf-excel-batch"
+              onClick={() => setSidebarOpen(false)}
+              className={({ isActive }) =>
+                `block p-2 rounded transition-all duration-200 ${
+                  isActive
+                    ? "bg-[#e9f9ef] text-[#15803d] border border-[#b7e7c7] shadow-inner"
+                    : "hover:bg-slate-50 hover:translate-x-1"
+                }`
+              }
+            >
+              Casos DGII Excel
+            </NavLink>
+
+            <NavLink
               to="/clients"
               onClick={() => setSidebarOpen(false)}
               className={({ isActive }) =>

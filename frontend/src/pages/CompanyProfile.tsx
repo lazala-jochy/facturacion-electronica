@@ -9,6 +9,11 @@ type Props = {
   session: AuthSession;
   onProfileUpdated: (user: AuthUser, company: AuthCompany) => void;
 };
+type ProfileFieldErrorKey =
+  | "certificateFile"
+  | "certificatePassword"
+  | "dgiiSeedUrl"
+  | "dgiiValidateSeedUrl";
 
 function companyInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -53,6 +58,8 @@ const DGII_SANDBOX = {
   auth: "https://ecf.dgii.gov.do/ecf/autenticacion/api/Autenticacion",
   reception: "https://ecf.dgii.gov.do/ecf/recepcion/api/RecepcionFC",
   consult: "https://ecf.dgii.gov.do/ecf/consulta/api/ConsultaResultado",
+  seed: "https://ecf.dgii.gov.do/CerteCF/Autenticacion/api/Autenticacion/Semilla",
+  validateSeed: "https://ecf.dgii.gov.do/CerteCF/Autenticacion/api/Autenticacion/ValidarSemilla",
 } as const;
 
 export default function CompanyProfile({ session, onProfileUpdated }: Props) {
@@ -68,12 +75,33 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
   const [dgiiAuthUrl, setDgiiAuthUrl] = useState(session.company.dgiiAuthUrl ?? "");
   const [dgiiReceptionUrl, setDgiiReceptionUrl] = useState(session.company.dgiiReceptionUrl ?? "");
   const [dgiiConsultUrl, setDgiiConsultUrl] = useState(session.company.dgiiConsultUrl ?? "");
+  const [dgiiSeedUrl, setDgiiSeedUrl] = useState(session.company.dgiiSeedUrl ?? DGII_SANDBOX.seed);
+  const [dgiiValidateSeedUrl, setDgiiValidateSeedUrl] = useState(session.company.dgiiValidateSeedUrl ?? DGII_SANDBOX.validateSeed);
+  const [dgiiEcfReceiveUrl, setDgiiEcfReceiveUrl] = useState(session.company.dgiiEcfReceiveUrl ?? session.company.dgiiReceptionUrl ?? "");
+  const [dgiiTrackUrl, setDgiiTrackUrl] = useState(session.company.dgiiTrackUrl ?? "");
+  const [dgiiStatusUrl, setDgiiStatusUrl] = useState(session.company.dgiiStatusUrl ?? "");
+  const [dgiiEnvironment, setDgiiEnvironment] = useState<"CERTIFICACION" | "PRODUCCION">(
+    session.company.dgiiEnvironment === "PRODUCCION" ? "PRODUCCION" : "CERTIFICACION",
+  );
   const [dgiiUsername, setDgiiUsername] = useState(session.company.dgiiUsername ?? "");
   const [dgiiPassword, setDgiiPassword] = useState(session.company.dgiiPassword ?? "");
   const [showDgiiPassword, setShowDgiiPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [testingDgii, setTestingDgii] = useState(false);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<ProfileFieldErrorKey, string>>>({});
   const [success, setSuccess] = useState("");
+  const [testResult, setTestResult] = useState("");
+  const [certTest, setCertTest] = useState<{
+    subject: string;
+    issuer: string;
+    validFrom: string;
+    validUntil: string;
+    chainCount: number;
+    privateKey: boolean;
+    signatureTestPassed: boolean;
+    validNow: boolean;
+  } | null>(null);
 
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoObjectUrl, setLogoObjectUrl] = useState<string | null>(null);
@@ -81,12 +109,8 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
   const [clearCompanyLogo, setClearCompanyLogo] = useState(false);
 
   const [certificateFile, setCertificateFile] = useState<File | null>(null);
-  const [certificatePassword, setCertificatePassword] = useState("");
-  const [certificateEncryptionSecret, setCertificateEncryptionSecret] = useState(
-    session.company.certificate_keyphrase ?? "",
-  );
+  const [certificatePassword, setCertificatePassword] = useState(session.company.certificate_keyphrase ?? "");
   const [showP12Password, setShowP12Password] = useState(false);
-  const [showEncryptionSecret, setShowEncryptionSecret] = useState(false);
   const [clearCertificate, setClearCertificate] = useState(false);
 
   useEffect(() => {
@@ -103,19 +127,27 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
     setDgiiAuthUrl(session.company.dgiiAuthUrl ?? "");
     setDgiiReceptionUrl(session.company.dgiiReceptionUrl ?? "");
     setDgiiConsultUrl(session.company.dgiiConsultUrl ?? "");
+    setDgiiSeedUrl(session.company.dgiiSeedUrl ?? DGII_SANDBOX.seed);
+    setDgiiValidateSeedUrl(session.company.dgiiValidateSeedUrl ?? DGII_SANDBOX.validateSeed);
+    setDgiiEcfReceiveUrl(session.company.dgiiEcfReceiveUrl ?? session.company.dgiiReceptionUrl ?? "");
+    setDgiiTrackUrl(session.company.dgiiTrackUrl ?? "");
+    setDgiiStatusUrl(session.company.dgiiStatusUrl ?? "");
+    setDgiiEnvironment(session.company.dgiiEnvironment === "PRODUCCION" ? "PRODUCCION" : "CERTIFICACION");
     setDgiiUsername(session.company.dgiiUsername ?? "");
     setDgiiPassword(session.company.dgiiPassword ?? "");
   }, [
     session.company.dgiiAuthUrl,
     session.company.dgiiReceptionUrl,
     session.company.dgiiConsultUrl,
+    session.company.dgiiSeedUrl,
+    session.company.dgiiValidateSeedUrl,
+    session.company.dgiiEcfReceiveUrl,
+    session.company.dgiiTrackUrl,
+    session.company.dgiiStatusUrl,
+    session.company.dgiiEnvironment,
     session.company.dgiiUsername,
     session.company.dgiiPassword,
   ]);
-
-  useEffect(() => {
-    setCertificateEncryptionSecret(session.company.certificate_keyphrase ?? "");
-  }, [session.company.certificate_keyphrase]);
 
   const uploadedFromSession = companyUploadedLogoUrl(session.company);
   const previewImageSrc =
@@ -134,8 +166,11 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
 
   const cancelPendingCertificate = () => {
     setCertificateFile(null);
-    setCertificatePassword("");
   };
+
+  useEffect(() => {
+    setCertificatePassword(session.company.certificate_keyphrase ?? "");
+  }, [session.company.certificate_keyphrase]);
 
   const onPickLogo = (list: FileList | null) => {
     const f = list?.[0];
@@ -150,7 +185,10 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
+    setFieldErrors({});
     setSuccess("");
+    setTestResult("");
+    setCertTest(null);
     if (phone.trim() && !isValidPhone(phone)) {
       setError("El telefono debe tener formato xxx-xxx-xxxx.");
       return;
@@ -168,20 +206,18 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
 
     if (certificateFile && !certificatePassword.trim()) {
       setError("Indicá la contraseña del certificado (.p12) que vas a guardar.");
+      setFieldErrors({ certificatePassword: "Contraseña requerida para el .p12 seleccionado." });
       return;
     }
-    if (certificateFile && certificateEncryptionSecret.trim().length < 8) {
-      setError("La clave de cifrado del certificado debe tener al menos 8 caracteres (la usarás al enviar e-CF).");
-      return;
-    }
-    const encTrim = certificateEncryptionSecret.trim();
     const pwdTrim = certificatePassword.trim();
-    if ((pwdTrim && !encTrim) || (!pwdTrim && encTrim)) {
-      setError("Para actualizar solo la contraseña del .p12, completá contraseña del certificado y clave de cifrado.");
+    if (pwdTrim && pwdTrim.length < 8) {
+      setError("La contraseña del certificado debe tener al menos 8 caracteres.");
+      setFieldErrors({ certificatePassword: "Debe tener al menos 8 caracteres." });
       return;
     }
-    if (!certificateFile && pwdTrim && encTrim.length < 8) {
-      setError("La clave de cifrado del certificado debe tener al menos 8 caracteres.");
+    if (!session.company.certificateConfigured && !certificateFile && pwdTrim) {
+      setError("No hay certificado guardado. Seleccioná un archivo .p12/.pfx y guardá para configurarlo.");
+      setFieldErrors({ certificatePassword: "Primero subí el archivo .p12/.pfx." });
       return;
     }
 
@@ -211,17 +247,25 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
         fd.append("dgii_auth_url", dgiiAuthUrl.trim());
         fd.append("dgii_reception_url", dgiiReceptionUrl.trim());
         fd.append("dgii_consult_url", dgiiConsultUrl.trim());
+        fd.append("dgii_seed_url", dgiiSeedUrl.trim());
+        fd.append("dgii_validate_seed_url", dgiiValidateSeedUrl.trim());
+        fd.append("dgii_ecf_receive_url", dgiiEcfReceiveUrl.trim());
+        fd.append("dgii_track_url", dgiiTrackUrl.trim());
+        fd.append("dgii_status_url", dgiiStatusUrl.trim());
+        fd.append("dgii_environment", dgiiEnvironment);
         fd.append("dgii_username", dgiiUsername.trim());
         fd.append("dgii_password", dgiiPassword.trim());
-        fd.append("certificate_keyphrase", certificateEncryptionSecret.trim());
+        if (certificateFile || session.company.certificateConfigured) {
+          fd.append("certificate_keyphrase", certificatePassword.trim());
+        }
         if (logoFile) fd.append("logo", logoFile);
         if (certificateFile) {
           fd.append("certificate", certificateFile);
           fd.append("certificate_password", certificatePassword.trim());
-          fd.append("certificate_encryption_secret", certificateEncryptionSecret.trim());
-        } else if (pwdTrim && encTrim) {
+          fd.append("certificate_encryption_secret", certificatePassword.trim());
+        } else if (pwdTrim && session.company.certificateConfigured) {
           fd.append("certificate_password", pwdTrim);
-          fd.append("certificate_encryption_secret", encTrim);
+          fd.append("certificate_encryption_secret", pwdTrim);
         }
         if (clearCompanyLogo) fd.append("clear_logo", "true");
         if (clearCertificate) fd.append("clear_certificate", "true");
@@ -250,11 +294,19 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
             dgii_auth_url: dgiiAuthUrl.trim(),
             dgii_reception_url: dgiiReceptionUrl.trim(),
             dgii_consult_url: dgiiConsultUrl.trim(),
+            dgii_seed_url: dgiiSeedUrl.trim(),
+            dgii_validate_seed_url: dgiiValidateSeedUrl.trim(),
+            dgii_ecf_receive_url: dgiiEcfReceiveUrl.trim(),
+            dgii_track_url: dgiiTrackUrl.trim(),
+            dgii_status_url: dgiiStatusUrl.trim(),
+            dgii_environment: dgiiEnvironment,
             dgii_username: dgiiUsername.trim(),
             dgii_password: dgiiPassword.trim(),
-            certificate_keyphrase: certificateEncryptionSecret.trim(),
-            ...(pwdTrim && encTrim
-              ? { certificate_password: pwdTrim, certificate_encryption_secret: encTrim }
+            ...(session.company.certificateConfigured || pwdTrim
+              ? { certificate_keyphrase: certificatePassword.trim() }
+              : {}),
+            ...(pwdTrim && session.company.certificateConfigured
+              ? { certificate_password: pwdTrim, certificate_encryption_secret: pwdTrim }
               : {}),
           }),
         });
@@ -266,18 +318,38 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
       setLogoFile(null);
       setClearCompanyLogo(false);
       setCertificateFile(null);
-      setCertificatePassword("");
-      setCertificateEncryptionSecret(res.company.certificate_keyphrase ?? "");
+      setCertificatePassword(res.company.certificate_keyphrase ?? "");
       setDgiiAuthUrl(res.company.dgiiAuthUrl ?? "");
       setDgiiReceptionUrl(res.company.dgiiReceptionUrl ?? "");
       setDgiiConsultUrl(res.company.dgiiConsultUrl ?? "");
+      setDgiiSeedUrl(res.company.dgiiSeedUrl ?? DGII_SANDBOX.seed);
+      setDgiiValidateSeedUrl(res.company.dgiiValidateSeedUrl ?? DGII_SANDBOX.validateSeed);
+      setDgiiEcfReceiveUrl(res.company.dgiiEcfReceiveUrl ?? res.company.dgiiReceptionUrl ?? "");
+      setDgiiTrackUrl(res.company.dgiiTrackUrl ?? "");
+      setDgiiStatusUrl(res.company.dgiiStatusUrl ?? "");
+      setDgiiEnvironment(res.company.dgiiEnvironment === "PRODUCCION" ? "PRODUCCION" : "CERTIFICACION");
       setDgiiUsername(res.company.dgiiUsername ?? "");
       setDgiiPassword(res.company.dgiiPassword ?? "");
       setDgiiEcfEndpoint(res.company.dgiiEcfEndpoint ?? "");
       setClearCertificate(false);
       setSuccess("Perfil de empresa actualizado.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo actualizar.");
+      const message = err instanceof Error ? err.message : "No se pudo actualizar.";
+      setError(message);
+      const lower = message.toLowerCase();
+      const next: Partial<Record<ProfileFieldErrorKey, string>> = {};
+      if (lower.includes("contraseña del certificado") || lower.includes("(.p12) obligatoria")) {
+        next.certificatePassword = "Este campo es obligatorio para guardar el certificado.";
+      }
+      if (lower.includes("semilla")) {
+        next.dgiiSeedUrl = "Revisá URL de semilla.";
+      }
+      if (lower.includes("validar semilla")) {
+        next.dgiiValidateSeedUrl = "Revisá URL de ValidarSemilla.";
+      }
+      if (Object.keys(next).length > 0) {
+        setFieldErrors(next);
+      }
     } finally {
       setLoading(false);
     }
@@ -285,6 +357,40 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
 
   const canRestoreDefault =
     Boolean(session.company.logoUrl) || Boolean(logoFile);
+
+  const runDgiiTest = async () => {
+    setTestingDgii(true);
+    setError("");
+    setSuccess("");
+    setTestResult("");
+    try {
+      const out = await apiFetch<{
+        seedOk: boolean;
+        tokenOk: boolean;
+        message: string;
+        signatureModeUsed?: "legacy-sha1" | "modern-sha256";
+        certificate?: {
+          subject: string;
+          issuer: string;
+          validFrom: string;
+          validUntil: string;
+          chainCount: number;
+          privateKey: boolean;
+          signatureTestPassed: boolean;
+          validNow: boolean;
+        };
+      }>(
+        "/auth/company/dgii/test",
+        { method: "POST" },
+      );
+      setTestResult(`${out.message}${out.signatureModeUsed ? ` · modo firma: ${out.signatureModeUsed}` : ""}`);
+      setCertTest(out.certificate ?? null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error probando conexión DGII.");
+    } finally {
+      setTestingDgii(false);
+    }
+  };
 
   return (
     <div className="w-full px-4 sm:px-0 pb-10 pt-4 sm:pt-5">
@@ -346,11 +452,61 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
         </div>
 
         <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50/80 p-4 space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">DGII e-CF (por empresa)</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">DGII Integration</p>
           <p className="text-xs text-slate-600">
             Cada empresa usa sus propias URLs y credenciales. Valores por defecto: certificación DGII (sandbox). Para
             producción, reemplazá las URLs por las que indique la DGII y las credenciales del ambiente productivo.
           </p>
+          <div>
+            <label className="block text-sm font-medium text-slate-700" htmlFor="dgii-env">
+              Ambiente DGII
+            </label>
+            <select
+              id="dgii-env"
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              value={dgiiEnvironment}
+              onChange={(e) => setDgiiEnvironment(e.target.value as "CERTIFICACION" | "PRODUCCION")}
+            >
+              <option value="CERTIFICACION">CERTIFICACION</option>
+              <option value="PRODUCCION">PRODUCCION</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700" htmlFor="dgii-seed-url">
+              URL semilla
+            </label>
+            <input
+              id="dgii-seed-url"
+              type="url"
+              className={`mt-1 w-full rounded border px-3 py-2 text-sm font-mono text-[13px] ${
+                fieldErrors.dgiiSeedUrl ? "border-red-400 bg-red-50" : "border-slate-300"
+              }`}
+              placeholder={DGII_SANDBOX.seed}
+              value={dgiiSeedUrl}
+              onChange={(e) => setDgiiSeedUrl(e.target.value)}
+            />
+            {fieldErrors.dgiiSeedUrl ? (
+              <p className="mt-1 text-xs text-red-700">{fieldErrors.dgiiSeedUrl}</p>
+            ) : null}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700" htmlFor="dgii-validate-seed-url">
+              URL validar semilla
+            </label>
+            <input
+              id="dgii-validate-seed-url"
+              type="url"
+              className={`mt-1 w-full rounded border px-3 py-2 text-sm font-mono text-[13px] ${
+                fieldErrors.dgiiValidateSeedUrl ? "border-red-400 bg-red-50" : "border-slate-300"
+              }`}
+              placeholder={DGII_SANDBOX.validateSeed}
+              value={dgiiValidateSeedUrl}
+              onChange={(e) => setDgiiValidateSeedUrl(e.target.value)}
+            />
+            {fieldErrors.dgiiValidateSeedUrl ? (
+              <p className="mt-1 text-xs text-red-700">{fieldErrors.dgiiValidateSeedUrl}</p>
+            ) : null}
+          </div>
           <div>
             <label className="block text-sm font-medium text-slate-700" htmlFor="dgii-auth-url">
               URL autenticación
@@ -389,6 +545,44 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
               value={dgiiConsultUrl}
               onChange={(e) => setDgiiConsultUrl(e.target.value)}
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700" htmlFor="dgii-ecf-receive-url">
+              URL recepción e-CF (nuevo)
+            </label>
+            <input
+              id="dgii-ecf-receive-url"
+              type="url"
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm font-mono text-[13px]"
+              value={dgiiEcfReceiveUrl}
+              onChange={(e) => setDgiiEcfReceiveUrl(e.target.value)}
+            />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-slate-700" htmlFor="dgii-track-url">
+                URL track
+              </label>
+              <input
+                id="dgii-track-url"
+                type="url"
+                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm font-mono text-[13px]"
+                value={dgiiTrackUrl}
+                onChange={(e) => setDgiiTrackUrl(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700" htmlFor="dgii-status-url">
+                URL status
+              </label>
+              <input
+                id="dgii-status-url"
+                type="url"
+                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm font-mono text-[13px]"
+                value={dgiiStatusUrl}
+                onChange={(e) => setDgiiStatusUrl(e.target.value)}
+              />
+            </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -447,9 +641,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
         </div>
 
         <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50/80 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Certificado digital (DGII)
-          </p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Digital Certificate</p>
           <p className="mt-1 text-xs text-slate-600">
             Subí tu .p12 o .pfx: el archivo queda cifrado en disco. La{" "}
             <span className="font-medium text-slate-700">contraseña del archivo</span> (exportación del certificado) no se
@@ -485,7 +677,9 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
                   id="cert-pass-prof"
                   type={showP12Password ? "text" : "password"}
                   autoComplete="new-password"
-                  className="w-full rounded border border-slate-300 py-2 pl-3 pr-11 text-sm"
+                className={`w-full rounded border py-2 pl-3 pr-11 text-sm ${
+                  fieldErrors.certificatePassword ? "border-red-400 bg-red-50" : "border-slate-300"
+                }`}
                   placeholder={
                     session.company.certificateConfigured
                       ? "Dejá vacío si no cambiás la contraseña; o completá con la nueva"
@@ -502,30 +696,11 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
                   />
                 </span>
               </div>
-              <label className="block text-xs font-semibold text-slate-700" htmlFor="cert-enc-prof">
-                Clave de cifrado (mín. 8 caracteres, se guarda en la empresa)
-              </label>
-              <div className="relative">
-                <input
-                  id="cert-enc-prof"
-                  type={showEncryptionSecret ? "text" : "password"}
-                  autoComplete="new-password"
-                  className="w-full rounded border border-slate-300 py-2 pl-3 pr-11 text-sm"
-                  placeholder="Se usa al enviar e-CF a DGII"
-                  value={certificateEncryptionSecret}
-                  onChange={(e) => setCertificateEncryptionSecret(e.target.value)}
-                />
-                <span className="absolute inset-y-0 right-1 flex items-center">
-                  <EyeToggle
-                    visible={showEncryptionSecret}
-                    onToggle={() => setShowEncryptionSecret((v) => !v)}
-                    label={showEncryptionSecret ? "Ocultar clave de cifrado" : "Mostrar clave de cifrado"}
-                  />
-                </span>
-              </div>
+              {fieldErrors.certificatePassword ? (
+                <p className="mt-1 text-xs text-red-700">{fieldErrors.certificatePassword}</p>
+              ) : null}
               <p className="text-[11px] text-slate-500">
-                Si ya tenés certificado guardado y solo querés corregir la contraseña del mismo .p12, completá contraseña y
-                clave de cifrado sin elegir archivo nuevo.
+                Esta contraseña se usa para abrir el .p12 y también como clave interna de cifrado de la app.
               </p>
             </div>
             {certificateFile ? (
@@ -543,7 +718,6 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
                 onClick={() => {
                   setClearCertificate(true);
                   cancelPendingCertificate();
-                  setCertificateEncryptionSecret("");
                 }}
                 className="w-fit text-sm font-medium text-red-700 hover:underline"
               >
@@ -647,6 +821,32 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
               {success}
             </p>
           )}
+          {testResult && (
+            <p className="rounded border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-700">
+              {testResult}
+            </p>
+          )}
+          {certTest && (
+            <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 space-y-1">
+              <p><span className="font-semibold">Owner:</span> {certTest.subject}</p>
+              <p><span className="font-semibold">Issuer:</span> {certTest.issuer}</p>
+              <p><span className="font-semibold">Valid until:</span> {new Date(certTest.validUntil).toLocaleString()}</p>
+              <p>
+                <span className="font-semibold">Chain status:</span>{" "}
+                {certTest.chainCount} cert(s) · key {certTest.privateKey ? "OK" : "missing"} · signature{" "}
+                {certTest.signatureTestPassed ? "OK" : "failed"} · {certTest.validNow ? "vigente" : "vencido/no vigente"}
+              </p>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => void runDgiiTest()}
+            disabled={testingDgii || loading}
+            className="mr-2 rounded bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {testingDgii ? "Probando..." : "Test DGII Signature"}
+          </button>
 
           <button
             type="submit"

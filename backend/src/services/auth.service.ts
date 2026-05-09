@@ -40,10 +40,20 @@ export type PublicCompany = Pick<
   | "dgiiAuthUrl"
   | "dgiiReceptionUrl"
   | "dgiiConsultUrl"
+  | "dgiiSeedUrl"
+  | "dgiiValidateSeedUrl"
+  | "dgiiEcfReceiveUrl"
+  | "dgiiTrackUrl"
+  | "dgiiStatusUrl"
+  | "dgiiEnvironment"
+  | "certificatePath"
+  | "tokenExpiration"
 > & {
   certificateConfigured: boolean;
   /** Clave de cifrado del .p12 persistida (misma que al guardar el certificado). */
   certificate_keyphrase: string | null;
+  /** Nunca se expone el token en claro al frontend. */
+  token_cached: boolean;
 };
 
 export type AuthOk = {
@@ -96,8 +106,17 @@ const publicCompany = (c: Company): PublicCompany => ({
   dgiiAuthUrl: c.dgiiAuthUrl,
   dgiiReceptionUrl: c.dgiiReceptionUrl,
   dgiiConsultUrl: c.dgiiConsultUrl,
+  dgiiSeedUrl: c.dgiiSeedUrl,
+  dgiiValidateSeedUrl: c.dgiiValidateSeedUrl,
+  dgiiEcfReceiveUrl: c.dgiiEcfReceiveUrl,
+  dgiiTrackUrl: c.dgiiTrackUrl,
+  dgiiStatusUrl: c.dgiiStatusUrl,
+  dgiiEnvironment: c.dgiiEnvironment,
+  certificatePath: c.certificatePath,
+  tokenExpiration: c.tokenExpiration,
   certificateConfigured: companyHasCertificateRecord(c),
   certificate_keyphrase: c.certificateKeyphrase ?? null,
+  token_cached: Boolean(c.tokenCache && c.tokenExpiration && c.tokenExpiration.getTime() > Date.now()),
 });
 
 const publicUser = (u: User) => ({
@@ -376,7 +395,19 @@ export const authService = {
     const dgiiTenantMerge: Partial<
       Pick<
         Company,
-        "dgiiUsername" | "dgiiPassword" | "dgiiAuthUrl" | "dgiiReceptionUrl" | "dgiiConsultUrl"
+        | "dgiiUsername"
+        | "dgiiPassword"
+        | "dgiiAuthUrl"
+        | "dgiiReceptionUrl"
+        | "dgiiConsultUrl"
+        | "dgiiSeedUrl"
+        | "dgiiValidateSeedUrl"
+        | "dgiiEcfReceiveUrl"
+        | "dgiiTrackUrl"
+        | "dgiiStatusUrl"
+        | "dgiiEnvironment"
+        | "certificatePath"
+        | "certificatePassword"
       >
     > = {};
 
@@ -411,6 +442,49 @@ export const authService = {
       const v = parseTenantUrl(body.dgii_consult_url, "consulta DGII");
       if (v && typeof v === "object" && "ok" in v && v.ok === false) return v;
       dgiiTenantMerge.dgiiConsultUrl = v === null || typeof v === "string" ? v : null;
+    }
+    if (body.dgii_seed_url !== undefined) {
+      const v = parseTenantUrl(body.dgii_seed_url, "semilla DGII");
+      if (v && typeof v === "object" && "ok" in v && v.ok === false) return v;
+      dgiiTenantMerge.dgiiSeedUrl = v === null || typeof v === "string" ? v : null;
+    }
+    if (body.dgii_validate_seed_url !== undefined) {
+      const v = parseTenantUrl(body.dgii_validate_seed_url, "validar semilla DGII");
+      if (v && typeof v === "object" && "ok" in v && v.ok === false) return v;
+      dgiiTenantMerge.dgiiValidateSeedUrl = v === null || typeof v === "string" ? v : null;
+    }
+    if (body.dgii_ecf_receive_url !== undefined) {
+      const v = parseTenantUrl(body.dgii_ecf_receive_url, "recepción e-CF DGII");
+      if (v && typeof v === "object" && "ok" in v && v.ok === false) return v;
+      dgiiTenantMerge.dgiiEcfReceiveUrl = v === null || typeof v === "string" ? v : null;
+    }
+    if (body.dgii_track_url !== undefined) {
+      const v = parseTenantUrl(body.dgii_track_url, "track DGII");
+      if (v && typeof v === "object" && "ok" in v && v.ok === false) return v;
+      dgiiTenantMerge.dgiiTrackUrl = v === null || typeof v === "string" ? v : null;
+    }
+    if (body.dgii_status_url !== undefined) {
+      const v = parseTenantUrl(body.dgii_status_url, "status DGII");
+      if (v && typeof v === "object" && "ok" in v && v.ok === false) return v;
+      dgiiTenantMerge.dgiiStatusUrl = v === null || typeof v === "string" ? v : null;
+    }
+    if (body.dgii_environment !== undefined) {
+      const env = (body.dgii_environment ?? "").trim().toUpperCase();
+      if (env !== "CERTIFICACION" && env !== "PRODUCCION") {
+        return { ok: false, status: 400, message: "dgii_environment debe ser CERTIFICACION o PRODUCCION." };
+      }
+      dgiiTenantMerge.dgiiEnvironment = env;
+    }
+    if (body.certificate_path !== undefined) {
+      const p = (body.certificate_path ?? "").trim();
+      dgiiTenantMerge.certificatePath = p || null;
+    }
+    if (body.certificate_password !== undefined) {
+      const p = (body.certificate_password ?? "").trim();
+      // Nunca guardamos contraseña en texto plano.
+      dgiiTenantMerge.certificatePassword = p
+        ? createHash("sha256").update(p).digest("hex")
+        : null;
     }
 
     if (!name || !rnc || !address || !fullName || !cedula) {
@@ -564,6 +638,19 @@ export const authService = {
     const encForPwdOnly = opts?.certificateEncryptionSecret?.trim() ?? "";
     if (
       !certUpload?.length &&
+      uploadsRoot &&
+      !companyHasCertificateRecord(companyOut) &&
+      !opts?.clearCertificate &&
+      (pwdOnly.length > 0 || encForPwdOnly.length > 0)
+    ) {
+      return {
+        ok: false,
+        status: 400,
+        message: "No hay certificado guardado. Seleccioná un archivo .p12/.pfx y guardá para configurarlo.",
+      };
+    }
+    if (
+      !certUpload?.length &&
       pwdOnly &&
       encForPwdOnly &&
       uploadsRoot &&
@@ -650,9 +737,16 @@ export const authService = {
       body.dgii_username !== undefined ||
       body.dgii_password !== undefined ||
       body.dgii_auth_url !== undefined ||
-      body.dgii_reception_url !== undefined
+      body.dgii_reception_url !== undefined ||
+      body.dgii_seed_url !== undefined ||
+      body.dgii_validate_seed_url !== undefined ||
+      body.dgii_ecf_receive_url !== undefined
     ) {
       clearDgiiTokenCache(companyId);
+      await prisma.company.update({
+        where: { id: companyId },
+        data: { tokenCache: null, tokenExpiration: null },
+      });
     }
 
     return { ok: true, user: publicUser(user), company: publicCompany(companyOut) };

@@ -7,6 +7,7 @@
  * Variables de entorno:
  *   CERT_PASSWORD          contraseña del .p12/.pfx en /assets (primer archivo encontrado).
  *   DGII_RNC_EMISOR        RNCEmisor si no viene en Excel.
+ *   DGII_TIPOECF           si se define (ej: 32), reemplaza el TipoeCF de cada fila del Excel.
  *   DGII_EMISOR_MUNICIPIO / DGII_EMISOR_PROVINCIA  código si faltan en Excel (fallback).
  *
  * Uso:

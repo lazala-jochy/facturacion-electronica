@@ -58,15 +58,39 @@ export const apiFetch = async <T>(
   if (init.body != null && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  const response = await fetch(`${API_URL}${path}`, {
-    ...init,
-    headers,
-  });
-  const data = (await response.json().catch(() => ({}))) as T & {
-    message?: string;
-  };
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      ...init,
+      headers,
+    });
+  } catch (e) {
+    const offline =
+      e instanceof TypeError && typeof e.message === "string"
+        ? e.message.toLowerCase().includes("fetch")
+        : false;
+    throw new ApiError(
+      offline ? "No se pudo contactar el servidor (¿backend encendido o URL correcta?)." : "Error de red.",
+      0,
+    );
+  }
+
+  const raw = await response.text();
+  let data: Record<string, unknown> = {};
+  if (raw.trim()) {
+    try {
+      data = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      data = { message: raw.trim().slice(0, 500) };
+    }
+  }
+
   if (!response.ok) {
-    throw new ApiError(data.message ?? "Error en la solicitud.", response.status, data as Record<string, unknown>);
+    const msg =
+      (typeof data.message === "string" && data.message.trim()) ||
+      (typeof data.error === "string" && data.error.trim()) ||
+      `Solicitud rechazada (${response.status}${response.statusText ? `: ${response.statusText}` : ""}).`;
+    throw new ApiError(msg, response.status, data);
   }
   return data as T;
 };

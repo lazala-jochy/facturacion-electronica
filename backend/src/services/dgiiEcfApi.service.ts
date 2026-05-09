@@ -6,10 +6,13 @@
  * `buildAuthRequestBody` o añadí adaptadores por `process.env.DGII_AUTH_BODY_MODE`.
  */
 import type { Company } from "@prisma/client";
+import fs from "node:fs";
+import path from "node:path";
 import { DGII_ECF_SANDBOX_DEFAULTS } from "../config/dgiiEcf.constants";
 import type { DgiiSubmissionResult } from "../types/dgiiEcf";
 import { DgiiEcfError } from "../types/dgiiEcf";
 import { describeFetchFailure, submitEcfToDgii } from "./dgiiService";
+import { dgiiAuthService } from "./dgiiAuth.service";
 
 const makeTrackId = () => `DGII-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
 
@@ -18,6 +21,17 @@ const DEFAULT_TOKEN_TTL_MS = 25 * 60 * 1000;
 
 type TokenCacheEntry = { token: string; expiresAtMs: number };
 const tokenCache = new Map<number, TokenCacheEntry>();
+
+const DGII_LOG_DIR = path.join(process.cwd(), "logs");
+const DGII_LOG_FILE = path.join(DGII_LOG_DIR, "dgii.log");
+function appendDgiiLog(message: string): void {
+  try {
+    if (!fs.existsSync(DGII_LOG_DIR)) fs.mkdirSync(DGII_LOG_DIR, { recursive: true });
+    fs.appendFileSync(DGII_LOG_FILE, `${new Date().toISOString()} ${message}\n`, "utf8");
+  } catch {
+    // ignore
+  }
+}
 
 export function clearDgiiTokenCache(companyId: number): void {
   tokenCache.delete(companyId);
@@ -30,9 +44,10 @@ export function resolveDgiiAuthUrl(company: Pick<Company, "dgiiAuthUrl">): strin
 }
 
 export function resolveDgiiReceptionUrl(
-  company: Pick<Company, "dgiiReceptionUrl" | "dgiiEcfEndpoint">,
+  company: Pick<Company, "dgiiEcfReceiveUrl" | "dgiiReceptionUrl" | "dgiiEcfEndpoint">,
 ): string {
   return (
+    company.dgiiEcfReceiveUrl?.trim() ||
     company.dgiiReceptionUrl?.trim() ||
     company.dgiiEcfEndpoint?.trim() ||
     process.env.DGII_ECF_ENDPOINT?.trim() ||
@@ -40,8 +55,15 @@ export function resolveDgiiReceptionUrl(
   ).trim();
 }
 
-export function resolveDgiiConsultUrl(company: Pick<Company, "dgiiConsultUrl">): string {
-  return (company.dgiiConsultUrl?.trim() || DGII_ECF_SANDBOX_DEFAULTS.consult).trim();
+export function resolveDgiiConsultUrl(
+  company: Pick<Company, "dgiiStatusUrl" | "dgiiTrackUrl" | "dgiiConsultUrl">,
+): string {
+  return (
+    company.dgiiStatusUrl?.trim() ||
+    company.dgiiTrackUrl?.trim() ||
+    company.dgiiConsultUrl?.trim() ||
+    DGII_ECF_SANDBOX_DEFAULTS.consult
+  ).trim();
 }
 
 function tenantHasPasswordAuth(company: Pick<Company, "dgiiUsername" | "dgiiPassword">): boolean {
@@ -105,6 +127,49 @@ function extractTokenFromAuthResponse(rawText: string, parsed: unknown): string 
   return "";
 }
 
+function compactBodyForMessage(rawText: string, maxLen = 700): string {
+  const oneLine = rawText.replace(/\s+/g, " ").trim();
+  if (!oneLine) return "(cuerpo vacío)";
+  return oneLine.length > maxLen ? `${oneLine.slice(0, maxLen)}…` : oneLine;
+}
+
+function extractTokenFromXml(rawText: string): string {
+  const patterns = [
+    /<(?:\w+:)?(?:token|access_token|accesstoken|jwt|bearer)>\s*([^<\s]+)\s*<\/(?:\w+:)?(?:token|access_token|accesstoken|jwt|bearer)>/i,
+    /<(?:\w+:)?(?:valor)>\s*(eyJ[\w-]+\.[\w-]+\.[\w-]+)\s*<\/(?:\w+:)?(?:valor)>/i,
+  ];
+  for (const p of patterns) {
+    const m = rawText.match(p);
+    if (m?.[1]) return m[1].trim();
+  }
+  const jwt = rawText.match(/eyJ[\w-]+\.[\w-]+\.[\w-]+/);
+  return jwt?.[0]?.trim() ?? "";
+}
+
+function extractXmlFaultMessage(rawText: string): string {
+  const faultPatterns = [
+    /<(?:\w+:)?faultstring>\s*([^<]+)\s*<\/(?:\w+:)?faultstring>/i,
+    /<(?:\w+:)?(?:message|mensaje|descripcion|description)>\s*([^<]+)\s*<\/(?:\w+:)?(?:message|mensaje|descripcion|description)>/i,
+  ];
+  for (const p of faultPatterns) {
+    const m = rawText.match(p);
+    if (m?.[1]?.trim()) return m[1].trim();
+  }
+  return "";
+}
+
+function looksLikeSwaggerHtml(contentType: string, rawText: string): boolean {
+  const ct = contentType.toLowerCase();
+  if (!ct.includes("text/html")) return false;
+  const body = rawText.toLowerCase();
+  return (
+    body.includes("swagger-ui") ||
+    body.includes("autenticación api") ||
+    body.includes("fe autenticación api") ||
+    body.includes("<!doctype html")
+  );
+}
+
 /** Cuerpo JSON enviado a Autenticación (ajustable si DGII documenta otro esquema). */
 function buildAuthRequestBody(company: Company): string {
   const rnc = rncDigits(company.rnc);
@@ -133,6 +198,7 @@ export async function authenticateDgii(company: Company): Promise<string> {
   const authUrl = resolveDgiiAuthUrl(company);
   let response: Response;
   let rawText: string;
+  let contentType = "";
   try {
     response = await fetch(authUrl, {
       method: "POST",
@@ -142,35 +208,43 @@ export async function authenticateDgii(company: Company): Promise<string> {
       },
       body: buildAuthRequestBody(company),
     });
+    contentType = response.headers.get("content-type") ?? "";
     rawText = await response.text();
   } catch (e) {
     throw new DgiiEcfError(describeFetchFailure(e, authUrl), "NETWORK");
   }
 
   if (!response.ok) {
-    const snippet = rawText.length > 400 ? `${rawText.slice(0, 400)}…` : rawText;
+    const snippet = compactBodyForMessage(rawText, 500);
+    const xmlFault = extractXmlFaultMessage(rawText);
+    const wrongUrlHint = looksLikeSwaggerHtml(contentType, rawText)
+      ? ` Parece ser una URL de documentación Swagger/UI, no el endpoint real de token. Verificá "dgii_auth_url" en Perfil de empresa (URL actual: ${authUrl}).`
+      : "";
     throw new DgiiEcfError(
-      `Autenticación DGII rechazada (HTTP ${response.status}). ${snippet}`,
+      `Autenticación DGII rechazada (HTTP ${response.status}).${xmlFault ? ` Motivo: ${xmlFault}.` : ""}${wrongUrlHint} Respuesta real: ${snippet}`,
       "AUTH_FAILED",
       response.status,
     );
   }
 
-  let parsed: unknown;
+  let parsed: unknown = null;
   try {
     parsed = JSON.parse(rawText) as unknown;
   } catch {
-    throw new DgiiEcfError(
-      "La autenticación DGII no devolvió JSON válido. Revisá la URL de autenticación o el formato del ambiente.",
-      "TOKEN_PARSE",
-      response.status,
-    );
+    // DGII también puede responder XML/SOAP (no JSON).
   }
 
-  const token = extractTokenFromAuthResponse(rawText, parsed);
+  const tokenFromJson = extractTokenFromAuthResponse(rawText, parsed);
+  const tokenFromXml = extractTokenFromXml(rawText);
+  const token = tokenFromJson || tokenFromXml;
   if (!token) {
+    const xmlFault = extractXmlFaultMessage(rawText);
+    const snippet = compactBodyForMessage(rawText);
+    const wrongUrlHint = looksLikeSwaggerHtml(contentType, rawText)
+      ? ` Parece que "dgii_auth_url" apunta a Swagger/UI y no al endpoint de autenticación. URL actual: ${authUrl}.`
+      : "";
     throw new DgiiEcfError(
-      "No se pudo obtener token de la respuesta de autenticación DGII. Revisá credenciales y formato de respuesta.",
+      `No se pudo obtener token de autenticación DGII.${xmlFault ? ` Motivo XML/SOAP: ${xmlFault}.` : ""}${wrongUrlHint} Content-Type: ${contentType || "desconocido"}. Respuesta real: ${snippet}`,
       "TOKEN_PARSE",
       response.status,
     );
@@ -200,6 +274,24 @@ export async function submitSignedEcfWithTenantConfig(
   company: Company,
   signedXml: string,
 ): Promise<DgiiSubmissionResult> {
+  // Nuevo flujo DGII: semilla + validar semilla + bearer token.
+  if (company.dgiiSeedUrl?.trim() && company.dgiiValidateSeedUrl?.trim()) {
+    appendDgiiLog(`[send] company=${company.id} mode=seed-flow`);
+    const token = await dgiiAuthService.getToken(company.id);
+    const reception = resolveDgiiReceptionUrl(company);
+    if (!reception) {
+      throw new DgiiEcfError(
+        "Falta URL de recepción DGII (dgii_ecf_receive_url o dgii_reception_url).",
+        "MISSING_CREDENTIALS",
+        400,
+      );
+    }
+    return submitEcfToDgii(signedXml, {
+      endpoint: reception,
+      bearerToken: token,
+    });
+  }
+
   const reception = resolveDgiiReceptionUrl(company);
   if (!reception) {
     return mockDgiiSubmission(signedXml);
@@ -208,6 +300,7 @@ export async function submitSignedEcfWithTenantConfig(
   const usePasswordAuth = tenantHasPasswordAuth(company);
 
   if (!usePasswordAuth) {
+    appendDgiiLog(`[send] company=${company.id} mode=legacy-direct`);
     return submitEcfToDgii(signedXml, {
       endpoint: reception,
       bearerToken: process.env.DGII_ECF_TOKEN?.trim() || null,
@@ -215,6 +308,7 @@ export async function submitSignedEcfWithTenantConfig(
   }
 
   const token = await authenticateDgii(company);
+  appendDgiiLog(`[send] company=${company.id} mode=password-auth reception=${reception}`);
   const headers: Record<string, string> = {
     "Content-Type": "application/xml",
     Accept: "application/json, text/xml, */*",
@@ -242,6 +336,7 @@ export async function submitSignedEcfWithTenantConfig(
 
   if (!response.ok) {
     const snippet = rawResponse.length > 500 ? `${rawResponse.slice(0, 500)}…` : rawResponse;
+    appendDgiiLog(`[send] company=${company.id} failed status=${response.status} body=${snippet}`);
     throw new DgiiEcfError(
       `Recepción DGII HTTP ${response.status}. ${snippet}`,
       "RECEPTION_FAILED",

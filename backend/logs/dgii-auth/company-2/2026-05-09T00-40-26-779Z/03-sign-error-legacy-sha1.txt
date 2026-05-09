@@ -1,0 +1,6 @@
+DgiiEcfError: DGII validación semilla HTTP 400: "Firma del certificado invalida"
+    at validateSeed (/Users/joserosario/Desktop/facturacion-electronica/backend/src/services/dgiiAuth.service.ts:210:13)
+    at processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at Object.getToken (/Users/joserosario/Desktop/facturacion-electronica/backend/src/services/dgiiAuth.service.ts:291:21)
+    at submitSignedEcfWithTenantConfig (/Users/joserosario/Desktop/facturacion-electronica/backend/src/services/dgiiEcfApi.service.ts:280:19)
+    at sendExcelBatchSignedToDgiiHandler (/Users/joserosario/Desktop/facturacion-electronica/backend/src/controllers/ecfExcelBatch.controller.ts:343:22)

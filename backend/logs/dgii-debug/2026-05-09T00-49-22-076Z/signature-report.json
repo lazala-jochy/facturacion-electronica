@@ -1,0 +1,19 @@
+{
+  "signatureValid": true,
+  "digestValid": null,
+  "referenceCount": 1,
+  "canonicalizationAlgorithm": "http://www.w3.org/TR/2001/REC-xml-c14n-20010315",
+  "signatureAlgorithm": "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
+  "digestAlgorithm": "http://www.w3.org/2001/04/xmlenc#sha256",
+  "transforms": [
+    "http://www.w3.org/2000/09/xmldsig#enveloped-signature"
+  ],
+  "signedNodeXpath": "/*",
+  "referenceUri": "",
+  "xmlDigestValue": "xA9DOoaoVCQG6Do7WQHCg7/q0gS7ojpgGu4aJsq8LCM=",
+  "calculatedDigestValue": null,
+  "signatureValueLength": 344,
+  "warningFlags": [
+    "using-rsa-sha256-instead-of-rsa-sha1"
+  ]
+}

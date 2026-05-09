@@ -44,4 +44,12 @@ export type UpdateCompanyBody = {
   dgii_auth_url?: string;
   dgii_reception_url?: string;
   dgii_consult_url?: string;
+  dgii_seed_url?: string;
+  dgii_validate_seed_url?: string;
+  dgii_ecf_receive_url?: string;
+  dgii_track_url?: string;
+  dgii_status_url?: string;
+  dgii_environment?: "CERTIFICACION" | "PRODUCCION";
+  certificate_path?: string;
+  certificate_password?: string;
 };

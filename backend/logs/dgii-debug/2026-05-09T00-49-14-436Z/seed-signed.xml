@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?><Semilla><Valor>ABC123</Valor>
+  <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
+    <SignedInfo>
+      <CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315" />
+      <SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256" />
+      <Reference URI="">
+        <Transforms>
+          <Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature" />
+        </Transforms>
+        <DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256" />
+        <DigestValue>fVDlhzI7IxdgEBM2WcDONf8cXAzfkfrFd48sQ5qEoyg=</DigestValue>
+      </Reference>
+    </SignedInfo>
+    <SignatureValue>rM6i4WI8xaxsElb1w3pCwPyjbdVc2teZ+KT3MVteQUjHze09as0qA9/IDjI1WZLBHc6ONTwhL/Blq9s9DjAiCbODi89GULdeu2o67+qLJWlAdFt9DA4wzj0oQygicdkFchB6DmAYDHgD95fpauAWgCSwfmxmP48mEBPcSRseRdJFHHym/jdt2jFuC+DSzDaW0LyC/YDP7Ys0ADW9N/qQjtEmVspDp//bukZfenMmqZ8voMIUxUJeh4Wh/FkJHQNsgbb7JyBIcGW+7HPTVk/IGxKuDKQgKSHOyV4z+n97ey8byL7Jgs+4r/vHXlWJ93ci2gsWZP3DHk7WvnBEEhvfDw==</SignatureValue>
+    <KeyInfo>
+      <X509Data>
+        <X509Certificate>MIICsTCCAZmgAwIBAgIBATANBgkqhkiG9w0BAQsFADAcMRowGAYDVQQDExFER0lJIFhNTERTaWcgVGVzdDAeFw0yNDAxMDEwMDAwMDBaFw0zNDAxMDEwMDAwMDBaMBwxGjAYBgNVBAMTEURHSUkgWE1MRFNpZyBUZXN0MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuuMTszC49NEZh0cW3Rj8hEqImZBlc81cjrtK0ykJ7GVr6WGiK1bd3DLwGSuX9Rbl+ugXznEt46phZX9QQrRptayJHAdY09vXy526hRC2mVPnOk6np4Ye1pnLZMAzeiDXsfDsJ57f01QdJ7dER7DJkin08/j96g/Fvn6ukQXt34IyVDH1j/DUxjOtKiF+KTmBsGxVLkKfNMnl3zSNgr0tk5MBRXik8Jc1l91JVzBhjuiUQOv5bH/iINguE+HxCz+v46ikpedsKNjEBzF7QV05TiW2y/T1rGLkjujZ8tIZnU7VNEEzVlgzmkKP/O5NEBZdO6xLXHNPscAXMzsNbey4YwIDAQABMA0GCSqGSIb3DQEBCwUAA4IBAQBug76PEFtPceHRfecyuF2GJ93BYT6i93DakhrmAF981oDBoInKXymLILmjbEbq14tcDn7BXak2umNatrQa86hRlyn6snrVCdVDS0SNK/5dWGmdlQdByhAwx2wr8/XLV1nBASKito5DmzhkX3uug/pAk8hIZmtwUU4OiJuf07fpzQ7Y/uIkd5fvlMd9V4hkvasI7AnAFGZSz7P4HGlWF7RMtL4Lytkg4V0wDLdR9n1XUvSoNtiqCe9r/9awPEPktBPaJA4K05LuE1negDdXzpXnaFOh1mn2hhmwZyLDf8TQAwElmXd8GiSqi0blRo72ZskZFQB/KNhCKBiKjcTmJAHQ</X509Certificate>
+      </X509Data>
+    </KeyInfo>
+  </Signature>
+</Semilla>

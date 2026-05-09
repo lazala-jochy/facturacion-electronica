@@ -4,6 +4,8 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { prisma } from "../prisma";
+import { submitSignedEcfWithTenantConfig } from "../services/dgiiEcfApi.service";
+import { DgiiEcfError } from "../types/dgiiEcf";
 import { assertCertificateEncryptionSecret } from "../utils/companyCertificateCrypto";
 import {
   companyHasCertificateRecord,
@@ -259,6 +261,121 @@ export const runExcelBatchToDesktopHandler: RequestHandler = async (req, res, ne
               "Ningún XML se generó correctamente. Revisá el certificado en Perfil de empresa, los datos del Excel y la carpeta de prueba.",
           }
         : {}),
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+
+/** POST /ecf-excel-batch/send — envía XML firmados de una carpeta a DGII. */
+export const sendExcelBatchSignedToDgiiHandler: RequestHandler = async (req, res, next) => {
+  try {
+    const auth = req.auth;
+    if (!auth) {
+      res.status(401).json({ message: "No autorizado." });
+      return;
+    }
+
+    const outSignedDirRaw =
+      typeof req.body?.out_signed_dir === "string" ? req.body.out_signed_dir.trim() : "";
+    if (!outSignedDirRaw) {
+      res.status(400).json({ message: "Falta out_signed_dir." });
+      return;
+    }
+
+    let outSignedDir = "";
+    try {
+      outSignedDir = path.resolve(outSignedDirRaw);
+    } catch {
+      res.status(400).json({ message: "Ruta de carpeta firmados no válida." });
+      return;
+    }
+
+    if (!isAllowedOutputParentDir(outSignedDir)) {
+      res.status(400).json({
+        message: "Por seguridad, solo se permite enviar archivos desde tu carpeta de usuario.",
+      });
+      return;
+    }
+
+    let statDir: fs.Stats;
+    try {
+      statDir = fs.statSync(outSignedDir);
+    } catch {
+      res.status(400).json({ message: "No se puede acceder a la carpeta de firmados." });
+      return;
+    }
+    if (!statDir.isDirectory()) {
+      res.status(400).json({ message: "out_signed_dir debe ser una carpeta." });
+      return;
+    }
+
+    const companyRow = await prisma.company.findUnique({
+      where: { id: auth.companyId },
+    });
+    if (!companyRow) {
+      res.status(404).json({ message: "Empresa no encontrada." });
+      return;
+    }
+
+    const xmlFiles = fs
+      .readdirSync(outSignedDir, { withFileTypes: true })
+      .filter((d) => d.isFile() && d.name.toLowerCase().endsWith(".xml"))
+      .map((d) => d.name)
+      .sort((a, b) => a.localeCompare(b));
+
+    if (xmlFiles.length === 0) {
+      res.status(400).json({ message: "No se encontraron archivos .xml firmados en la carpeta indicada." });
+      return;
+    }
+
+    const successes: { file: string; trackId: string; status: string }[] = [];
+    const failures: { file: string; error: string; code?: string; httpStatus?: number }[] = [];
+    const logs: string[] = [];
+
+    for (const file of xmlFiles) {
+      const fullPath = path.join(outSignedDir, file);
+      try {
+        const signedXml = fs.readFileSync(fullPath, "utf8");
+        if (!signedXml.trim()) {
+          throw new Error("XML vacío.");
+        }
+        const dgii = await submitSignedEcfWithTenantConfig(companyRow, signedXml);
+        successes.push({
+          file,
+          trackId: dgii.trackId,
+          status: dgii.status,
+        });
+        logs.push(`[${file}] ENVIADO: trackId=${dgii.trackId} status=${dgii.status}`);
+      } catch (e) {
+        if (e instanceof DgiiEcfError) {
+          failures.push({
+            file,
+            error: e.message,
+            code: e.code,
+            httpStatus: e.httpStatus,
+          });
+          logs.push(`[${file}] ERROR ${e.code}${e.httpStatus ? `(${e.httpStatus})` : ""}: ${e.message}`);
+        } else {
+          const msg = e instanceof Error ? e.message : "Error desconocido.";
+          failures.push({ file, error: msg });
+          logs.push(`[${file}] ERROR: ${msg}`);
+        }
+      }
+    }
+
+    const ok = successes.length;
+    const fail = failures.length;
+    const status = ok > 0 && fail > 0 ? 207 : fail > 0 ? 502 : 200;
+
+    res.status(status).json({
+      outSignedDir,
+      total: xmlFiles.length,
+      ok,
+      fail,
+      successes,
+      failures,
+      logs,
     });
   } catch (e) {
     next(e);
