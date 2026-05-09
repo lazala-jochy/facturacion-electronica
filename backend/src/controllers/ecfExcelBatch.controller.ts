@@ -329,7 +329,18 @@ export const sendExcelBatchSignedToDgiiHandler: RequestHandler = async (req, res
       return;
     }
 
-    const successes: { file: string; trackId: string; status: string }[] = [];
+    const responseSnippet = (raw: string) => {
+      const compact = raw.replace(/\s+/g, " ").trim();
+      return compact.length > 500 ? `${compact.slice(0, 500)}...` : compact;
+    };
+    const successes: {
+      file: string;
+      trackId: string;
+      status: string;
+      httpStatus?: number;
+      responseContentType?: string;
+      responseSnippet: string;
+    }[] = [];
     const failures: { file: string; error: string; code?: string; httpStatus?: number }[] = [];
     const logs: string[] = [];
 
@@ -345,8 +356,11 @@ export const sendExcelBatchSignedToDgiiHandler: RequestHandler = async (req, res
           file,
           trackId: dgii.trackId,
           status: dgii.status,
+          httpStatus: dgii.httpStatus,
+          responseContentType: dgii.responseContentType,
+          responseSnippet: responseSnippet(dgii.rawResponse),
         });
-        logs.push(`[${file}] ENVIADO: trackId=${dgii.trackId} status=${dgii.status}`);
+        logs.push(`[${file}] ENVIADO: trackId=${dgii.trackId || "(sin trackId)"} status=${dgii.status}`);
       } catch (e) {
         if (e instanceof DgiiEcfError) {
           failures.push({

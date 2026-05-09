@@ -14,7 +14,7 @@ import { DgiiEcfError } from "../types/dgiiEcf";
 import { describeFetchFailure, submitEcfToDgii } from "./dgiiService";
 import { dgiiAuthService } from "./dgiiAuth.service";
 
-const makeTrackId = () => `DGII-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+const makeMockTrackId = () => `MOCK-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
 
 const CACHE_SKEW_MS = 60_000;
 const DEFAULT_TOKEN_TTL_MS = 25 * 60 * 1000;
@@ -260,7 +260,7 @@ export function mockDgiiSubmission(signedXml: string): DgiiSubmissionResult {
   return {
     accepted,
     status: accepted ? "accepted" : "rejected",
-    trackId: makeTrackId(),
+    trackId: makeMockTrackId(),
     rawResponse: JSON.stringify({
       mode: "mock",
       accepted,
@@ -309,47 +309,10 @@ export async function submitSignedEcfWithTenantConfig(
 
   const token = await authenticateDgii(company);
   appendDgiiLog(`[send] company=${company.id} mode=password-auth reception=${reception}`);
-  const headers: Record<string, string> = {
-    "Content-Type": "application/xml",
-    Accept: "application/json, text/xml, */*",
-    Authorization: `Bearer ${token}`,
-  };
-
-  let response: Response;
-  let rawResponse: string;
-  try {
-    response = await fetch(reception, {
-      method: "POST",
-      headers,
-      body: signedXml,
-    });
-    rawResponse = await response.text();
-  } catch (e) {
-    throw new DgiiEcfError(describeFetchFailure(e, reception), "NETWORK");
-  }
-
-  const trackId =
-    response.headers.get("x-track-id") ??
-    response.headers.get("track-id") ??
-    response.headers.get("X-Track-Id") ??
-    makeTrackId();
-
-  if (!response.ok) {
-    const snippet = rawResponse.length > 500 ? `${rawResponse.slice(0, 500)}…` : rawResponse;
-    appendDgiiLog(`[send] company=${company.id} failed status=${response.status} body=${snippet}`);
-    throw new DgiiEcfError(
-      `Recepción DGII HTTP ${response.status}. ${snippet}`,
-      "RECEPTION_FAILED",
-      response.status,
-    );
-  }
-
-  return {
-    accepted: true,
-    status: "accepted",
-    trackId,
-    rawResponse,
-  };
+  return submitEcfToDgii(signedXml, {
+    endpoint: reception,
+    bearerToken: token,
+  });
 }
 
 export type DgiiConsultResult = {

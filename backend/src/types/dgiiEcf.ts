@@ -3,6 +3,8 @@ export type DgiiSubmissionResult = {
   status: "accepted" | "rejected";
   trackId: string;
   rawResponse: string;
+  httpStatus?: number;
+  responseContentType?: string;
 };
 
 export type DgiiEcfErrorCode =
