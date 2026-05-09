@@ -114,14 +114,14 @@ function normalizeStatusText(raw: string): string {
 
 function resolveDgiiTestStatus(raw: string): { testStatus: DgiiTestStatus; testMessage: string } {
   const normalized = normalizeStatusText(raw);
+  if (/\b(en\s+proceso|procesando|pendiente|recibid[oa]|recepcionad[oa])\b/.test(normalized)) {
+    return { testStatus: "pending", testMessage: compactResponse(raw) };
+  }
   if (/\b(rechazad[oa]|no\s+aceptad[oa]|firma\s+.*no\s+.*valida|invalido|invalida|error)\b/.test(normalized)) {
     return { testStatus: "rejected", testMessage: compactResponse(raw) };
   }
-  if (/\b(aceptad[oa]|comprobante\s+aceptad[oa]|prueba\s+aceptad[oa]|valid[ao]|procesad[oa]\s+correctamente)\b/.test(normalized)) {
+  if (/\b(aceptad[oa](?:\s+condicional)?|comprobante\s+aceptad[oa]|prueba\s+aceptad[oa]|valid[ao]|procesad[oa]\s+correctamente)\b/.test(normalized)) {
     return { testStatus: "accepted", testMessage: compactResponse(raw) };
-  }
-  if (/\b(pendiente|procesando|en\s+proceso|recibid[oa]|recepcionad[oa])\b/.test(normalized)) {
-    return { testStatus: "pending", testMessage: compactResponse(raw) };
   }
   return { testStatus: "unknown", testMessage: compactResponse(raw) || "DGII no devolvió estado interpretable." };
 }
@@ -479,8 +479,9 @@ export const sendExcelBatchSignedToDgiiHandler: RequestHandler = async (req, res
     const entriesByEncf = new Map(xmlEntries.filter((entry) => entry.encf).map((entry) => [entry.encf, entry]));
     const testStatusByEncf = new Map<string, DgiiTestStatus>();
     const manifest = loadSendManifest(outSignedDir);
+    saveSendManifest(outSignedDir, manifest);
     for (const [encf, entry] of Object.entries(manifest.entries)) {
-      if (entry.status === "accepted" || entry.status === "already_used") {
+      if (entry.status === "accepted") {
         testStatusByEncf.set(encf, "accepted");
       }
     }
@@ -501,7 +502,7 @@ export const sendExcelBatchSignedToDgiiHandler: RequestHandler = async (req, res
     for (const entry of orderedEntries) {
       try {
         const previousStatus = entry.encf ? manifest.entries[entry.encf]?.status : undefined;
-        if (previousStatus === "accepted" || previousStatus === "already_used") {
+        if (previousStatus === "accepted") {
           const previous = manifest.entries[entry.encf];
           successes.push({
             file: entry.file,
@@ -514,7 +515,44 @@ export const sendExcelBatchSignedToDgiiHandler: RequestHandler = async (req, res
             responseSnippet: "",
           });
           testStatusByEncf.set(entry.encf, "accepted");
-          logs.push(`[${entry.file}] OMITIDO: eNCF ${entry.encf} ya registrado (${previousStatus}).`);
+          logs.push(`[${entry.file}] OMITIDO: eNCF ${entry.encf} ya aceptado previamente.`);
+          continue;
+        }
+        if (
+          previousStatus &&
+          previousStatus !== "already_used" &&
+          manifest.entries[entry.encf]?.trackId?.trim()
+        ) {
+          const previous = manifest.entries[entry.encf];
+          let testStatus: DgiiTestStatus = "unknown";
+          let testMessage = "No se pudo confirmar el estado DGII.";
+          try {
+            const consult = await consultDgiiTrackId(companyRow, previous.trackId!);
+            const resolved = resolveDgiiTestStatus(consult.body);
+            testStatus = resolved.testStatus;
+            testMessage = resolved.testMessage;
+          } catch (consultErr) {
+            testMessage =
+              consultErr instanceof Error ? consultErr.message : "No se pudo consultar el estado DGII.";
+          }
+          successes.push({
+            file: entry.file,
+            trackId: previous.trackId ?? "",
+            status: "consulted",
+            testStatus,
+            testMessage,
+            responseSnippet: "",
+          });
+          testStatusByEncf.set(entry.encf, testStatus);
+          upsertManifestEntry(manifest, entry, {
+            status: testStatus,
+            trackId: previous.trackId,
+            message: testMessage,
+          });
+          saveSendManifest(outSignedDir, manifest);
+          logs.push(
+            `[${entry.file}] CONSULTADO: trackId=${previous.trackId} prueba=${testStatus} mensaje=${compactResponse(testMessage, 180)}`,
+          );
           continue;
         }
 
@@ -557,17 +595,15 @@ export const sendExcelBatchSignedToDgiiHandler: RequestHandler = async (req, res
         });
         if (entry.encf) {
           testStatusByEncf.set(entry.encf, testStatus);
-          if (testStatus === "accepted" || testStatus === "pending") {
-            upsertManifestEntry(manifest, entry, {
-              status: testStatus,
-              trackId: dgii.trackId,
-              message: testMessage,
-            });
-            saveSendManifest(outSignedDir, manifest);
-          }
+          upsertManifestEntry(manifest, entry, {
+            status: testStatus,
+            trackId: dgii.trackId,
+            message: testMessage,
+          });
+          saveSendManifest(outSignedDir, manifest);
         }
         logs.push(
-          `[${entry.file}] ENVIADO: trackId=${dgii.trackId || "(sin trackId)"} recepción=${dgii.status} prueba=${testStatus}`,
+          `[${entry.file}] ENVIADO: trackId=${dgii.trackId || "(sin trackId)"} recepción=${dgii.status} prueba=${testStatus} mensaje=${compactResponse(testMessage, 180)}`,
         );
       } catch (e) {
         if (e instanceof DgiiEcfError) {
@@ -578,12 +614,12 @@ export const sendExcelBatchSignedToDgiiHandler: RequestHandler = async (req, res
               file: entry.file,
               trackId: "",
               status: "already_used",
-              testStatus: "accepted",
+              testStatus: "unknown",
               testMessage: message,
               httpStatus: e.httpStatus,
               responseSnippet: e.message,
             });
-            testStatusByEncf.set(entry.encf, "accepted");
+            testStatusByEncf.set(entry.encf, "unknown");
             upsertManifestEntry(manifest, entry, {
               status: "already_used",
               message,

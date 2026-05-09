@@ -58,12 +58,15 @@ export function resolveDgiiReceptionUrl(
 export function resolveDgiiConsultUrl(
   company: Pick<Company, "dgiiStatusUrl" | "dgiiTrackUrl" | "dgiiConsultUrl">,
 ): string {
-  return normalizeDgiiEcfUrl(
+  const url = normalizeDgiiEcfUrl(
     company.dgiiStatusUrl?.trim() ||
     company.dgiiTrackUrl?.trim() ||
     company.dgiiConsultUrl?.trim() ||
     DGII_ECF_SANDBOX_DEFAULTS.consult,
   );
+  return /\/api\/consultas\/estado\/?$/i.test(url)
+    ? url
+    : `${url.replace(/\/+$/, "")}/api/consultas/estado`;
 }
 
 function tenantHasPasswordAuth(company: Pick<Company, "dgiiUsername" | "dgiiPassword">): boolean {
@@ -332,7 +335,9 @@ export async function consultDgiiTrackId(company: Company, trackId: string): Pro
 
   const authHeader = async (): Promise<Record<string, string>> => {
     const h: Record<string, string> = { Accept: "application/json, text/xml, */*" };
-    if (usePasswordAuth) {
+    if (company.dgiiSeedUrl?.trim() && company.dgiiValidateSeedUrl?.trim()) {
+      h.Authorization = `Bearer ${await dgiiAuthService.getToken(company.id)}`;
+    } else if (usePasswordAuth) {
       h.Authorization = `Bearer ${await authenticateDgii(company)}`;
     } else {
       const envTok = process.env.DGII_ECF_TOKEN?.trim();
@@ -343,6 +348,8 @@ export async function consultDgiiTrackId(company: Company, trackId: string): Pro
 
   const getUrl = new URL(consultBase);
   getUrl.searchParams.set("trackId", tid);
+  getUrl.searchParams.set("TrackId", tid);
+  appendDgiiLog(`[consult] company=${company.id} url=${getUrl.toString()}`);
 
   let response: Response;
   let body: string;
@@ -352,6 +359,7 @@ export async function consultDgiiTrackId(company: Company, trackId: string): Pro
       headers: await authHeader(),
     });
     body = await response.text();
+    appendDgiiLog(`[consult] company=${company.id} status=${response.status} body=${compactBodyForMessage(body, 300)}`);
   } catch (e) {
     throw new DgiiEcfError(describeFetchFailure(e, consultBase), "NETWORK");
   }
@@ -367,6 +375,7 @@ export async function consultDgiiTrackId(company: Company, trackId: string): Pro
         body: JSON.stringify({ trackId: tid, TrackId: tid, RNC: rncDigits(company.rnc) }),
       });
       body = await response.text();
+      appendDgiiLog(`[consult-post] company=${company.id} status=${response.status} body=${compactBodyForMessage(body, 300)}`);
     } catch (e) {
       throw new DgiiEcfError(describeFetchFailure(e, consultBase), "NETWORK");
     }
