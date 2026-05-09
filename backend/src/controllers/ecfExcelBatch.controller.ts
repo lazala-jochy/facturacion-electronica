@@ -4,7 +4,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { prisma } from "../prisma";
-import { submitSignedEcfWithTenantConfig } from "../services/dgiiEcfApi.service";
+import { consultDgiiTrackId, submitSignedEcfWithTenantConfig } from "../services/dgiiEcfApi.service";
 import { DgiiEcfError } from "../types/dgiiEcf";
 import { assertCertificateEncryptionSecret } from "../utils/companyCertificateCrypto";
 import {
@@ -96,6 +96,135 @@ function defaultDesktopDir(): string | null {
     }
   }
   return null;
+}
+
+type DgiiTestStatus = "accepted" | "rejected" | "pending" | "unknown";
+
+function compactResponse(raw: string, maxLen = 700): string {
+  const compact = raw.replace(/\s+/g, " ").trim();
+  return compact.length > maxLen ? `${compact.slice(0, maxLen)}...` : compact;
+}
+
+function normalizeStatusText(raw: string): string {
+  return raw
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function resolveDgiiTestStatus(raw: string): { testStatus: DgiiTestStatus; testMessage: string } {
+  const normalized = normalizeStatusText(raw);
+  if (/\b(rechazad[oa]|no\s+aceptad[oa]|firma\s+.*no\s+.*valida|invalido|invalida|error)\b/.test(normalized)) {
+    return { testStatus: "rejected", testMessage: compactResponse(raw) };
+  }
+  if (/\b(aceptad[oa]|comprobante\s+aceptad[oa]|prueba\s+aceptad[oa]|valid[ao]|procesad[oa]\s+correctamente)\b/.test(normalized)) {
+    return { testStatus: "accepted", testMessage: compactResponse(raw) };
+  }
+  if (/\b(pendiente|procesando|en\s+proceso|recibid[oa]|recepcionad[oa])\b/.test(normalized)) {
+    return { testStatus: "pending", testMessage: compactResponse(raw) };
+  }
+  return { testStatus: "unknown", testMessage: compactResponse(raw) || "DGII no devolvió estado interpretable." };
+}
+
+type SignedXmlSendEntry = {
+  file: string;
+  fullPath: string;
+  signedXml: string;
+  encf: string;
+  ncfModificado: string;
+};
+
+type DgiiSendManifestEntry = {
+  file: string;
+  encf: string;
+  status: DgiiTestStatus | "already_used";
+  trackId?: string;
+  message?: string;
+  updatedAt: string;
+};
+
+type DgiiSendManifest = {
+  updatedAt: string;
+  entries: Record<string, DgiiSendManifestEntry>;
+};
+
+function extractXmlTagValue(xml: string, tagName: string): string {
+  const match = xml.match(
+    new RegExp(`<(?:\\w+:)?${tagName}\\b[^>]*>\\s*([^<]+?)\\s*</(?:\\w+:)?${tagName}>`, "i"),
+  );
+  return match?.[1]?.trim() ?? "";
+}
+
+function loadSendManifest(outSignedDir: string): DgiiSendManifest {
+  const manifestPath = path.join(outSignedDir, "dgii-send-status.json");
+  try {
+    const parsed = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as Partial<DgiiSendManifest>;
+    if (parsed && typeof parsed === "object" && parsed.entries && typeof parsed.entries === "object") {
+      return {
+        updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : new Date().toISOString(),
+        entries: parsed.entries as Record<string, DgiiSendManifestEntry>,
+      };
+    }
+  } catch {
+    // No manifest yet or invalid file; start fresh.
+  }
+  return { updatedAt: new Date().toISOString(), entries: {} };
+}
+
+function saveSendManifest(outSignedDir: string, manifest: DgiiSendManifest) {
+  manifest.updatedAt = new Date().toISOString();
+  fs.writeFileSync(
+    path.join(outSignedDir, "dgii-send-status.json"),
+    JSON.stringify(manifest, null, 2),
+    "utf8",
+  );
+}
+
+function upsertManifestEntry(
+  manifest: DgiiSendManifest,
+  entry: SignedXmlSendEntry,
+  patch: Omit<DgiiSendManifestEntry, "file" | "encf" | "updatedAt">,
+) {
+  if (!entry.encf) return;
+  manifest.entries[entry.encf] = {
+    file: entry.file,
+    encf: entry.encf,
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function isSequenceAlreadyUsedMessage(raw: string): boolean {
+  const normalized = normalizeStatusText(raw);
+  return /numero\s+de\s+secuencia.*ha\s+sido\s+utilizad[oa]|secuencia.*utilizad[oa]/.test(normalized);
+}
+
+function orderSignedXmlByReferences(entries: SignedXmlSendEntry[]): SignedXmlSendEntry[] {
+  const byEncf = new Map<string, SignedXmlSendEntry>();
+  for (const entry of entries) {
+    if (entry.encf) byEncf.set(entry.encf, entry);
+  }
+
+  const ordered: SignedXmlSendEntry[] = [];
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+
+  const visit = (entry: SignedXmlSendEntry) => {
+    const key = entry.encf || entry.file;
+    if (visited.has(key)) return;
+    if (visiting.has(key)) return;
+    visiting.add(key);
+
+    const dependency = entry.ncfModificado ? byEncf.get(entry.ncfModificado) : undefined;
+    if (dependency) visit(dependency);
+
+    visiting.delete(key);
+    visited.add(key);
+    ordered.push(entry);
+  };
+
+  for (const entry of entries) visit(entry);
+  return ordered;
 }
 
 /** POST /ecf-excel-batch/run — Excel en assets → XML y firmados en subcarpeta del Escritorio. */
@@ -329,14 +458,39 @@ export const sendExcelBatchSignedToDgiiHandler: RequestHandler = async (req, res
       return;
     }
 
-    const responseSnippet = (raw: string) => {
-      const compact = raw.replace(/\s+/g, " ").trim();
-      return compact.length > 500 ? `${compact.slice(0, 500)}...` : compact;
-    };
+    const xmlEntries: SignedXmlSendEntry[] = [];
+    for (const file of xmlFiles) {
+      const fullPath = path.join(outSignedDir, file);
+      const signedXml = fs.readFileSync(fullPath, "utf8");
+      if (!signedXml.trim()) {
+        res.status(400).json({ message: `XML vacío: ${file}` });
+        return;
+      }
+      xmlEntries.push({
+        file,
+        fullPath,
+        signedXml,
+        encf: extractXmlTagValue(signedXml, "eNCF"),
+        ncfModificado: extractXmlTagValue(signedXml, "NCFModificado"),
+      });
+    }
+
+    const orderedEntries = orderSignedXmlByReferences(xmlEntries);
+    const entriesByEncf = new Map(xmlEntries.filter((entry) => entry.encf).map((entry) => [entry.encf, entry]));
+    const testStatusByEncf = new Map<string, DgiiTestStatus>();
+    const manifest = loadSendManifest(outSignedDir);
+    for (const [encf, entry] of Object.entries(manifest.entries)) {
+      if (entry.status === "accepted" || entry.status === "already_used") {
+        testStatusByEncf.set(encf, "accepted");
+      }
+    }
+
     const successes: {
       file: string;
       trackId: string;
       status: string;
+      testStatus: DgiiTestStatus;
+      testMessage: string;
       httpStatus?: number;
       responseContentType?: string;
       responseSnippet: string;
@@ -344,42 +498,127 @@ export const sendExcelBatchSignedToDgiiHandler: RequestHandler = async (req, res
     const failures: { file: string; error: string; code?: string; httpStatus?: number }[] = [];
     const logs: string[] = [];
 
-    for (const file of xmlFiles) {
-      const fullPath = path.join(outSignedDir, file);
+    for (const entry of orderedEntries) {
       try {
-        const signedXml = fs.readFileSync(fullPath, "utf8");
-        if (!signedXml.trim()) {
-          throw new Error("XML vacío.");
+        const previousStatus = entry.encf ? manifest.entries[entry.encf]?.status : undefined;
+        if (previousStatus === "accepted" || previousStatus === "already_used") {
+          const previous = manifest.entries[entry.encf];
+          successes.push({
+            file: entry.file,
+            trackId: previous.trackId ?? "",
+            status: "skipped",
+            testStatus: "accepted",
+            testMessage:
+              previous.message ??
+              "Omitido: este eNCF ya fue registrado por DGII en un envío anterior.",
+            responseSnippet: "",
+          });
+          testStatusByEncf.set(entry.encf, "accepted");
+          logs.push(`[${entry.file}] OMITIDO: eNCF ${entry.encf} ya registrado (${previousStatus}).`);
+          continue;
         }
-        const dgii = await submitSignedEcfWithTenantConfig(companyRow, signedXml);
+
+        if (entry.ncfModificado && entriesByEncf.has(entry.ncfModificado)) {
+          const dependencyStatus = testStatusByEncf.get(entry.ncfModificado);
+          if (dependencyStatus !== "accepted") {
+            const dependencyFile = entriesByEncf.get(entry.ncfModificado)?.file ?? entry.ncfModificado;
+            const error =
+              `No se envió ${entry.encf || entry.file}: NCFModificado ${entry.ncfModificado} ` +
+              `depende de ${dependencyFile}, que aún no está aceptado por DGII.`;
+            failures.push({ file: entry.file, error, code: "DGII_DEPENDENCY_NOT_ACCEPTED" });
+            logs.push(`[${entry.file}] OMITIDO: ${error}`);
+            continue;
+          }
+        }
+
+        const dgii = await submitSignedEcfWithTenantConfig(companyRow, entry.signedXml);
+        let testStatus: DgiiTestStatus = "pending";
+        let testMessage = "Recibido por DGII; consulta de estado pendiente.";
+        if (dgii.trackId?.trim()) {
+          try {
+            const consult = await consultDgiiTrackId(companyRow, dgii.trackId);
+            const resolved = resolveDgiiTestStatus(consult.body);
+            testStatus = resolved.testStatus;
+            testMessage = resolved.testMessage;
+          } catch (consultErr) {
+            testStatus = "unknown";
+            testMessage = consultErr instanceof Error ? consultErr.message : "No se pudo consultar el estado DGII.";
+          }
+        }
         successes.push({
-          file,
+          file: entry.file,
           trackId: dgii.trackId,
           status: dgii.status,
+          testStatus,
+          testMessage,
           httpStatus: dgii.httpStatus,
           responseContentType: dgii.responseContentType,
-          responseSnippet: responseSnippet(dgii.rawResponse),
+          responseSnippet: compactResponse(dgii.rawResponse, 500),
         });
-        logs.push(`[${file}] ENVIADO: trackId=${dgii.trackId || "(sin trackId)"} status=${dgii.status}`);
+        if (entry.encf) {
+          testStatusByEncf.set(entry.encf, testStatus);
+          if (testStatus === "accepted" || testStatus === "pending") {
+            upsertManifestEntry(manifest, entry, {
+              status: testStatus,
+              trackId: dgii.trackId,
+              message: testMessage,
+            });
+            saveSendManifest(outSignedDir, manifest);
+          }
+        }
+        logs.push(
+          `[${entry.file}] ENVIADO: trackId=${dgii.trackId || "(sin trackId)"} recepción=${dgii.status} prueba=${testStatus}`,
+        );
       } catch (e) {
         if (e instanceof DgiiEcfError) {
+          if (entry.encf && isSequenceAlreadyUsedMessage(e.message)) {
+            const message =
+              "DGII indica que este número de secuencia ya fue utilizado; se marca como ya registrado para no reenviarlo.";
+            successes.push({
+              file: entry.file,
+              trackId: "",
+              status: "already_used",
+              testStatus: "accepted",
+              testMessage: message,
+              httpStatus: e.httpStatus,
+              responseSnippet: e.message,
+            });
+            testStatusByEncf.set(entry.encf, "accepted");
+            upsertManifestEntry(manifest, entry, {
+              status: "already_used",
+              message,
+            });
+            saveSendManifest(outSignedDir, manifest);
+            logs.push(`[${entry.file}] OMITIDO: ${message}`);
+            continue;
+          }
           failures.push({
-            file,
+            file: entry.file,
             error: e.message,
             code: e.code,
             httpStatus: e.httpStatus,
           });
-          logs.push(`[${file}] ERROR ${e.code}${e.httpStatus ? `(${e.httpStatus})` : ""}: ${e.message}`);
+          if (entry.encf) {
+            testStatusByEncf.set(entry.encf, "rejected");
+          }
+          logs.push(`[${entry.file}] ERROR ${e.code}${e.httpStatus ? `(${e.httpStatus})` : ""}: ${e.message}`);
         } else {
           const msg = e instanceof Error ? e.message : "Error desconocido.";
-          failures.push({ file, error: msg });
-          logs.push(`[${file}] ERROR: ${msg}`);
+          failures.push({ file: entry.file, error: msg });
+          if (entry.encf) {
+            testStatusByEncf.set(entry.encf, "rejected");
+          }
+          logs.push(`[${entry.file}] ERROR: ${msg}`);
         }
       }
     }
 
     const ok = successes.length;
     const fail = failures.length;
+    const testAccepted = successes.filter((s) => s.testStatus === "accepted").length;
+    const testRejected = successes.filter((s) => s.testStatus === "rejected").length;
+    const testPending = successes.filter((s) => s.testStatus === "pending").length;
+    const testUnknown = successes.filter((s) => s.testStatus === "unknown").length;
     const status = ok > 0 && fail > 0 ? 207 : fail > 0 ? 502 : 200;
 
     res.status(status).json({
@@ -387,6 +626,12 @@ export const sendExcelBatchSignedToDgiiHandler: RequestHandler = async (req, res
       total: xmlFiles.length,
       ok,
       fail,
+      testSummary: {
+        accepted: testAccepted,
+        rejected: testRejected,
+        pending: testPending,
+        unknown: testUnknown,
+      },
       successes,
       failures,
       logs,

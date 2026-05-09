@@ -19,7 +19,22 @@ export type EcfExcelBatchSendResponse = {
   total: number;
   ok: number;
   fail: number;
-  successes: { file: string; trackId: string; status: string }[];
+  testSummary?: {
+    accepted: number;
+    rejected: number;
+    pending: number;
+    unknown: number;
+  };
+  successes: {
+    file: string;
+    trackId: string;
+    status: string;
+    testStatus?: "accepted" | "rejected" | "pending" | "unknown";
+    testMessage?: string;
+    httpStatus?: number;
+    responseContentType?: string;
+    responseSnippet?: string;
+  }[];
   failures: { file: string; error: string; code?: string; httpStatus?: number }[];
   logs: string[];
 };

@@ -89,7 +89,7 @@ document.DocumentElement!.AppendChild(document.ImportNode(signedXml.GetXml(), tr
 
 var writerSettings = new XmlWriterSettings
 {
-    Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true),
+    Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
     Indent = true,
     NewLineChars = "\r\n",
     OmitXmlDeclaration = false,

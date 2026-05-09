@@ -249,153 +249,467 @@ function appendFieldsInOrder(parent, values, order) {
   }
 }
 
+const IDDOC_FIELDS = [
+  "TipoeCF",
+  "eNCF",
+  "FechaVencimientoSecuencia",
+  "IndicadorNotaCredito",
+  "IndicadorEnvioDiferido",
+  "IndicadorMontoGravado",
+  "IndicadorServicioTodoIncluido",
+  "TipoIngresos",
+  "TipoPago",
+  "FechaLimitePago",
+  "TerminoPago",
+  "TipoCuentaPago",
+  "NumeroCuentaPago",
+  "BancoPago",
+  "FechaDesde",
+  "FechaHasta",
+  "TotalPaginas",
+];
+
+const EMISOR_FIELDS = [
+  "RNCEmisor",
+  "RazonSocialEmisor",
+  "NombreComercial",
+  "Sucursal",
+  "DireccionEmisor",
+  "Municipio",
+  "Provincia",
+  "CorreoEmisor",
+  "WebSite",
+  "ActividadEconomica",
+  "CodigoVendedor",
+  "NumeroFacturaInterna",
+  "NumeroPedidoInterno",
+  "ZonaVenta",
+  "RutaVenta",
+  "InformacionAdicionalEmisor",
+  "FechaEmision",
+];
+
+const COMPRADOR_FIELDS = [
+  "RNCComprador",
+  "IdentificadorExtranjero",
+  "RazonSocialComprador",
+  "ContactoComprador",
+  "CorreoComprador",
+  "DireccionComprador",
+  "MunicipioComprador",
+  "ProvinciaComprador",
+  "PaisComprador",
+  "FechaEntrega",
+  "ContactoEntrega",
+  "DireccionEntrega",
+  "TelefonoAdicional",
+  "FechaOrdenCompra",
+  "NumeroOrdenCompra",
+  "CodigoInternoComprador",
+  "ResponsablePago",
+  "InformacionAdicionalComprador",
+];
+
+const INFORMACIONES_ADICIONALES_FIELDS = [
+  "FechaEmbarque",
+  "NumeroEmbarque",
+  "NumeroContenedor",
+  "NumeroReferencia",
+  "PesoBruto",
+  "PesoNeto",
+  "UnidadPesoBruto",
+  "UnidadPesoNeto",
+  "CantidadBulto",
+  "UnidadBulto",
+  "VolumenBulto",
+  "UnidadVolumen",
+];
+
+const TRANSPORTE_FIELDS = [
+  "Conductor",
+  "DocumentoTransporte",
+  "Ficha",
+  "Placa",
+  "RutaTransporte",
+  "ZonaTransporte",
+  "NumeroAlbaran",
+];
+
+const TOTALES_SIMPLE_BEFORE_IMPUESTOS = [
+  "MontoGravadoTotal",
+  "MontoGravadoI1",
+  "MontoGravadoI2",
+  "MontoGravadoI3",
+  "MontoExento",
+  "ITBIS1",
+  "ITBIS2",
+  "ITBIS3",
+  "TotalITBIS",
+  "TotalITBIS1",
+  "TotalITBIS2",
+  "TotalITBIS3",
+  "MontoImpuestoAdicional",
+];
+
+const TOTALES_SIMPLE_AFTER_IMPUESTOS = [
+  "MontoTotal",
+  "MontoNoFacturable",
+  "MontoPeriodo",
+  "SaldoAnterior",
+  "MontoAvancePago",
+  "ValorPagar",
+  "TotalITBISRetenido",
+  "TotalISRRetencion",
+  "TotalITBISPercepcion",
+  "TotalISRPercepcion",
+];
+
+const OTRA_MONEDA_SIMPLE_BEFORE_IMPUESTOS = [
+  "TipoMoneda",
+  "TipoCambio",
+  "MontoGravadoTotalOtraMoneda",
+  "MontoGravado1OtraMoneda",
+  "MontoGravado2OtraMoneda",
+  "MontoGravado3OtraMoneda",
+  "MontoExentoOtraMoneda",
+  "TotalITBISOtraMoneda",
+  "TotalITBIS1OtraMoneda",
+  "TotalITBIS2OtraMoneda",
+  "TotalITBIS3OtraMoneda",
+  "MontoImpuestoAdicionalOtraMoneda",
+];
+
+const OTRA_MONEDA_SIMPLE_AFTER_IMPUESTOS = ["MontoTotalOtraMoneda"];
+
+const ITEM_SIMPLE_FIELDS_BEFORE_DESCUENTO = [
+  "NumeroLinea",
+  "IndicadorFacturacion",
+  "NombreItem",
+  "IndicadorBienoServicio",
+  "DescripcionItem",
+  "CantidadItem",
+  "UnidadMedida",
+  "CantidadReferencia",
+  "UnidadReferencia",
+  "GradosAlcohol",
+  "PrecioUnitarioReferencia",
+  "FechaElaboracion",
+  "FechaVencimientoItem",
+  "PrecioUnitarioItem",
+  "DescuentoMonto",
+];
+
+const ITEM_SIMPLE_FIELDS_AFTER_RECARDO = ["RecargoMonto"];
+const ITEM_FINAL_FIELDS = ["MontoItem"];
+const ITEM_FIELD_BASES = [
+  "NumeroLinea",
+  "TipoCodigo",
+  "CodigoItem",
+  "IndicadorFacturacion",
+  "IndicadorAgenteRetencionoPercepcion",
+  "MontoITBISRetenido",
+  "MontoISRRetenido",
+  "NombreItem",
+  "IndicadorBienoServicio",
+  "DescripcionItem",
+  "CantidadItem",
+  "UnidadMedida",
+  "CantidadReferencia",
+  "UnidadReferencia",
+  "Subcantidad",
+  "CodigoSubcantidad",
+  "GradosAlcohol",
+  "PrecioUnitarioReferencia",
+  "FechaElaboracion",
+  "FechaVencimientoItem",
+  "PrecioUnitarioItem",
+  "DescuentoMonto",
+  "TipoSubDescuento",
+  "SubDescuentoPorcentaje",
+  "MontoSubDescuento",
+  "RecargoMonto",
+  "TipoSubRecargo",
+  "SubRecargoPorcentaje",
+  "MontosubRecargo",
+  "TipoImpuesto",
+  "PrecioOtraMoneda",
+  "DescuentoOtraMoneda",
+  "RecargoOtraMoneda",
+  "MontoItemOtraMoneda",
+  "MontoItem",
+].map(normCol);
+const INFORMACION_REFERENCIA_FIELDS = [
+  "NCFModificado",
+  "RNCOtroContribuyente",
+  "FechaNCFModificado",
+  "CodigoModificacion",
+  "RazonModificacion",
+];
+
+function exactLookup(row, wanted) {
+  const wantedNorm = normCol(wanted);
+  for (const [key, value] of Object.entries(row)) {
+    if (normCol(key) === wantedNorm) {
+      const text = String(value ?? "").trim();
+      return text && text !== "#e" ? text : null;
+    }
+  }
+  return null;
+}
+
+function xmlFieldName(excelName) {
+  if (normCol(excelName) === "ENCF") return "eNCF";
+  if (normCol(excelName) === "MONTOSUBRECARGO") return "MontoSubRecargo";
+  return excelName;
+}
+
+function appendIfPresent(parent, row, field, opts = {}) {
+  const value = exactLookup(row, field);
+  if (value == null) return false;
+  parent.ele(opts.xmlName || xmlFieldName(field)).txt(value);
+  return true;
+}
+
+function appendFields(parent, row, fields) {
+  let wrote = false;
+  for (const field of fields) {
+    wrote = appendIfPresent(parent, row, field) || wrote;
+  }
+  return wrote;
+}
+
+function appendOptionalGroup(parent, groupName, row, fields) {
+  const group = parent.ele(groupName);
+  const wrote = appendFields(group, row, fields);
+  if (!wrote) group.remove();
+  return wrote;
+}
+
+function appendIndexedPairGroup(parent, row, groupName, itemName, index, fields) {
+  const item = parent.ele(itemName);
+  let wrote = false;
+  for (const field of fields) {
+    wrote = appendIfPresent(item, row, `${field}[${index}]`) || wrote;
+  }
+  if (!wrote) item.remove();
+  return wrote;
+}
+
+function appendNestedIndexedPairGroup(parent, row, groupName, itemName, lineIndex, max, fields) {
+  const group = parent.ele(groupName);
+  let wroteGroup = false;
+  for (let i = 1; i <= max; i++) {
+    const item = group.ele(itemName);
+    let wroteItem = false;
+    for (const field of fields) {
+      wroteItem =
+        appendIfPresent(item, row, `${field}[${lineIndex}][${i}]`, { xmlName: xmlFieldName(field) }) ||
+        wroteItem;
+    }
+    if (!wroteItem) item.remove();
+    wroteGroup = wroteItem || wroteGroup;
+  }
+  if (!wroteGroup) group.remove();
+  return wroteGroup;
+}
+
+function appendTablaFormasPago(parent, row) {
+  const group = parent.ele("TablaFormasPago");
+  let wrote = false;
+  for (let i = 1; i <= 7; i++) {
+    const item = group.ele("FormaDePago");
+    const hasForma = appendIfPresent(item, row, `FormaPago[${i}]`, { xmlName: "FormaPago" });
+    const hasMonto = appendIfPresent(item, row, `MontoPago[${i}]`, { xmlName: "MontoPago" });
+    if (!hasForma && !hasMonto) item.remove();
+    wrote = hasForma || hasMonto || wrote;
+  }
+  if (!wrote) group.remove();
+}
+
+function appendTablaTelefonoEmisor(parent, row) {
+  const group = parent.ele("TablaTelefonoEmisor");
+  let wrote = false;
+  for (let i = 1; i <= 3; i++) {
+    const value = exactLookup(row, `TelefonoEmisor[${i}]`);
+    if (!value) continue;
+    group.ele("TelefonoEmisor").txt(value);
+    wrote = true;
+  }
+  if (!wrote) group.remove();
+}
+
+function appendImpuestosAdicionales(parent, row, opts = {}) {
+  const suffix = opts.suffix || "";
+  const groupName = opts.groupName || "ImpuestosAdicionales";
+  const itemName = opts.itemName || "ImpuestoAdicional";
+  const group = parent.ele(groupName);
+  let wrote = false;
+  for (let i = 1; i <= 20; i++) {
+    const item = group.ele(itemName);
+    const fields = [
+      `TipoImpuesto${suffix}`,
+      `TasaImpuestoAdicional${suffix}`,
+      `MontoImpuestoSelectivoConsumoEspecifico${suffix}`,
+      `MontoImpuestoSelectivoConsumoAdvalorem${suffix}`,
+      `OtrosImpuestosAdicionales${suffix}`,
+    ];
+    let wroteItem = false;
+    for (const field of fields) {
+      wroteItem = appendIfPresent(item, row, `${field}[${i}]`, { xmlName: field }) || wroteItem;
+    }
+    if (!wroteItem) item.remove();
+    wrote = wroteItem || wrote;
+  }
+  if (!wrote) group.remove();
+  return wrote;
+}
+
+function itemHasAnyValue(row, lineIndex) {
+  return Object.entries(row).some(([key, value]) => {
+    const text = String(value ?? "").trim();
+    if (!text || text === "#e") return false;
+    const match = String(key).match(/^(.+?)\[(\d+)\]/);
+    if (!match) return false;
+    return Number(match[2]) === lineIndex && ITEM_FIELD_BASES.includes(normCol(match[1]));
+  });
+}
+
 /**
  * @param {Record<string, string>} row
  * @param {{ defaultRncEmisor?: string; tipoEcf?: string }} [opts]
  * @returns {{ xml: string, enf: string }}
  */
 function buildEcfXml(row, opts = {}) {
-  const version = lookup(row, SYN_VERSION) || "1.0";
-  const tipoFromOpts = typeof opts.tipoEcf === "string" ? opts.tipoEcf.trim() : "";
-  const tipoFromEnv =
-    typeof process.env.DGII_TIPOECF === "string" ? process.env.DGII_TIPOECF.trim() : "";
-  /** Prioridad: `opts.tipoEcf` &gt; `DGII_TIPOECF` en entorno &gt; columna Excel TipoeCF. */
-  const tipoeCf =
-    tipoFromOpts || tipoFromEnv || lookup(row, SYN_TIPOECF);
-  const enf = resolveEncf(row);
-  const tipoIngresos = lookup(row, SYN_TIPO_INGRESOS) || "01";
-  const tipoPago = lookup(row, SYN_TIPO_PAGO) || "1";
-
-  const rncFromRow = lookup(row, SYN_RNC);
-  const defaultRnc = (opts.defaultRncEmisor || process.env.DGII_RNC_EMISOR || "").trim();
-  const rncEmisor = (rncFromRow && rncFromRow.trim()) || defaultRnc;
-
-  const razonSocialEmisor = lookup(row, SYN_RAZON_SOCIAL_EMISOR);
-  const nombreComercial =
-    lookup(row, SYN_NOMBRE_COMERCIAL) || razonSocialEmisor || "N/A";
-  const direccionEmisor = lookup(row, SYN_DIRECCION_EMISOR);
-  const municipio =
-    lookup(row, SYN_MUNICIPIO) || (process.env.DGII_EMISOR_MUNICIPIO || "").trim() || "010100";
-  const provincia =
-    lookup(row, SYN_PROVINCIA) || (process.env.DGII_EMISOR_PROVINCIA || "").trim() || "010000";
-  const correoEmisor = lookup(row, SYN_CORREO_EMISOR);
-
-  const rncComprador = lookup(row, SYN_RNC_COMPRADOR);
-  const razonComprador = lookup(row, SYN_RAZON_COMPRADOR);
-
+  const enf = exactLookup(row, "ENCF") || resolveEncf(row);
   if (!enf) {
     throw new Error("Fila sin eNCF reconocido (columna ENCF / patrón E…).");
   }
-  if (!tipoeCf) {
-    throw new Error("Fila sin TipoeCF.");
-  }
-  if (!rncEmisor) {
-    throw new Error(
-      "Falta RNCEmisor: columna en Excel o variable de entorno DGII_RNC_EMISOR.",
-    );
-  }
-  if (!razonSocialEmisor) {
-    throw new Error("Falta RazonSocialEmisor en el Excel.");
-  }
-  if (!direccionEmisor) {
-    throw new Error("Falta DireccionEmisor en el Excel.");
-  }
-  if (!correoEmisor) {
-    throw new Error("Falta CorreoEmisor en el Excel.");
-  }
-  if (!rncComprador) {
-    throw new Error("Falta RNCComprador en el Excel.");
-  }
-  if (!razonComprador) {
-    throw new Error("Falta RazonSocialComprador en el Excel.");
-  }
-
-  const montoNum = resolveMontoTotalNumeric(row);
-  const montoTotalStr = formatMoney2(montoNum);
-
-  const nombreItem =
-    lookupIndexed(row, SYN_NOMBRE_ITEM, 1) || lookup(row, SYN_NOMBRE_ITEM) || "Servicio";
-  const cantidadRaw = lookupIndexed(row, SYN_CANTIDAD, 1) || lookup(row, SYN_CANTIDAD) || "1";
-  const cantidadDisplay = formatQtyDisplay(cantidadRaw, 1);
-
-  let precioUnitStr =
-    lookupIndexed(row, SYN_PRECIO_UNIT, 1) || lookup(row, SYN_PRECIO_UNIT);
-  let montoItemStr =
-    lookupIndexed(row, SYN_MONTO_ITEM, 1) || lookup(row, SYN_MONTO_ITEM);
-  if (!precioUnitStr) {
-    precioUnitStr = montoTotalStr;
-  }
-  if (!montoItemStr) {
-    montoItemStr = montoTotalStr;
-  }
-  precioUnitStr = formatMoney2(parseMoneyNumber(precioUnitStr) || montoNum);
-  montoItemStr = formatMoney2(parseMoneyNumber(montoItemStr) || montoNum);
-
-  const indicadorFacturacion =
-    lookupIndexed(row, SYN_IND_FACTURACION, 1) || lookup(row, SYN_IND_FACTURACION) || "4";
-  const indicadorBienServicio =
-    lookupIndexed(row, SYN_IND_BIEN, 1) || lookup(row, SYN_IND_BIEN) || "1";
-  const unidadMedida =
-    lookupIndexed(row, SYN_UNIDAD_MEDIDA, 1) || lookup(row, SYN_UNIDAD_MEDIDA) || "47";
+  const tipoEcf = String(exactLookup(row, "TipoeCF") || opts.tipoEcf || enf.slice(1, 3)).trim();
 
   const doc = create({ version: "1.0", encoding: "UTF-8" });
-  const root = doc.ele("ECF", { xmlns: DGII_NS });
+  const root = doc.ele("ECF");
 
   const enc = root.ele("Encabezado");
-  enc.ele("Version").txt(String(version));
+  enc.ele("Version").txt(String(exactLookup(row, "Version") || "1.0"));
 
   const idDoc = enc.ele("IdDoc");
-  idDoc.ele("TipoeCF").txt(String(tipoeCf));
-  idDoc.ele("eNCF").txt(String(enf));
-  idDoc.ele("TipoIngresos").txt(String(tipoIngresos));
-  idDoc.ele("TipoPago").txt(String(tipoPago));
+  appendFields(idDoc, row, IDDOC_FIELDS);
+  appendTablaFormasPago(idDoc, row);
   idDoc.up();
 
   const em = enc.ele("Emisor");
-  appendFieldsInOrder(
-    em,
-    {
-      RNCEmisor: String(rncEmisor),
-      RazonSocialEmisor: String(razonSocialEmisor),
-      NombreComercial: String(nombreComercial),
-      DireccionEmisor: String(direccionEmisor),
-      Municipio: String(municipio),
-      Provincia: String(provincia),
-      CorreoEmisor: String(correoEmisor),
-      FechaEmision: fechaEmisionDdMmYyyy(row),
-    },
-    EMISOR_FIELD_ORDER,
-  );
+  for (const field of EMISOR_FIELDS) {
+    if (field === "CorreoEmisor") appendTablaTelefonoEmisor(em, row);
+    appendIfPresent(em, row, field);
+  }
   em.up();
 
-  const comp = enc.ele("Comprador");
-  comp.ele("RNCComprador").txt(String(rncComprador));
-  comp.ele("RazonSocialComprador").txt(String(razonComprador));
-  comp.up();
+  if (tipoEcf !== "43") {
+    const comp = enc.ele("Comprador");
+    const wroteComprador = appendFields(comp, row, COMPRADOR_FIELDS);
+    if (!wroteComprador && ["33", "34", "47"].includes(tipoEcf)) {
+      comp.remove();
+    } else {
+      comp.up();
+    }
+  }
 
-  enc.ele("Totales").ele("MontoTotal").txt(montoTotalStr).up();
+  appendOptionalGroup(enc, "InformacionesAdicionales", row, INFORMACIONES_ADICIONALES_FIELDS);
+  appendOptionalGroup(enc, "Transporte", row, TRANSPORTE_FIELDS);
+
+  const totales = enc.ele("Totales");
+  appendFields(totales, row, TOTALES_SIMPLE_BEFORE_IMPUESTOS);
+  appendImpuestosAdicionales(totales, row);
+  appendFields(totales, row, TOTALES_SIMPLE_AFTER_IMPUESTOS);
+  totales.up();
+
+  const otraMoneda = enc.ele("OtraMoneda");
+  const wroteOtraMonedaBefore = appendFields(otraMoneda, row, OTRA_MONEDA_SIMPLE_BEFORE_IMPUESTOS);
+  const wroteOtraMonedaImpuestos = appendImpuestosAdicionales(otraMoneda, row, {
+    suffix: "OtraMoneda",
+    groupName: "ImpuestosAdicionalesOtraMoneda",
+    itemName: "ImpuestoAdicionalOtraMoneda",
+  });
+  const wroteOtraMonedaAfter = appendFields(otraMoneda, row, OTRA_MONEDA_SIMPLE_AFTER_IMPUESTOS);
+  if (!wroteOtraMonedaBefore && !wroteOtraMonedaImpuestos && !wroteOtraMonedaAfter) {
+    otraMoneda.remove();
+  }
 
   enc.up();
 
   const detalles = root.ele("DetallesItems");
-  const item = detalles.ele("Item");
-  appendFieldsInOrder(
-    item,
-    {
-      NumeroLinea: "1",
-      IndicadorFacturacion: String(indicadorFacturacion),
-      NombreItem: String(nombreItem),
-      IndicadorBienoServicio: String(indicadorBienServicio),
-      CantidadItem: cantidadDisplay,
-      UnidadMedida: String(unidadMedida),
-      PrecioUnitarioItem: precioUnitStr,
-      MontoItem: montoItemStr,
-    },
-    ITEM_FIELD_ORDER,
-  );
-  item.up();
+  let itemCount = 0;
+  for (let lineIndex = 1; lineIndex <= 1000; lineIndex++) {
+    if (!itemHasAnyValue(row, lineIndex)) continue;
+    const item = detalles.ele("Item");
+    appendIfPresent(item, row, `NumeroLinea[${lineIndex}]`, { xmlName: "NumeroLinea" });
+    appendNestedIndexedPairGroup(item, row, "TablaCodigosItem", "CodigosItem", lineIndex, 5, [
+      "TipoCodigo",
+      "CodigoItem",
+    ]);
+    appendIfPresent(item, row, `IndicadorFacturacion[${lineIndex}]`, { xmlName: "IndicadorFacturacion" });
+    const retencion = item.ele("Retencion");
+    let wroteRetencion = false;
+    for (const field of [
+      "IndicadorAgenteRetencionoPercepcion",
+      "MontoITBISRetenido",
+      "MontoISRRetenido",
+    ]) {
+      wroteRetencion =
+        appendIfPresent(retencion, row, `${field}[${lineIndex}]`, { xmlName: field }) ||
+        wroteRetencion;
+    }
+    if (!wroteRetencion) retencion.remove();
+    for (const field of [
+      "NombreItem",
+      "IndicadorBienoServicio",
+      "DescripcionItem",
+      "CantidadItem",
+      "UnidadMedida",
+      "CantidadReferencia",
+      "UnidadReferencia",
+    ]) {
+      appendIfPresent(item, row, `${field}[${lineIndex}]`, { xmlName: field });
+    }
+    appendNestedIndexedPairGroup(item, row, "TablaSubcantidad", "SubcantidadItem", lineIndex, 5, [
+      "Subcantidad",
+      "CodigoSubcantidad",
+    ]);
+    for (const field of ["GradosAlcohol", "PrecioUnitarioReferencia", "FechaElaboracion", "FechaVencimientoItem", "PrecioUnitarioItem", "DescuentoMonto"]) {
+      appendIfPresent(item, row, `${field}[${lineIndex}]`, { xmlName: field });
+    }
+    appendNestedIndexedPairGroup(item, row, "TablaSubDescuento", "SubDescuento", lineIndex, 12, [
+      "TipoSubDescuento",
+      "SubDescuentoPorcentaje",
+      "MontoSubDescuento",
+    ]);
+    appendIfPresent(item, row, `RecargoMonto[${lineIndex}]`, { xmlName: "RecargoMonto" });
+    appendNestedIndexedPairGroup(item, row, "TablaSubRecargo", "SubRecargo", lineIndex, 12, [
+      "TipoSubRecargo",
+      "SubRecargoPorcentaje",
+      "MontosubRecargo",
+    ]);
+    appendNestedIndexedPairGroup(item, row, "TablaImpuestoAdicional", "ImpuestoAdicional", lineIndex, 2, [
+      "TipoImpuesto",
+    ]);
+    const otraMonedaDetalle = item.ele("OtraMonedaDetalle");
+    let wroteOtraMonedaDetalle = false;
+    for (const field of ["PrecioOtraMoneda", "DescuentoOtraMoneda", "RecargoOtraMoneda", "MontoItemOtraMoneda"]) {
+      wroteOtraMonedaDetalle =
+        appendIfPresent(otraMonedaDetalle, row, `${field}[${lineIndex}]`, { xmlName: field }) ||
+        wroteOtraMonedaDetalle;
+    }
+    if (!wroteOtraMonedaDetalle) otraMonedaDetalle.remove();
+    appendIfPresent(item, row, `MontoItem[${lineIndex}]`, { xmlName: "MontoItem" });
+    item.up();
+    itemCount += 1;
+  }
+  if (itemCount === 0) {
+    throw new Error(`Fila ${enf} sin DetallesItems.`);
+  }
   detalles.up();
 
+  appendOptionalGroup(root, "InformacionReferencia", row, INFORMACION_REFERENCIA_FIELDS);
   root.ele("FechaHoraFirma").txt(fechaHoraFirmaDgii());
 
   const xml = doc.end({ prettyPrint: true });

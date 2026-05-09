@@ -40,6 +40,20 @@ export default function EcfExcelBatch({ company }: { company: AuthCompany }) {
     [],
   );
 
+  const testStatusLabel = (status?: string) => {
+    if (status === "accepted") return "Prueba aceptada";
+    if (status === "rejected") return "Prueba rechazada";
+    if (status === "pending") return "Pendiente de procesamiento";
+    return "Estado no confirmado";
+  };
+
+  const testStatusClass = (status?: string) => {
+    if (status === "accepted") return "text-emerald-700";
+    if (status === "rejected") return "text-red-700";
+    if (status === "pending") return "text-amber-700";
+    return "text-slate-600";
+  };
+
   const runBatch = async () => {
     setLoading(true);
     setError("");
@@ -283,6 +297,17 @@ export default function EcfExcelBatch({ company }: { company: AuthCompany }) {
 
       {sendResult && (
         <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm space-y-3">
+          {sendResult.testSummary ? (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+              <p className="font-medium text-slate-900">Estado de pruebas DGII</p>
+              <p className="mt-1 text-xs text-slate-700">
+                Aceptadas: <span className="font-semibold text-emerald-700">{sendResult.testSummary.accepted}</span>{" "}
+                · Rechazadas: <span className="font-semibold text-red-700">{sendResult.testSummary.rejected}</span>{" "}
+                · Pendientes: <span className="font-semibold text-amber-700">{sendResult.testSummary.pending}</span>{" "}
+                · Sin confirmar: <span className="font-semibold text-slate-600">{sendResult.testSummary.unknown}</span>
+              </p>
+            </div>
+          ) : null}
           <p
             className={`text-sm font-medium ${
               sendResult.ok === 0 && sendResult.fail > 0 ? "text-red-800" : "text-slate-900"
@@ -301,7 +326,13 @@ export default function EcfExcelBatch({ company }: { company: AuthCompany }) {
               <ul className="mt-2 space-y-1 text-xs">
                 {sendResult.successes.map((s) => (
                   <li key={`${s.file}-${s.trackId}`}>
-                    {s.file}: <span className="font-medium">{s.trackId}</span> ({s.status})
+                    {s.file}: <span className="font-medium">{s.trackId}</span> ({s.status}) ·{" "}
+                    <span className={`font-semibold ${testStatusClass(s.testStatus)}`}>
+                      {testStatusLabel(s.testStatus)}
+                    </span>
+                    {s.testMessage ? (
+                      <span className="block pl-3 text-slate-500">{s.testMessage}</span>
+                    ) : null}
                   </li>
                 ))}
               </ul>

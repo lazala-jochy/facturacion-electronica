@@ -19,6 +19,31 @@ function sanitizeFileBase(enf) {
   return String(enf).replace(/[^\w\d._-]/g, "_");
 }
 
+function normalizeColumnName(s) {
+  return String(s)
+    .replace(/#e/gi, "")
+    .trim()
+    .replace(/\s+/g, "")
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function rowValue(row, wanted) {
+  const wantedNorm = normalizeColumnName(wanted);
+  for (const [key, value] of Object.entries(row)) {
+    if (normalizeColumnName(key) === wantedNorm) return String(value ?? "").trim();
+  }
+  return "";
+}
+
+function fileBaseForDgii(row, enf) {
+  const casoPrueba = rowValue(row, "CasoPrueba").replace(/[^\w\d._-]/g, "");
+  if (casoPrueba) return casoPrueba;
+  const rnc = rowValue(row, "RNCEmisor").replace(/\D/g, "");
+  return sanitizeFileBase(`${rnc}${enf}`);
+}
+
 function useSystemCert(opts) {
   const b = opts.signingFromPkcs12Buffer;
   return Boolean(b?.p12Buffer && Buffer.isBuffer(b.p12Buffer));
@@ -83,7 +108,7 @@ async function runEcfExcelBatch(opts) {
         defaultRncEmisor: opts.defaultRncEmisor,
       });
       enfTag = enf;
-      const base = sanitizeFileBase(enf);
+      const base = fileBaseForDgii(row, enf);
       const xmlPath = path.join(outXmlDir, `${base}.xml`);
       const signedPath = path.join(outSignedDir, `${base}.xml`);
 

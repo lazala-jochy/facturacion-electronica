@@ -1,8 +1,0 @@
-Error: Se esperaba una referencia canonicalizada, encontradas: 0.
-    at verifySignedXmlForDgii (/Users/joserosario/Desktop/facturacion-electronica/backend/src/services/dgiiXmlSigner.ts:245:11)
-    at materialToSignedXml (/Users/joserosario/Desktop/facturacion-electronica/backend/src/services/dgiiXmlSigner.ts:364:50)
-    at signXmlWithP12Buffer (/Users/joserosario/Desktop/facturacion-electronica/backend/src/services/dgiiXmlSigner.ts:452:10)
-    at /Users/joserosario/Desktop/facturacion-electronica/backend/src/services/dgiiAuth.service.ts:164:25
-    at Object.getToken (/Users/joserosario/Desktop/facturacion-electronica/backend/src/services/dgiiAuth.service.ts:287:28)
-    at Object.testConnection (/Users/joserosario/Desktop/facturacion-electronica/backend/src/services/dgiiAuth.service.ts:376:7)
-    at testDgiiConnection (/Users/joserosario/Desktop/facturacion-electronica/backend/src/controllers/auth.controller.ts:237:17)

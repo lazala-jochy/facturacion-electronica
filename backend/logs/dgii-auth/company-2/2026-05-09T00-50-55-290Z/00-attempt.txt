@@ -1,2 +1,0 @@
-company=2
-started_at=2026-05-09T00:50:55.291Z

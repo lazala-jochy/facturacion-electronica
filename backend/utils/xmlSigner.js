@@ -3,19 +3,19 @@
  */
 
 const forge = require("node-forge");
-const { SignedXml } = require("xml-crypto");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
+const { spawnSync } = require("child_process");
 
 /** Canonicalización aplicada por DGII para esta firma (no exclusive). */
 const C14N_20010315 = "http://www.w3.org/TR/2001/REC-xml-c14n-20010315";
 
 const RSA_SHA256 = "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256";
 const SHA256_DIGEST = "http://www.w3.org/2001/04/xmlenc#sha256";
-const ENV_SIGNATURE = "http://www.w3.org/2000/09/xmldsig#enveloped-signature";
-
 /** Raíz del comprobante electrónico. */
 const ECF_ROOT_XPATH = "/*[local-name(.)='ECF']";
+const DOTNET_SIGNER_PROJECT = path.join(process.cwd(), "dotnet", "DgiiXmlSigner", "DgiiXmlSigner.csproj");
 
 /**
  * @returns {string}
@@ -66,36 +66,38 @@ function loadPkcs12MaterialFromBuffer(p12Buffer, password) {
   };
 }
 
-/**
- * Firma enveloped sobre <ECF>, Reference URI vacío (documento).
- * @param {string} xml
- * @param {Buffer} p12Buffer
- * @param {string} passphrase
- */
 function signXmlEnvelope(xml, p12Buffer, passphrase) {
-  const material = loadPkcs12MaterialFromBuffer(p12Buffer, passphrase);
+  loadPkcs12MaterialFromBuffer(p12Buffer, passphrase);
+  if (!fs.existsSync(DOTNET_SIGNER_PROJECT)) {
+    throw new Error(`No se encontró el firmador DGII .NET en ${DOTNET_SIGNER_PROJECT}.`);
+  }
 
-  const sig = new SignedXml({
-    privateKey: material.privateKeyPem,
-    publicCert: material.certPem,
-    canonicalizationAlgorithm: C14N_20010315,
-    signatureAlgorithm: RSA_SHA256,
-    getKeyInfoContent: () =>
-      `<X509Data><X509Certificate>${compactCert(material.certPem)}</X509Certificate></X509Data>`,
-  });
-
-  sig.addReference({
-    xpath: ECF_ROOT_XPATH,
-    transforms: [ENV_SIGNATURE, C14N_20010315],
-    digestAlgorithm: SHA256_DIGEST,
-    isEmptyUri: true,
-  });
-
-  sig.computeSignature(xml, {
-    location: { reference: ECF_ROOT_XPATH, action: "append" },
-  });
-
-  return sig.getSignedXml();
+  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "dgii-ecf-xmlsign-"));
+  const inputPath = path.join(workDir, "input.xml");
+  const certPath = path.join(workDir, "certificate.p12");
+  const passwordPath = path.join(workDir, "password.txt");
+  const outputPath = path.join(workDir, "signed.xml");
+  try {
+    fs.writeFileSync(inputPath, xml.replace(/^\uFEFF/, ""), "utf8");
+    fs.writeFileSync(certPath, p12Buffer);
+    fs.writeFileSync(passwordPath, passphrase ?? "", "utf8");
+    const result = spawnSync(
+      "dotnet",
+      ["run", "--project", DOTNET_SIGNER_PROJECT, "--", inputPath, certPath, passwordPath, outputPath, "modern-sha256"],
+      { cwd: process.cwd(), encoding: "utf8", maxBuffer: 1024 * 1024 * 4 },
+    );
+    if (result.status !== 0) {
+      const message = [result.stderr, result.stdout].filter(Boolean).join("\n").trim();
+      throw new Error(`No se pudo firmar XML e-CF con el firmador DGII .NET. ${message}`);
+    }
+    return fs.readFileSync(outputPath, "utf8");
+  } finally {
+    try {
+      fs.rmSync(workDir, { recursive: true, force: true });
+    } catch {
+      // ignore cleanup issues
+    }
+  }
 }
 
 /**

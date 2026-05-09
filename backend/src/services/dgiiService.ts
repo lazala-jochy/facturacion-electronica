@@ -128,6 +128,14 @@ const looksLikeHtml = (contentType: string, raw: string): boolean => {
   return ct.includes("text/html") || body.startsWith("<!doctype html") || body.startsWith("<html");
 };
 
+const extractEcfFilename = (signedXml: string): string => {
+  const rncMatch = signedXml.match(/<RNCEmisor>\s*([^<\s]+)\s*<\/RNCEmisor>/i);
+  const encfMatch = signedXml.match(/<eNCF>\s*([^<\s]+)\s*<\/eNCF>/i);
+  const rnc = rncMatch?.[1]?.replace(/\D/g, "") ?? "";
+  const encf = encfMatch?.[1]?.trim().replace(/[^\w.-]/g, "") ?? "";
+  return rnc && encf ? `${rnc}${encf}.xml` : encf ? `${encf}.xml` : "ecf-signed.xml";
+};
+
 export const submitEcfToDgii = async (
   signedXml: string,
   opts?: {
@@ -147,14 +155,16 @@ export const submitEcfToDgii = async (
   let rawResponse: string;
   let contentType = "";
   try {
+    const form = new FormData();
+    const blob = new Blob([signedXml], { type: "text/xml" });
+    form.append("xml", blob, extractEcfFilename(signedXml));
     response = await fetch(endpoint, {
       method: "POST",
       headers: {
-        "Content-Type": "application/xml",
         Accept: "application/json, text/xml, application/xml, */*",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: signedXml,
+      body: form,
     });
     contentType = response.headers.get("content-type") ?? "";
     rawResponse = await response.text();

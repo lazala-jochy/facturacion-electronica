@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<SemillaModel xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
-  <valor>LY0HQWMdffc3zR4gTCBfdi9TgfsEGQkIX4KQ3IzX/oz5AVDGrWv2dDDwS5psf2aOqmnlUp5ddGJ9PNaLUAVvjFJWKuYlVHetAoNxg2p+v51UEVwfi7xmtbdpB6nz6zmdCeQQTelIPLRmNKZGU3tG5A==</valor>
-  <fecha>2026-05-08T21:06:53.81941-04:00</fecha>
-</SemillaModel>

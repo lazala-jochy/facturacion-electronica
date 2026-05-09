@@ -74,13 +74,26 @@ function sheetToCleanRowObjects(sheet) {
   return out;
 }
 
+function normalizeColumnName(s) {
+  return String(s)
+    .replace(/#e/gi, "")
+    .trim()
+    .replace(/\s+/g, "")
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
 /**
- * eCF gana en columnas duplicadas; rFCE aporta campos adicionales.
- * @param {Record<string, string>} ecfRow
- * @param {Record<string, string>} rfceRow
+ * @param {Record<string, string>} row
+ * @param {string} wanted
  */
-function mergeEcfAndRFceRow(ecfRow, rfceRow) {
-  return dropHashEFields({ ...rfceRow, ...ecfRow });
+function getRowValue(row, wanted) {
+  const wantedNorm = normalizeColumnName(wanted);
+  for (const [key, value] of Object.entries(row)) {
+    if (normalizeColumnName(key) === wantedNorm) return String(value ?? "").trim();
+  }
+  return "";
 }
 
 /**
@@ -98,14 +111,17 @@ function loadInvoiceRowsFromExcel(filePath) {
 
   const ecfRows = sheetToCleanRowObjects(wb.Sheets[ecfName]);
   const rfceRows = rfceName ? sheetToCleanRowObjects(wb.Sheets[rfceName]) : [];
+  const rfceEncfs = new Set(rfceRows.map((row) => getRowValue(row, "ENCF")).filter(Boolean));
 
   /** @type {Array<Record<string, string>>} */
   const result = [];
   for (let i = 0; i < ecfRows.length; i++) {
-    const rfce = rfceRows[i] ?? {};
-    const merged = mergeEcfAndRFceRow(ecfRows[i], rfce);
-    if (rowIsEffectivelyEmpty(merged)) continue;
-    result.push(merged);
+    const row = ecfRows[i];
+    if (rowIsEffectivelyEmpty(row)) continue;
+    const encf = getRowValue(row, "ENCF");
+    // Las filas presentes en RFCE son resúmenes de consumo < 250k; no se envían como e-CF individual.
+    if (encf && rfceEncfs.has(encf)) continue;
+    result.push(row);
   }
   return result;
 }
@@ -126,4 +142,5 @@ module.exports = {
   findSheetName,
   loadInvoiceRowsFromExcel,
   loadRowsFromExcel,
+  getRowValue,
 };
