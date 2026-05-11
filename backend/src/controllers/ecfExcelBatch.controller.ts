@@ -199,10 +199,60 @@ function isSequenceAlreadyUsedMessage(raw: string): boolean {
   return /numero\s+de\s+secuencia.*ha\s+sido\s+utilizad[oa]|secuencia.*utilizad[oa]/.test(normalized);
 }
 
+/**
+ * DGII certification test phases (order matters):
+ *   1 — Original documents: 31,32(>=250K),41,43,44,45,46,47
+ *   2 — Debit/credit notes referencing phase-1 docs: 33,34
+ *   3 — Consumer invoice summary (<250K): type 32 with IndicadorEnvioDiferido
+ *   4 — Individual consumer invoices (<250K): type 32 remaining
+ */
+const PHASE_1_TYPES = new Set(["31", "41", "43", "44", "45", "46", "47"]);
+const PHASE_2_TYPES = new Set(["33", "34"]);
+const CONSUMER_THRESHOLD = 250_000;
+
+function extractNcfType(encf: string): string {
+  const clean = encf.trim();
+  if (/^E\d{2}/i.test(clean)) return clean.slice(1, 3);
+  return "";
+}
+
+function extractMontoTotal(signedXml: string): number {
+  const val = extractXmlTagValue(signedXml, "MontoTotal");
+  const n = Number(val.replace(/,/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function extractIndicadorEnvioDiferido(signedXml: string): boolean {
+  const val = extractXmlTagValue(signedXml, "IndicadorEnvioDiferido");
+  return val.trim() !== "" && val.trim() !== "0";
+}
+
+function resolveDgiiTestPhase(entry: SignedXmlSendEntry): number {
+  const ncfType = extractNcfType(entry.encf);
+
+  if (PHASE_1_TYPES.has(ncfType)) return 1;
+
+  if (ncfType === "32") {
+    const monto = extractMontoTotal(entry.signedXml);
+    if (monto >= CONSUMER_THRESHOLD) return 1;
+    if (extractIndicadorEnvioDiferido(entry.signedXml)) return 3;
+    return 4;
+  }
+
+  if (PHASE_2_TYPES.has(ncfType)) return 2;
+
+  return 1;
+}
+
 function orderSignedXmlByReferences(entries: SignedXmlSendEntry[]): SignedXmlSendEntry[] {
   const byEncf = new Map<string, SignedXmlSendEntry>();
   for (const entry of entries) {
     if (entry.encf) byEncf.set(entry.encf, entry);
+  }
+
+  const phaseMap = new Map<string, number>();
+  for (const entry of entries) {
+    phaseMap.set(entry.encf || entry.file, resolveDgiiTestPhase(entry));
   }
 
   const ordered: SignedXmlSendEntry[] = [];
@@ -223,7 +273,16 @@ function orderSignedXmlByReferences(entries: SignedXmlSendEntry[]): SignedXmlSen
     ordered.push(entry);
   };
 
-  for (const entry of entries) visit(entry);
+  const phaseGroups: SignedXmlSendEntry[][] = [[], [], [], []];
+  for (const entry of entries) {
+    const phase = phaseMap.get(entry.encf || entry.file) ?? 1;
+    phaseGroups[phase - 1].push(entry);
+  }
+
+  for (const group of phaseGroups) {
+    for (const entry of group) visit(entry);
+  }
+
   return ordered;
 }
 
