@@ -708,6 +708,91 @@ export const sendExcelBatchSignedToDgiiHandler: RequestHandler = async (req, res
       }
     }
 
+    // --- Retry pass: re-check dependencies whose parents may now be accepted ---
+    // After the first pass, some "pending" parents may now be "accepted" on DGII.
+    // Re-consult pending parents and retry skipped dependency entries.
+    const depSkipped = failures.filter((f) => f.code === "DGII_DEPENDENCY_NOT_ACCEPTED");
+    if (depSkipped.length > 0) {
+      const pendingParents = new Set<string>();
+      for (const f of depSkipped) {
+        const entry = xmlEntries.find((e) => e.file === f.file);
+        if (entry?.ncfModificado) pendingParents.add(entry.ncfModificado);
+      }
+      for (const parentEncf of pendingParents) {
+        const currentStatus = testStatusByEncf.get(parentEncf);
+        if (currentStatus === "accepted") continue;
+        const parentManifest = manifest.entries[parentEncf];
+        if (!parentManifest?.trackId?.trim()) continue;
+        try {
+          const consult = await consultDgiiTrackId(companyRow, parentManifest.trackId!);
+          const resolved = resolveDgiiTestStatus(consult.body);
+          if (resolved.testStatus === "accepted") {
+            testStatusByEncf.set(parentEncf, "accepted");
+            upsertManifestEntry(manifest, { file: parentManifest.file, fullPath: "", signedXml: "", encf: parentEncf, ncfModificado: "" }, {
+              status: "accepted",
+              trackId: parentManifest.trackId,
+              message: resolved.testMessage,
+            });
+            saveSendManifest(outSignedDir, manifest);
+            logs.push(`[RETRY] ${parentEncf} ahora aceptado por DGII.`);
+          }
+        } catch {
+          // Parent still not confirmable; skip.
+        }
+      }
+
+      const retryEntries = depSkipped.filter((f) => {
+        const entry = xmlEntries.find((e) => e.file === f.file);
+        if (!entry?.ncfModificado) return false;
+        return testStatusByEncf.get(entry.ncfModificado) === "accepted";
+      });
+
+      for (const retryFailure of retryEntries) {
+        const entry = xmlEntries.find((e) => e.file === retryFailure.file);
+        if (!entry) continue;
+        try {
+          const dgii = await submitSignedEcfWithTenantConfig(companyRow, entry.signedXml);
+          let testStatus: DgiiTestStatus = "pending";
+          let testMessage = "Recibido por DGII; consulta de estado pendiente.";
+          if (dgii.trackId?.trim()) {
+            try {
+              const consult = await consultDgiiTrackId(companyRow, dgii.trackId);
+              const resolved = resolveDgiiTestStatus(consult.body);
+              testStatus = resolved.testStatus;
+              testMessage = resolved.testMessage;
+            } catch {
+              testStatus = "unknown";
+              testMessage = "No se pudo consultar el estado DGII tras reintento.";
+            }
+          }
+          successes.push({
+            file: entry.file,
+            trackId: dgii.trackId,
+            status: dgii.status,
+            testStatus,
+            testMessage,
+            httpStatus: dgii.httpStatus,
+            responseContentType: dgii.responseContentType,
+            responseSnippet: compactResponse(dgii.rawResponse, 500),
+          });
+          if (entry.encf) {
+            testStatusByEncf.set(entry.encf, testStatus);
+            upsertManifestEntry(manifest, entry, {
+              status: testStatus,
+              trackId: dgii.trackId,
+              message: testMessage,
+            });
+            saveSendManifest(outSignedDir, manifest);
+          }
+          const idx = failures.indexOf(retryFailure);
+          if (idx >= 0) failures.splice(idx, 1);
+          logs.push(`[RETRY] ${entry.file} enviado: trackId=${dgii.trackId || "(sin)"} prueba=${testStatus}`);
+        } catch (e) {
+          logs.push(`[RETRY] ${entry.file} falló: ${e instanceof Error ? e.message : "Error"}`);
+        }
+      }
+    }
+
     const ok = successes.length;
     const fail = failures.length;
     const testAccepted = successes.filter((s) => s.testStatus === "accepted").length;
@@ -730,6 +815,136 @@ export const sendExcelBatchSignedToDgiiHandler: RequestHandler = async (req, res
       successes,
       failures,
       logs,
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+
+/** POST /ecf-excel-batch/consult — consulta estado DGII de comprobantes ya enviados. */
+export const consultBatchStatusHandler: RequestHandler = async (req, res, next) => {
+  try {
+    const auth = req.auth;
+    if (!auth) {
+      res.status(401).json({ message: "No autorizado." });
+      return;
+    }
+
+    const outSignedDirRaw =
+      typeof req.body?.out_signed_dir === "string" ? req.body.out_signed_dir.trim() : "";
+    if (!outSignedDirRaw) {
+      res.status(400).json({ message: "Falta out_signed_dir." });
+      return;
+    }
+
+    let outSignedDir = "";
+    try {
+      outSignedDir = path.resolve(outSignedDirRaw);
+    } catch {
+      res.status(400).json({ message: "Ruta no válida." });
+      return;
+    }
+
+    const manifest = loadSendManifest(outSignedDir);
+    const entries = Object.values(manifest.entries);
+    if (entries.length === 0) {
+      res.status(400).json({ message: "No hay comprobantes enviados en esa carpeta." });
+      return;
+    }
+
+    const companyRow = await prisma.company.findUnique({ where: { id: auth.companyId } });
+    if (!companyRow) {
+      res.status(404).json({ message: "Empresa no encontrada." });
+      return;
+    }
+
+    type ConsultEntry = {
+      encf: string;
+      file: string;
+      trackId: string;
+      status: DgiiTestStatus | "already_used" | "no_trackid";
+      dgiiEstado: string;
+      dgiiCodigo: string;
+      fechaRecepcion: string;
+      mensajes: string[];
+    };
+
+    const results: ConsultEntry[] = [];
+
+    for (const entry of entries) {
+      if (!entry.trackId?.trim()) {
+        results.push({
+          encf: entry.encf,
+          file: entry.file,
+          trackId: "",
+          status: "no_trackid",
+          dgiiEstado: "",
+          dgiiCodigo: "",
+          fechaRecepcion: "",
+          mensajes: [entry.message ?? "Sin trackId — no fue recibido por DGII."],
+        });
+        continue;
+      }
+
+      try {
+        const consult = await consultDgiiTrackId(companyRow, entry.trackId);
+        let parsed: Record<string, unknown> = {};
+        try {
+          parsed = JSON.parse(consult.body) as Record<string, unknown>;
+        } catch { /* non-JSON response */ }
+
+        const { testStatus } = resolveDgiiTestStatus(consult.body);
+        const mensajes: string[] = [];
+        if (Array.isArray(parsed.mensajes)) {
+          for (const m of parsed.mensajes) {
+            if (m && typeof m === "object" && "valor" in m) mensajes.push(String((m as { valor: string }).valor));
+          }
+        }
+
+        results.push({
+          encf: entry.encf,
+          file: entry.file,
+          trackId: entry.trackId,
+          status: testStatus,
+          dgiiEstado: typeof parsed.estado === "string" ? parsed.estado : "",
+          dgiiCodigo: typeof parsed.codigo === "string" ? parsed.codigo : String(parsed.codigo ?? ""),
+          fechaRecepcion: typeof parsed.fechaRecepcion === "string" ? parsed.fechaRecepcion : "",
+          mensajes,
+        });
+
+        manifest.entries[entry.encf] = {
+          ...entry,
+          status: testStatus,
+          message: mensajes.length > 0 ? mensajes.join(" | ") : (parsed.estado as string) ?? "",
+          updatedAt: new Date().toISOString(),
+        };
+      } catch (e) {
+        const msg = e instanceof DgiiEcfError ? e.message : e instanceof Error ? e.message : "Error de consulta.";
+        results.push({
+          encf: entry.encf,
+          file: entry.file,
+          trackId: entry.trackId,
+          status: "unknown",
+          dgiiEstado: "",
+          dgiiCodigo: "",
+          fechaRecepcion: "",
+          mensajes: [msg],
+        });
+      }
+    }
+
+    saveSendManifest(outSignedDir, manifest);
+
+    const accepted = results.filter((r) => r.status === "accepted").length;
+    const rejected = results.filter((r) => r.status === "rejected").length;
+    const pending = results.filter((r) => r.status === "pending").length;
+    const unknown = results.filter((r) => r.status === "unknown" || r.status === "no_trackid" || r.status === "already_used").length;
+
+    res.json({
+      outSignedDir,
+      total: results.length,
+      testSummary: { accepted, rejected, pending, unknown },
+      results,
     });
   } catch (e) {
     next(e);

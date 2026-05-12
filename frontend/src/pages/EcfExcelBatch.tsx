@@ -5,8 +5,10 @@ import { ApiError, apiUrl } from "../services/api";
 import {
   runEcfExcelBatchFromApp,
   sendEcfExcelBatchToDgiiFromApp,
+  consultEcfExcelBatchStatus,
   type EcfExcelBatchRunResponse,
   type EcfExcelBatchSendResponse,
+  type EcfBatchConsultResponse,
 } from "../services/ecfExcelBatch";
 
 export default function EcfExcelBatch({ company }: { company: AuthCompany }) {
@@ -18,6 +20,9 @@ export default function EcfExcelBatch({ company }: { company: AuthCompany }) {
   const [sendError, setSendError] = useState("");
   const [sendResult, setSendResult] = useState<EcfExcelBatchSendResponse | null>(null);
   const [sendDebug, setSendDebug] = useState("");
+  const [consulting, setConsulting] = useState(false);
+  const [consultResult, setConsultResult] = useState<EcfBatchConsultResponse | null>(null);
+  const [consultError, setConsultError] = useState("");
 
   const electron = window.electronAPI;
   const canUseFolderPicker = !!electron?.pickOutputParentFolder;
@@ -52,6 +57,42 @@ export default function EcfExcelBatch({ company }: { company: AuthCompany }) {
     if (status === "rejected") return "text-red-700";
     if (status === "pending") return "text-amber-700";
     return "text-slate-600";
+  };
+
+  const ncfTypeLabel = (encf: string) => {
+    const code = encf.slice(1, 3);
+    const labels: Record<string, string> = {
+      "31": "Crédito Fiscal",
+      "32": "Consumo",
+      "33": "Nota Débito",
+      "34": "Nota Crédito",
+      "41": "Compras",
+      "43": "Gastos Menores",
+      "44": "Reg. Especiales",
+      "45": "Gubernamental",
+      "46": "Exportaciones",
+      "47": "Pago Exterior",
+    };
+    return labels[code] ?? code;
+  };
+
+  const consultBatch = async () => {
+    if (!result?.outSignedDir) return;
+    setConsulting(true);
+    setConsultError("");
+    setConsultResult(null);
+    try {
+      const data = await consultEcfExcelBatchStatus({
+        out_signed_dir: result.outSignedDir,
+      });
+      setConsultResult(data);
+    } catch (e) {
+      setConsultError(
+        e instanceof Error ? e.message : "Error al consultar estado DGII.",
+      );
+    } finally {
+      setConsulting(false);
+    }
   };
 
   const runBatch = async () => {
@@ -215,14 +256,24 @@ export default function EcfExcelBatch({ company }: { company: AuthCompany }) {
           {loading ? "Generando…" : "Generar en el Escritorio"}
         </button>
         {result?.ok ? (
-          <button
-            type="button"
-            onClick={() => void sendBatch()}
-            disabled={loading || sending}
-            className="w-full sm:w-auto rounded-lg bg-[#0b57d0] text-white px-5 py-2.5 text-sm font-medium shadow hover:bg-[#0a4fc4] disabled:opacity-60 transition"
-          >
-            {sending ? "Enviando a DGII…" : "Enviar firmados a DGII"}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void sendBatch()}
+              disabled={loading || sending || consulting}
+              className="w-full sm:w-auto rounded-lg bg-[#0b57d0] text-white px-5 py-2.5 text-sm font-medium shadow hover:bg-[#0a4fc4] disabled:opacity-60 transition"
+            >
+              {sending ? "Enviando a DGII…" : "Enviar firmados a DGII"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void consultBatch()}
+              disabled={loading || sending || consulting}
+              className="w-full sm:w-auto rounded-lg bg-slate-700 text-white px-5 py-2.5 text-sm font-medium shadow hover:bg-slate-800 disabled:opacity-60 transition"
+            >
+              {consulting ? "Consultando…" : "Consultar estado DGII"}
+            </button>
+          </div>
         ) : null}
       </div>
 
@@ -356,6 +407,94 @@ export default function EcfExcelBatch({ company }: { company: AuthCompany }) {
               {sendResult.logs.join("\n")}
             </pre>
           </details>
+        </div>
+      )}
+
+      {consultError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          {consultError}
+        </div>
+      )}
+
+      {consultResult && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-slate-900">
+              Estado DGII — {consultResult.total} comprobantes
+            </h2>
+            <div className="flex gap-3 text-xs font-medium">
+              <span className="text-emerald-700">{consultResult.testSummary.accepted} aceptados</span>
+              <span className="text-red-700">{consultResult.testSummary.rejected} rechazados</span>
+              {consultResult.testSummary.pending > 0 && (
+                <span className="text-amber-700">{consultResult.testSummary.pending} pendientes</span>
+              )}
+              {consultResult.testSummary.unknown > 0 && (
+                <span className="text-slate-500">{consultResult.testSummary.unknown} sin confirmar</span>
+              )}
+            </div>
+          </div>
+
+          <div className="overflow-x-auto -mx-4 sm:-mx-5">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-left text-slate-600">
+                  <th className="px-4 py-2 font-medium">eNCF</th>
+                  <th className="px-3 py-2 font-medium">Tipo</th>
+                  <th className="px-3 py-2 font-medium">Estado</th>
+                  <th className="px-3 py-2 font-medium">Fecha recepción</th>
+                  <th className="px-3 py-2 font-medium">Detalle</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {consultResult.results
+                  .slice()
+                  .sort((a, b) => a.encf.localeCompare(b.encf))
+                  .map((r) => {
+                    const statusColor =
+                      r.status === "accepted"
+                        ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                        : r.status === "rejected"
+                          ? "bg-red-50 text-red-800 border-red-200"
+                          : r.status === "pending"
+                            ? "bg-amber-50 text-amber-800 border-amber-200"
+                            : "bg-slate-50 text-slate-600 border-slate-200";
+                    const statusLabel =
+                      r.status === "accepted"
+                        ? "Aceptado"
+                        : r.status === "rejected"
+                          ? "Rechazado"
+                          : r.status === "pending"
+                            ? "Pendiente"
+                            : r.status === "already_used"
+                              ? "Ya utilizado"
+                              : "Sin confirmar";
+                    return (
+                      <tr key={r.encf} className="hover:bg-slate-50/60">
+                        <td className="px-4 py-2.5 font-mono font-medium text-slate-900">{r.encf}</td>
+                        <td className="px-3 py-2.5 text-slate-700">{ncfTypeLabel(r.encf)}</td>
+                        <td className="px-3 py-2.5">
+                          <span className={`inline-block rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${statusColor}`}>
+                            {statusLabel}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-slate-600">{r.fechaRecepcion || "—"}</td>
+                        <td className="px-3 py-2.5 text-slate-600 max-w-xs">
+                          {r.mensajes.length > 0 ? (
+                            <ul className="space-y-0.5">
+                              {r.mensajes.map((m, i) => (
+                                <li key={i}>{m}</li>
+                              ))}
+                            </ul>
+                          ) : (
+                            r.dgiiEstado || "—"
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

@@ -84,6 +84,11 @@ export const buildRouter = () => {
     requireAuth,
     asyncHandler(ecfExcelBatchController.sendExcelBatchSignedToDgiiHandler),
   );
+  router.post(
+    "/ecf-excel-batch/consult",
+    requireAuth,
+    asyncHandler(ecfExcelBatchController.consultBatchStatusHandler),
+  );
 
   return router;
 };

@@ -113,6 +113,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<ProfileFieldErrorKey, string>>>({});
   const [success, setSuccess] = useState("");
   const [testResult, setTestResult] = useState("");
+  const [dgiiToken, setDgiiToken] = useState("");
   const [certTest, setCertTest] = useState<{
     subject: string;
     issuer: string;
@@ -375,10 +376,12 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
     setError("");
     setSuccess("");
     setTestResult("");
+    setDgiiToken("");
     try {
       const out = await apiFetch<{
         seedOk: boolean;
         tokenOk: boolean;
+        token?: string;
         message: string;
         signatureModeUsed?: "legacy-sha1" | "modern-sha256";
         certificate?: {
@@ -396,6 +399,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
         { method: "POST" },
       );
       setTestResult(`${out.message}${out.signatureModeUsed ? ` · modo firma: ${out.signatureModeUsed}` : ""}`);
+      setDgiiToken(out.token ?? "");
       setCertTest(out.certificate ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error probando conexión DGII.");
@@ -762,6 +766,23 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
             <p className="rounded border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-700">
               {testResult}
             </p>
+          )}
+          {dgiiToken && (
+            <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold shrink-0">Token DGII:</span>
+                <button
+                  type="button"
+                  onClick={() => void navigator.clipboard.writeText(dgiiToken)}
+                  className="shrink-0 rounded bg-amber-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-amber-700"
+                >
+                  Copiar
+                </button>
+              </div>
+              <pre className="whitespace-pre-wrap break-all font-mono text-[11px] max-h-32 overflow-y-auto">
+                {dgiiToken}
+              </pre>
+            </div>
           )}
           {certTest && (
             <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 space-y-1">

@@ -324,6 +324,7 @@ export const dgiiAuthService = {
   async testConnection(companyId: number): Promise<{
     seedOk: boolean;
     tokenOk: boolean;
+    token?: string;
     message: string;
     certificate?: {
       subject: string;
@@ -373,10 +374,11 @@ export const dgiiAuthService = {
       // leave undefined if cert diagnostics fails
     }
     try {
-      await this.getToken(companyId);
+      const token = await this.getToken(companyId);
       return {
         seedOk: true,
         tokenOk: true,
+        token,
         message: "Semilla y token DGII obtenidos correctamente.",
         signatureModeUsed: lastSuccessfulMode.get(companyId),
         ...(certInfo ? { certificate: certInfo } : {}),

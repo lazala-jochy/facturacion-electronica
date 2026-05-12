@@ -55,3 +55,34 @@ export const sendEcfExcelBatchToDgiiFromApp = async (body: {
     method: "POST",
     body: JSON.stringify(body),
   });
+
+export type EcfBatchConsultEntry = {
+  encf: string;
+  file: string;
+  trackId: string;
+  status: "accepted" | "rejected" | "pending" | "unknown" | "already_used" | "no_trackid";
+  dgiiEstado: string;
+  dgiiCodigo: string;
+  fechaRecepcion: string;
+  mensajes: string[];
+};
+
+export type EcfBatchConsultResponse = {
+  outSignedDir: string;
+  total: number;
+  testSummary: {
+    accepted: number;
+    rejected: number;
+    pending: number;
+    unknown: number;
+  };
+  results: EcfBatchConsultEntry[];
+};
+
+export const consultEcfExcelBatchStatus = async (body: {
+  out_signed_dir: string;
+}): Promise<EcfBatchConsultResponse> =>
+  apiFetch<EcfBatchConsultResponse>("/ecf-excel-batch/consult", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
