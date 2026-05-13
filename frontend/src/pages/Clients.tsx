@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { listClients, type ClientListItem } from "../services/clients";
+import { deleteClient, listClients, type ClientListItem } from "../services/clients";
 import { ApiError, readAuthSessionFromStorage, refreshAuthSessionFromServer } from "../services/api";
 import {
   deleteCotizacion,
@@ -289,16 +289,30 @@ export default function Clients() {
 
   const handleDeleteClient = async (client: ClientListItem) => {
     const last = client.cotizaciones?.[0];
+    setCrudError("");
+    setCrudMessage("");
+
     if (!last) {
-      setCrudError("Este cliente no tiene cotización para eliminar.");
+      const confirmed = window.confirm(
+        `¿Seguro que deseas eliminar el cliente "${client.name}"? No tiene cotizaciones asociadas.`,
+      );
+      if (!confirmed) return;
+      try {
+        await deleteClient(client.id);
+        await refreshClients();
+        setCrudMessage("Cliente eliminado correctamente.");
+      } catch (error) {
+        setCrudError(
+          error instanceof Error ? error.message : "No se pudo eliminar el cliente.",
+        );
+      }
       return;
     }
+
     const confirmed = window.confirm(
       `¿Seguro que deseas eliminar la cotización #${last.number} de "${client.name}"?`,
     );
     if (!confirmed) return;
-    setCrudError("");
-    setCrudMessage("");
     try {
       await deleteCotizacion(last.id);
       await refreshClients();
