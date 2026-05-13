@@ -9,6 +9,14 @@ export type EcfExcelBatchRunResponse = {
   outXmlDir: string;
   outSignedDir: string;
   failures: { row: number; enf: string | null; error: string }[];
+  rfce?: {
+    rowCount: number;
+    ok: number;
+    fail: number;
+    outXmlDir: string;
+    outSignedDir: string;
+    failures: { row: number; enf: string | null; error: string }[];
+  };
   logs: string[];
   /** Solo cuando todas las filas fallan pero la respuesta es 200. */
   message?: string;
@@ -83,6 +91,33 @@ export const consultEcfExcelBatchStatus = async (body: {
   out_signed_dir: string;
 }): Promise<EcfBatchConsultResponse> =>
   apiFetch<EcfBatchConsultResponse>("/ecf-excel-batch/consult", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+export type RfceSendResponse = {
+  rfceSignedDir: string;
+  total: number;
+  ok: number;
+  fail: number;
+  testSummary: { accepted: number; rejected: number };
+  successes: {
+    file: string;
+    encf: string;
+    trackId: string;
+    status: string;
+    testStatus: string;
+    testMessage: string;
+    responseSnippet: string;
+  }[];
+  failures: { file: string; error: string; code?: string }[];
+  logs: string[];
+};
+
+export const sendRfceToDgii = async (body: {
+  rfce_signed_dir: string;
+}): Promise<RfceSendResponse> =>
+  apiFetch<RfceSendResponse>("/ecf-excel-batch/send-rfce", {
     method: "POST",
     body: JSON.stringify(body),
   });

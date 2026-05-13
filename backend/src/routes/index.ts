@@ -89,6 +89,11 @@ export const buildRouter = () => {
     requireAuth,
     asyncHandler(ecfExcelBatchController.consultBatchStatusHandler),
   );
+  router.post(
+    "/ecf-excel-batch/send-rfce",
+    requireAuth,
+    asyncHandler(ecfExcelBatchController.sendRfceToDgiiHandler),
+  );
 
   return router;
 };

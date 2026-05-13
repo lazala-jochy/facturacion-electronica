@@ -721,10 +721,64 @@ function buildFacturaElectronicaXml(row, opts) {
   return buildEcfXml(row, opts);
 }
 
+/**
+ * Builds RFCE XML (Resumen Factura de Consumo Electrónica) for consumer invoices < RD$250K.
+ * Per RFCE 32 v1.0 XSD: RFCE > Encabezado (IdDoc, Emisor, Comprador, Totales, CodigoSeguridadeCF) + xs:any (Signature).
+ * @param {Record<string, string>} row
+ * @param {{ defaultRncEmisor?: string; codigoSeguridadeCF?: string }} [opts]
+ * @returns {{ xml: string, enf: string }}
+ */
+function buildRfceXml(row, opts = {}) {
+  const enf = exactLookup(row, "ENCF") || resolveEncf(row);
+  if (!enf) {
+    throw new Error("Fila RFCE sin eNCF reconocido (columna ENCF / patrón E…).");
+  }
+
+  const doc = create({ version: "1.0", encoding: "UTF-8" });
+  const root = doc.ele("RFCE");
+
+  const enc = root.ele("Encabezado");
+  enc.ele("Version").txt(String(exactLookup(row, "Version") || "1.0"));
+
+  const idDoc = enc.ele("IdDoc");
+  appendIfPresent(idDoc, row, "TipoeCF");
+  idDoc.ele("eNCF").txt(enf);
+  appendIfPresent(idDoc, row, "TipoIngresos");
+  appendIfPresent(idDoc, row, "TipoPago");
+  appendTablaFormasPago(idDoc, row);
+  idDoc.up();
+
+  const em = enc.ele("Emisor");
+  const rnc = exactLookup(row, "RNCEmisor") || opts.defaultRncEmisor || "";
+  if (rnc) em.ele("RNCEmisor").txt(rnc);
+  appendIfPresent(em, row, "RazonSocialEmisor");
+  appendIfPresent(em, row, "FechaEmision");
+  em.up();
+
+  const comp = enc.ele("Comprador");
+  appendIfPresent(comp, row, "RNCComprador");
+  appendIfPresent(comp, row, "IdentificadorExtranjero");
+  appendIfPresent(comp, row, "RazonSocialComprador");
+  comp.up();
+
+  const totales = enc.ele("Totales");
+  appendFields(totales, row, TOTALES_SIMPLE_BEFORE_IMPUESTOS);
+  appendFields(totales, row, TOTALES_SIMPLE_AFTER_IMPUESTOS);
+  totales.up();
+
+  enc.ele("CodigoSeguridadeCF").txt(opts.codigoSeguridadeCF || "");
+
+  enc.up();
+
+  const xml = doc.end({ prettyPrint: true });
+  return { xml, enf };
+}
+
 module.exports = {
   DGII_NS,
   buildEcfXml,
   buildFacturaElectronicaXml,
+  buildRfceXml,
   lookup,
   resolveMontoTotalNumeric,
   sumMontoItemsFromRow,

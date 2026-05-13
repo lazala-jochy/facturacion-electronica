@@ -4,7 +4,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { prisma } from "../prisma";
-import { consultDgiiTrackId, submitSignedEcfWithTenantConfig } from "../services/dgiiEcfApi.service";
+import { consultDgiiTrackId, submitSignedEcfWithTenantConfig, submitSignedRfceWithTenantConfig } from "../services/dgiiEcfApi.service";
 import { DgiiEcfError } from "../types/dgiiEcf";
 import { assertCertificateEncryptionSecret } from "../utils/companyCertificateCrypto";
 import {
@@ -27,6 +27,14 @@ type EcfBatchRunner = (opts: {
   outXmlDir: string;
   outSignedDir: string;
   failures: { row: number; enf: string | null; error: string }[];
+  rfce?: {
+    rowCount: number;
+    ok: number;
+    fail: number;
+    outXmlDir: string;
+    outSignedDir: string;
+    failures: { row: number; enf: string | null; error: string }[];
+  };
   logs: string[];
 }>;
 
@@ -442,6 +450,7 @@ export const runExcelBatchToDesktopHandler: RequestHandler = async (req, res, ne
       outXmlDir: result.outXmlDir,
       outSignedDir: result.outSignedDir,
       failures: result.failures,
+      rfce: result.rfce,
       logs: result.logs,
       ...(result.ok === 0 && result.fail > 0
         ? {
@@ -945,6 +954,163 @@ export const consultBatchStatusHandler: RequestHandler = async (req, res, next) 
       total: results.length,
       testSummary: { accepted, rejected, pending, unknown },
       results,
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+
+/** POST /ecf-excel-batch/send-rfce — envía RFCE firmados (resúmenes consumo < 250K) a DGII. */
+export const sendRfceToDgiiHandler: RequestHandler = async (req, res, next) => {
+  try {
+    const auth = req.auth;
+    if (!auth) {
+      res.status(401).json({ message: "No autorizado." });
+      return;
+    }
+
+    const rfceSignedDirRaw =
+      typeof req.body?.rfce_signed_dir === "string" ? req.body.rfce_signed_dir.trim() : "";
+    if (!rfceSignedDirRaw) {
+      res.status(400).json({ message: "Falta rfce_signed_dir." });
+      return;
+    }
+
+    let rfceSignedDir = "";
+    try {
+      rfceSignedDir = path.resolve(rfceSignedDirRaw);
+    } catch {
+      res.status(400).json({ message: "Ruta de carpeta RFCE firmados no válida." });
+      return;
+    }
+
+    if (!isAllowedOutputParentDir(rfceSignedDir)) {
+      res.status(400).json({
+        message: "Por seguridad, solo se permite enviar archivos desde tu carpeta de usuario.",
+      });
+      return;
+    }
+
+    let statDir: fs.Stats;
+    try {
+      statDir = fs.statSync(rfceSignedDir);
+    } catch {
+      res.status(400).json({ message: "No se puede acceder a la carpeta de RFCE firmados." });
+      return;
+    }
+    if (!statDir.isDirectory()) {
+      res.status(400).json({ message: "rfce_signed_dir debe ser una carpeta." });
+      return;
+    }
+
+    const companyRow = await prisma.company.findUnique({ where: { id: auth.companyId } });
+    if (!companyRow) {
+      res.status(404).json({ message: "Empresa no encontrada." });
+      return;
+    }
+
+    const xmlFiles = fs
+      .readdirSync(rfceSignedDir, { withFileTypes: true })
+      .filter((d) => d.isFile() && d.name.toLowerCase().endsWith(".xml"))
+      .map((d) => d.name)
+      .sort((a, b) => a.localeCompare(b));
+
+    if (xmlFiles.length === 0) {
+      res.status(400).json({ message: "No se encontraron archivos .xml RFCE firmados." });
+      return;
+    }
+
+    const manifest = loadSendManifest(rfceSignedDir);
+
+    const successes: {
+      file: string;
+      encf: string;
+      trackId: string;
+      status: string;
+      testStatus: DgiiTestStatus;
+      testMessage: string;
+      responseSnippet: string;
+    }[] = [];
+    const failures: { file: string; error: string; code?: string }[] = [];
+    const logs: string[] = [];
+
+    for (const file of xmlFiles) {
+      const fullPath = path.join(rfceSignedDir, file);
+      const signedXml = fs.readFileSync(fullPath, "utf8");
+      const encf = extractXmlTagValue(signedXml, "eNCF");
+
+      const previousStatus = encf ? manifest.entries[encf]?.status : undefined;
+      if (previousStatus === "accepted") {
+        successes.push({
+          file,
+          encf,
+          trackId: manifest.entries[encf]?.trackId ?? "",
+          status: "skipped",
+          testStatus: "accepted",
+          testMessage: "Omitido: RFCE ya aceptado previamente.",
+          responseSnippet: "",
+        });
+        logs.push(`[${file}] OMITIDO: RFCE ${encf} ya aceptado.`);
+        continue;
+      }
+
+      try {
+        const dgii = await submitSignedRfceWithTenantConfig(companyRow, signedXml);
+        let testStatus: DgiiTestStatus = "pending";
+        let testMessage = "Recibido por DGII; estado pendiente.";
+
+        try {
+          const body = dgii.rawResponse;
+          let parsed: Record<string, unknown> = {};
+          try { parsed = JSON.parse(body) as Record<string, unknown>; } catch { /* non-JSON */ }
+          const estado = typeof parsed.estado === "string" ? parsed.estado : "";
+          if (estado) {
+            const resolved = resolveDgiiTestStatus(estado);
+            testStatus = resolved.testStatus;
+            testMessage = resolved.testMessage;
+          }
+        } catch { /* ignore parse errors */ }
+
+        successes.push({
+          file,
+          encf,
+          trackId: dgii.trackId,
+          status: dgii.status,
+          testStatus,
+          testMessage,
+          responseSnippet: compactResponse(dgii.rawResponse, 500),
+        });
+
+        if (encf) {
+          upsertManifestEntry(
+            manifest,
+            { file, fullPath, signedXml, encf, ncfModificado: "" },
+            { status: testStatus, trackId: dgii.trackId, message: testMessage },
+          );
+          saveSendManifest(rfceSignedDir, manifest);
+        }
+        logs.push(`[${file}] RFCE ENVIADO: trackId=${dgii.trackId || "(sin)"} estado=${testStatus}`);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Error desconocido.";
+        failures.push({ file, error: msg, code: e instanceof DgiiEcfError ? e.code : undefined });
+        logs.push(`[${file}] RFCE ERROR: ${msg}`);
+      }
+    }
+
+    const ok = successes.length;
+    const fail = failures.length;
+    const testAccepted = successes.filter((s) => s.testStatus === "accepted").length;
+    const testRejected = successes.filter((s) => s.testStatus === "rejected").length;
+
+    res.status(200).json({
+      rfceSignedDir,
+      total: xmlFiles.length,
+      ok,
+      fail,
+      testSummary: { accepted: testAccepted, rejected: testRejected },
+      successes,
+      failures,
+      logs,
     });
   } catch (e) {
     next(e);

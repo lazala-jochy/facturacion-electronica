@@ -6,9 +6,11 @@ import {
   runEcfExcelBatchFromApp,
   sendEcfExcelBatchToDgiiFromApp,
   consultEcfExcelBatchStatus,
+  sendRfceToDgii,
   type EcfExcelBatchRunResponse,
   type EcfExcelBatchSendResponse,
   type EcfBatchConsultResponse,
+  type RfceSendResponse,
 } from "../services/ecfExcelBatch";
 
 export default function EcfExcelBatch({ company }: { company: AuthCompany }) {
@@ -23,6 +25,9 @@ export default function EcfExcelBatch({ company }: { company: AuthCompany }) {
   const [consulting, setConsulting] = useState(false);
   const [consultResult, setConsultResult] = useState<EcfBatchConsultResponse | null>(null);
   const [consultError, setConsultError] = useState("");
+  const [sendingRfce, setSendingRfce] = useState(false);
+  const [rfceResult, setRfceResult] = useState<RfceSendResponse | null>(null);
+  const [rfceError, setRfceError] = useState("");
 
   const electron = window.electronAPI;
   const canUseFolderPicker = !!electron?.pickOutputParentFolder;
@@ -92,6 +97,22 @@ export default function EcfExcelBatch({ company }: { company: AuthCompany }) {
       );
     } finally {
       setConsulting(false);
+    }
+  };
+
+  const sendRfce = async () => {
+    const rfceDir = result?.rfce?.outSignedDir;
+    if (!rfceDir) return;
+    setSendingRfce(true);
+    setRfceError("");
+    setRfceResult(null);
+    try {
+      const data = await sendRfceToDgii({ rfce_signed_dir: rfceDir });
+      setRfceResult(data);
+    } catch (e) {
+      setRfceError(e instanceof Error ? e.message : "Error al enviar RFCE a DGII.");
+    } finally {
+      setSendingRfce(false);
     }
   };
 
@@ -260,15 +281,25 @@ export default function EcfExcelBatch({ company }: { company: AuthCompany }) {
             <button
               type="button"
               onClick={() => void sendBatch()}
-              disabled={loading || sending || consulting}
+              disabled={loading || sending || consulting || sendingRfce}
               className="w-full sm:w-auto rounded-lg bg-[#0b57d0] text-white px-5 py-2.5 text-sm font-medium shadow hover:bg-[#0a4fc4] disabled:opacity-60 transition"
             >
               {sending ? "Enviando a DGII…" : "Enviar firmados a DGII"}
             </button>
+            {result.rfce && result.rfce.ok > 0 && (
+              <button
+                type="button"
+                onClick={() => void sendRfce()}
+                disabled={loading || sending || consulting || sendingRfce}
+                className="w-full sm:w-auto rounded-lg bg-amber-600 text-white px-5 py-2.5 text-sm font-medium shadow hover:bg-amber-700 disabled:opacity-60 transition"
+              >
+                {sendingRfce ? "Enviando RFCE…" : `Enviar ${result.rfce.ok} resúmenes consumo`}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => void consultBatch()}
-              disabled={loading || sending || consulting}
+              disabled={loading || sending || consulting || sendingRfce}
               className="w-full sm:w-auto rounded-lg bg-slate-700 text-white px-5 py-2.5 text-sm font-medium shadow hover:bg-slate-800 disabled:opacity-60 transition"
             >
               {consulting ? "Consultando…" : "Consultar estado DGII"}
@@ -311,6 +342,14 @@ export default function EcfExcelBatch({ company }: { company: AuthCompany }) {
               XML firmados: <code className="bg-slate-100 px-1 rounded">{result.outSignedDir}</code>
             </li>
           </ul>
+          {result.rfce && result.rfce.rowCount > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              <span className="font-medium">RFCE (Resúmenes Consumo &lt; 250K):</span>{" "}
+              {result.rfce.ok} generados{result.rfce.fail > 0 ? ` · ${result.rfce.fail} con error` : ""}
+              <br />
+              <code className="text-xs bg-amber-100 px-1 rounded">{result.rfce.outSignedDir}</code>
+            </div>
+          )}
           {result.failures?.length ? (
             <details className="text-sm">
               <summary className="cursor-pointer text-red-700 font-medium">Filas con error</summary>
@@ -405,6 +444,73 @@ export default function EcfExcelBatch({ company }: { company: AuthCompany }) {
             <summary className="cursor-pointer text-slate-700 font-medium">Log de envío DGII</summary>
             <pre className="mt-2 max-h-60 overflow-auto text-xs bg-slate-50 rounded-md p-3 border border-slate-100 whitespace-pre-wrap">
               {sendResult.logs.join("\n")}
+            </pre>
+          </details>
+        </div>
+      )}
+
+      {rfceError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          {rfceError}
+        </div>
+      )}
+
+      {rfceResult && (
+        <div className="rounded-xl border border-amber-200 bg-white p-4 sm:p-5 shadow-sm space-y-3">
+          <h2 className="text-base font-semibold text-amber-900">
+            RFCE — Resúmenes de Consumo
+          </h2>
+          <p className="text-sm text-slate-800">
+            {rfceResult.ok} enviados{rfceResult.fail > 0 ? ` · ${rfceResult.fail} con error` : ""}{" "}
+            · Aceptados: <span className="font-semibold text-emerald-700">{rfceResult.testSummary.accepted}</span>{" "}
+            · Rechazados: <span className="font-semibold text-red-700">{rfceResult.testSummary.rejected}</span>
+          </p>
+          {rfceResult.successes.length > 0 && (
+            <div className="overflow-x-auto -mx-4 sm:-mx-5">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-amber-200 bg-amber-50 text-left text-amber-800">
+                    <th className="px-4 py-2 font-medium">eNCF</th>
+                    <th className="px-3 py-2 font-medium">Estado</th>
+                    <th className="px-3 py-2 font-medium">Detalle</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-amber-100">
+                  {rfceResult.successes.map((s) => (
+                    <tr key={s.encf || s.file} className="hover:bg-amber-50/40">
+                      <td className="px-4 py-2.5 font-mono font-medium text-slate-900">{s.encf || s.file}</td>
+                      <td className="px-3 py-2.5">
+                        <span className={`inline-block rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${
+                          s.testStatus === "accepted"
+                            ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                            : s.testStatus === "rejected"
+                              ? "bg-red-50 text-red-800 border-red-200"
+                              : "bg-amber-50 text-amber-800 border-amber-200"
+                        }`}>
+                          {s.testStatus === "accepted" ? "Aceptado" : s.testStatus === "rejected" ? "Rechazado" : "Pendiente"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 text-slate-600 max-w-xs">{s.testMessage || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {rfceResult.failures.length > 0 && (
+            <details className="text-sm">
+              <summary className="cursor-pointer text-red-700 font-medium">Errores RFCE</summary>
+              <ul className="mt-2 space-y-1 text-xs">
+                {rfceResult.failures.map((f) => (
+                  <li key={f.file}>{f.file}: {f.error}</li>
+                ))}
+              </ul>
+            </details>
+          )}
+          <details className="text-sm">
+            <summary className="cursor-pointer text-slate-700 font-medium">Log RFCE</summary>
+            <pre className="mt-2 max-h-40 overflow-auto text-xs bg-slate-50 rounded-md p-3 border border-slate-100 whitespace-pre-wrap">
+              {rfceResult.logs.join("\n")}
             </pre>
           </details>
         </div>

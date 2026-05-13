@@ -135,12 +135,55 @@ function loadRowsFromExcel(filePath) {
   return rows.filter((r) => !rowIsEffectivelyEmpty(r));
 }
 
+/**
+ * Loads only the RFCE rows (consumer invoices < 250K that need summary submission).
+ * @param {string} filePath
+ * @returns {Array<Record<string, string>>}
+ */
+function loadRfceRowsFromExcel(filePath) {
+  const wb = XLSX.readFile(filePath);
+  const rfceName = findSheetName(wb.SheetNames, "rFCE");
+  if (!rfceName) return [];
+  const rows = sheetToCleanRowObjects(wb.Sheets[rfceName]);
+  return rows.filter((r) => !rowIsEffectivelyEmpty(r));
+}
+
+/**
+ * Returns full eCF rows whose eNCF also appears in the RFCE sheet.
+ * These are the complete invoice rows needed to sign and derive CodigoSeguridadeCF.
+ * @param {string} filePath
+ * @returns {Map<string, Record<string, string>>} Map from eNCF → full eCF row
+ */
+function loadFullEcfRowsForRfce(filePath) {
+  const wb = XLSX.readFile(filePath);
+  const ecfName = findSheetName(wb.SheetNames, "eCF");
+  const rfceName = findSheetName(wb.SheetNames, "rFCE");
+  if (!ecfName || !rfceName) return new Map();
+
+  const rfceRows = sheetToCleanRowObjects(wb.Sheets[rfceName]);
+  const rfceEncfs = new Set(rfceRows.map((row) => getRowValue(row, "ENCF")).filter(Boolean));
+
+  const ecfRows = sheetToCleanRowObjects(wb.Sheets[ecfName]);
+  /** @type {Map<string, Record<string, string>>} */
+  const result = new Map();
+  for (const row of ecfRows) {
+    if (rowIsEffectivelyEmpty(row)) continue;
+    const encf = getRowValue(row, "ENCF");
+    if (encf && rfceEncfs.has(encf)) {
+      result.set(encf, row);
+    }
+  }
+  return result;
+}
+
 module.exports = {
   dropHashEFields,
   rowIsEffectivelyEmpty,
   findFirstXlsxPath,
   findSheetName,
   loadInvoiceRowsFromExcel,
+  loadRfceRowsFromExcel,
+  loadFullEcfRowsForRfce,
   loadRowsFromExcel,
   getRowValue,
 };

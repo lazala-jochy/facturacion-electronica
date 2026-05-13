@@ -12,6 +12,7 @@ import { DGII_ECF_SANDBOX_DEFAULTS, normalizeDgiiEcfUrl } from "../config/dgiiEc
 import type { DgiiSubmissionResult } from "../types/dgiiEcf";
 import { DgiiEcfError } from "../types/dgiiEcf";
 import { describeFetchFailure, submitEcfToDgii } from "./dgiiService";
+import { submitRfceToDgii } from "./rfceSubmission.service";
 import { dgiiAuthService } from "./dgiiAuth.service";
 
 const makeMockTrackId = () => `MOCK-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
@@ -315,6 +316,40 @@ export async function submitSignedEcfWithTenantConfig(
   return submitEcfToDgii(signedXml, {
     endpoint: reception,
     bearerToken: token,
+  });
+}
+
+export function resolveDgiiRfceReceptionUrl(company: Company): string {
+  const explicit = (company as unknown as Record<string, unknown>)["dgiiRfceReceptionUrl"];
+  if (typeof explicit === "string" && explicit.trim()) {
+    return normalizeDgiiEcfUrl(explicit.trim());
+  }
+  return DGII_ECF_SANDBOX_DEFAULTS.consumerSummaryReception;
+}
+
+/** Submit signed RFCE XML to the consumer summary reception endpoint.
+ *  Uses the dedicated RFCE submission service (separate from regular eCF). */
+export async function submitSignedRfceWithTenantConfig(
+  company: Company,
+  signedXml: string,
+): Promise<DgiiSubmissionResult> {
+  const baseUrl = resolveDgiiRfceReceptionUrl(company);
+  const endpoint = `${baseUrl.replace(/\/+$/, "")}/api/recepcion/ecf`;
+
+  let token: string;
+  if (company.dgiiSeedUrl?.trim() && company.dgiiValidateSeedUrl?.trim()) {
+    token = await dgiiAuthService.getToken(company.id);
+  } else if (tenantHasPasswordAuth(company)) {
+    token = await authenticateDgii(company);
+  } else {
+    const envTok = process.env.DGII_ECF_TOKEN?.trim();
+    token = envTok ?? "";
+  }
+
+  appendDgiiLog(`[rfce-send] company=${company.id} endpoint=${endpoint}`);
+  return submitRfceToDgii(signedXml, {
+    endpoint,
+    bearerToken: token || null,
   });
 }
 
