@@ -33,6 +33,7 @@ type EcfBatchRunner = (opts: {
     fail: number;
     outXmlDir: string;
     outSignedDir: string;
+    consumoIntegrasSignedDir?: string;
     failures: { row: number; enf: string | null; error: string }[];
   };
   logs: string[];

@@ -3,6 +3,7 @@ import * as authController from "../controllers/auth.controller";
 import * as clientsController from "../controllers/clients.controller";
 import * as cotizacionesController from "../controllers/cotizaciones.controller";
 import * as ecfExcelBatchController from "../controllers/ecfExcelBatch.controller";
+import * as portalConsumoMenor250Controller from "../controllers/portalConsumoMenor250.controller";
 import { asyncHandler } from "../middleware/asyncHandler";
 import { requireAuth } from "../middleware/auth.middleware";
 import { authFormUpload, ecfCertificateUpload } from "../middleware/registerUpload.middleware";
@@ -93,6 +94,12 @@ export const buildRouter = () => {
     "/ecf-excel-batch/send-rfce",
     requireAuth,
     asyncHandler(ecfExcelBatchController.sendRfceToDgiiHandler),
+  );
+
+  router.post(
+    "/portal-consumo-menor-250/export",
+    requireAuth,
+    asyncHandler(portalConsumoMenor250Controller.exportPortalConsumoMenor250Handler),
   );
 
   return router;

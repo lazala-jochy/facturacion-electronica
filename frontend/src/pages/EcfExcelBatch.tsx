@@ -12,6 +12,10 @@ import {
   type EcfBatchConsultResponse,
   type RfceSendResponse,
 } from "../services/ecfExcelBatch";
+import {
+  exportPortalConsumoMenor250FromApp,
+  type PortalConsumoMenor250ExportResponse,
+} from "../services/portalConsumoMenor250";
 
 export default function EcfExcelBatch({ company }: { company: AuthCompany }) {
   const [desktopPreview, setDesktopPreview] = useState("");
@@ -28,6 +32,10 @@ export default function EcfExcelBatch({ company }: { company: AuthCompany }) {
   const [sendingRfce, setSendingRfce] = useState(false);
   const [rfceResult, setRfceResult] = useState<RfceSendResponse | null>(null);
   const [rfceError, setRfceError] = useState("");
+  const [portalExportLoading, setPortalExportLoading] = useState(false);
+  const [portalExportError, setPortalExportError] = useState("");
+  const [portalExportResult, setPortalExportResult] =
+    useState<PortalConsumoMenor250ExportResponse | null>(null);
 
   const electron = window.electronAPI;
   const canUseFolderPicker = !!electron?.pickOutputParentFolder;
@@ -140,6 +148,26 @@ export default function EcfExcelBatch({ company }: { company: AuthCompany }) {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const exportPortalConsumoMenor250 = async () => {
+    setPortalExportLoading(true);
+    setPortalExportError("");
+    setPortalExportResult(null);
+    try {
+      let desktop_parent_dir = desktopPreview.trim() || undefined;
+      if (electron?.getDesktopParentPath && !desktop_parent_dir) {
+        desktop_parent_dir = await electron.getDesktopParentPath();
+      }
+      const data = await exportPortalConsumoMenor250FromApp({ desktop_parent_dir });
+      setPortalExportResult(data);
+    } catch (e) {
+      setPortalExportError(
+        e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Error al exportar.",
+      );
+    } finally {
+      setPortalExportLoading(false);
     }
   };
 
@@ -276,6 +304,31 @@ export default function EcfExcelBatch({ company }: { company: AuthCompany }) {
         >
           {loading ? "Generando…" : "Generar en el Escritorio"}
         </button>
+
+        <div className="rounded-lg border border-blue-200 bg-blue-50/80 p-4 space-y-3">
+          <p className="text-sm font-medium text-blue-950">
+            CerteCF — Facturas de consumo &lt; 250Mil (exportación aislada)
+          </p>
+          <p className="text-xs text-blue-900 leading-relaxed">
+            Solo si aún no enviaste RFCE. Si ya tenés resúmenes aceptados, subí los XML de{" "}
+            <code className="bg-white/80 px-1 rounded">consumo-integras-firmados/</code> del mismo lote (misma firma).
+            Una exportación nueva cambia la firma y DGII rechaza con error genérico.
+          </p>
+          <button
+            type="button"
+            onClick={() => void exportPortalConsumoMenor250()}
+            disabled={loading || portalExportLoading || !company.certificateConfigured}
+            className="w-full sm:w-auto rounded-lg bg-[#0b57d0] text-white px-5 py-2.5 text-sm font-medium shadow hover:bg-[#0a4fc4] disabled:opacity-60 transition"
+          >
+            {portalExportLoading
+              ? "Exportando…"
+              : "Exportar Facturas Consumo <250k"}
+          </button>
+          {!company.certificateConfigured && (
+            <p className="text-xs text-amber-800">Configurá el certificado en Perfil de empresa primero.</p>
+          )}
+        </div>
+
         {result?.ok ? (
           <div className="flex flex-wrap gap-2">
             <button
@@ -308,9 +361,37 @@ export default function EcfExcelBatch({ company }: { company: AuthCompany }) {
         ) : null}
       </div>
 
+      {portalExportError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          {portalExportError}
+        </div>
+      )}
+
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           {error}
+        </div>
+      )}
+
+      {portalExportResult && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/90 p-4 sm:p-5 shadow-sm space-y-2 text-sm">
+          <p className="font-medium text-emerald-900">4 facturas listas para «Facturas de consumo &lt; 250Mil»</p>
+          <p className="text-xs text-slate-700 break-all">
+            Carpeta:{" "}
+            <code className="bg-white/90 px-1 rounded">{portalExportResult.portalSignedDir}</code>
+          </p>
+          {portalExportResult.zipPath && (
+            <p className="text-xs text-slate-700 break-all">
+              ZIP: <code className="bg-white/90 px-1 rounded">{portalExportResult.zipPath}</code>
+            </p>
+          )}
+          <ul className="text-xs list-disc ml-5 space-y-0.5">
+            {portalExportResult.files.map((f) => (
+              <li key={f.encf}>
+                <code className="bg-white/90 px-1 rounded">{f.file}</code> — {f.encf}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -343,11 +424,23 @@ export default function EcfExcelBatch({ company }: { company: AuthCompany }) {
             </li>
           </ul>
           {result.rfce && result.rfce.rowCount > 0 && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              <span className="font-medium">RFCE (Resúmenes Consumo &lt; 250K):</span>{" "}
-              {result.rfce.ok} generados{result.rfce.fail > 0 ? ` · ${result.rfce.fail} con error` : ""}
-              <br />
-              <code className="text-xs bg-amber-100 px-1 rounded">{result.rfce.outSignedDir}</code>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 space-y-1">
+              <div>
+                <span className="font-medium">RFCE (Resúmenes Consumo &lt; 250K):</span>{" "}
+                {result.rfce.ok} generados{result.rfce.fail > 0 ? ` · ${result.rfce.fail} con error` : ""}
+                <br />
+                <code className="text-xs bg-amber-100 px-1 rounded">{result.rfce.outSignedDir}</code>
+              </div>
+              {result.rfce.consumoIntegrasSignedDir && (
+                <div>
+                  <span className="font-medium">Portal — Facturas consumo &lt; 250Mil:</span> subí estos 4 XML
+                  (después de RFCE aceptados):
+                  <br />
+                  <code className="text-xs bg-amber-100 px-1 rounded break-all">
+                    {result.rfce.consumoIntegrasSignedDir}
+                  </code>
+                </div>
+              )}
             </div>
           )}
           {result.failures?.length ? (

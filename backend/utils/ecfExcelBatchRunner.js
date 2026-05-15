@@ -145,12 +145,15 @@ async function runEcfExcelBatch(opts) {
   let rfceFail = 0;
   const rfceOutXmlDir = path.join(path.dirname(outXmlDir), "rfce-xml");
   const rfceOutSignedDir = path.join(path.dirname(outSignedDir), "rfce-firmados");
+  /** e-CF 32 íntegros firmados en el mismo paso que el RFCE (misma firma → CodigoSeguridadeCF). */
+  const consumoIntegrasSignedDir = path.join(path.dirname(outSignedDir), "consumo-integras-firmados");
   /** @type {EcfBatchFailure[]} */
   const rfceFailures = [];
 
   if (rfceRows.length > 0) {
     ensureDir(rfceOutXmlDir);
     ensureDir(rfceOutSignedDir);
+    ensureDir(consumoIntegrasSignedDir);
     logs.push(`RFCE filas: ${rfceRows.length}`);
 
     for (let i = 0; i < rfceRows.length; i++) {
@@ -175,6 +178,11 @@ async function runEcfExcelBatch(opts) {
                 opts.signingFromPkcs12Buffer.passphrase,
               )
             : signFacturaElectronica(fullEcfXml, assetsDir, certPassword);
+
+          const integrasBase = fileBaseForDgii(fullEcfRow, rfceEnf);
+          const integrasPath = path.join(consumoIntegrasSignedDir, `${integrasBase}.xml`);
+          fs.writeFileSync(integrasPath, signedFullEcf, "utf8");
+          appendLog("CONSUMO_INTEGRA_SIGNED", rfceEnf, i, integrasPath);
 
           const svMatch = signedFullEcf.match(/<SignatureValue[^>]*>([^<]+)<\/SignatureValue>/);
           if (svMatch) {
@@ -235,6 +243,7 @@ async function runEcfExcelBatch(opts) {
       fail: rfceFail,
       outXmlDir: rfceOutXmlDir,
       outSignedDir: rfceOutSignedDir,
+      consumoIntegrasSignedDir,
       failures: rfceFailures,
     },
     logs,
