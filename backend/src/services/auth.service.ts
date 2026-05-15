@@ -41,6 +41,7 @@ export type PublicCompany = Pick<
   | "dgiiAuthUrl"
   | "dgiiReceptionUrl"
   | "dgiiConsultUrl"
+  | "dgiiCommercialApprovalUrl"
   | "dgiiSeedUrl"
   | "dgiiValidateSeedUrl"
   | "dgiiEcfReceiveUrl"
@@ -107,6 +108,7 @@ const publicCompany = (c: Company): PublicCompany => ({
   dgiiAuthUrl: c.dgiiAuthUrl,
   dgiiReceptionUrl: c.dgiiReceptionUrl,
   dgiiConsultUrl: c.dgiiConsultUrl,
+  dgiiCommercialApprovalUrl: c.dgiiCommercialApprovalUrl,
   dgiiSeedUrl: c.dgiiSeedUrl,
   dgiiValidateSeedUrl: c.dgiiValidateSeedUrl,
   dgiiEcfReceiveUrl: c.dgiiEcfReceiveUrl,
@@ -369,14 +371,31 @@ export const authService = {
       clearCertificate?: boolean;
     },
   ): Promise<UpdateCompanyOk | AuthErr> {
-    const name = body.name?.trim() ?? "";
-    const rnc = body.rnc?.trim() ?? "";
-    const address = body.address?.trim() ?? "";
-    const phone = body.phone?.trim() ?? "";
-    const regime = body.regime?.trim() ?? "";
-    const fullName = body.full_name?.trim() ?? "";
-    const cedula = (body.cedula ?? "").replace(/\D/g, "");
-    const email = body.email ? normalizeEmail(body.email) : "";
+    const existingCompany = await prisma.company.findUnique({ where: { id: companyId } });
+    const existingUser = await prisma.user.findUnique({ where: { id: userId } });
+    if (!existingCompany || !existingUser) {
+      return { ok: false, status: 404, message: "Empresa o usuario no encontrado." };
+    }
+
+    /** Campos omitidos en el body conservan el valor del perfil (p. ej. solo dgii_commercial_approval_url). */
+    const name = body.name !== undefined ? body.name.trim() : existingCompany.name;
+    const rnc = body.rnc !== undefined ? body.rnc.trim() : existingCompany.rnc;
+    const address = body.address !== undefined ? body.address.trim() : existingCompany.address;
+    const phone =
+      body.phone !== undefined ? body.phone.trim() || null : existingCompany.phone;
+    const regime =
+      body.regime !== undefined ? body.regime.trim() || "Régimen general" : existingCompany.regime ?? "Régimen general";
+    const fullName = body.full_name !== undefined ? body.full_name.trim() : existingUser.fullName;
+    const cedula =
+      body.cedula !== undefined
+        ? (body.cedula ?? "").replace(/\D/g, "")
+        : existingUser.cedula;
+    const email =
+      body.email !== undefined
+        ? body.email
+          ? normalizeEmail(body.email)
+          : ""
+        : existingCompany.email ?? "";
 
     let dgiiEcfEndpointUpdate: { dgiiEcfEndpoint: string | null } | undefined;
     if (body.dgii_ecf_endpoint !== undefined) {
@@ -401,6 +420,7 @@ export const authService = {
         | "dgiiAuthUrl"
         | "dgiiReceptionUrl"
         | "dgiiConsultUrl"
+        | "dgiiCommercialApprovalUrl"
         | "dgiiSeedUrl"
         | "dgiiValidateSeedUrl"
         | "dgiiEcfReceiveUrl"
@@ -443,6 +463,11 @@ export const authService = {
       const v = parseTenantUrl(body.dgii_consult_url, "consulta DGII");
       if (v && typeof v === "object" && "ok" in v && v.ok === false) return v;
       dgiiTenantMerge.dgiiConsultUrl = v === null || typeof v === "string" ? v : null;
+    }
+    if (body.dgii_commercial_approval_url !== undefined) {
+      const v = parseTenantUrl(body.dgii_commercial_approval_url, "aprobación comercial DGII");
+      if (v && typeof v === "object" && "ok" in v && v.ok === false) return v;
+      dgiiTenantMerge.dgiiCommercialApprovalUrl = v === null || typeof v === "string" ? v : null;
     }
     if (body.dgii_seed_url !== undefined) {
       const v = parseTenantUrl(body.dgii_seed_url, "semilla DGII");

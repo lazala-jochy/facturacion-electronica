@@ -26,6 +26,7 @@ model Company {
   dgiiAuthUrl                String?      @map("dgii_auth_url")
   dgiiReceptionUrl           String?      @map("dgii_reception_url")
   dgiiConsultUrl             String?      @map("dgii_consult_url")
+  dgiiCommercialApprovalUrl  String?      @map("dgii_commercial_approval_url")
   dgiiSeedUrl                String?      @map("dgii_seed_url")
   dgiiValidateSeedUrl        String?      @map("dgii_validate_seed_url")
   dgiiEcfReceiveUrl          String?      @map("dgii_ecf_receive_url")

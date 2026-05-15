@@ -16,8 +16,15 @@ import {
   exportPortalConsumoMenor250FromApp,
   type PortalConsumoMenor250ExportResponse,
 } from "../services/portalConsumoMenor250";
+import DgiiEcfUrlsPanel from "../components/DgiiEcfUrlsPanel";
 
-export default function EcfExcelBatch({ company }: { company: AuthCompany }) {
+export default function EcfExcelBatch({
+  company,
+  onCompanyUpdated,
+}: {
+  company: AuthCompany;
+  onCompanyUpdated?: (company: AuthCompany) => void;
+}) {
   const [desktopPreview, setDesktopPreview] = useState("");
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -223,11 +230,9 @@ export default function EcfExcelBatch({ company }: { company: AuthCompany }) {
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="space-y-6">
       <header>
-        <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">
-          Casos de prueba DGII (Excel)
-        </h1>
+        <h2 className="text-lg font-semibold text-slate-900 sm:text-xl">Pruebas de Datos e-CF (Excel)</h2>
         <p className="mt-2 text-sm text-slate-600">{hintSubtitle}</p>
       </header>
 
@@ -245,6 +250,8 @@ export default function EcfExcelBatch({ company }: { company: AuthCompany }) {
           </Link>
         </div>
       )}
+
+      <DgiiEcfUrlsPanel company={company} onCompanyUpdated={onCompanyUpdated} />
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm space-y-4">
         <div className="space-y-2">

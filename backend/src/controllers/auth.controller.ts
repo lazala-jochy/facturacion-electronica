@@ -42,6 +42,7 @@ const updateCompanyBodyFromReq = (req: Request): UpdateCompanyBody => {
     dgii_auth_url: pickStr(b, "dgii_auth_url"),
     dgii_reception_url: pickStr(b, "dgii_reception_url"),
     dgii_consult_url: pickStr(b, "dgii_consult_url"),
+    dgii_commercial_approval_url: pickStr(b, "dgii_commercial_approval_url"),
     dgii_seed_url: pickStr(b, "dgii_seed_url"),
     dgii_validate_seed_url: pickStr(b, "dgii_validate_seed_url"),
     dgii_ecf_receive_url: pickStr(b, "dgii_ecf_receive_url"),

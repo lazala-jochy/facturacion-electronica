@@ -3,8 +3,9 @@ import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import ECF from "./pages/ECF";
 import ForgotPassword from "./pages/ForgotPassword";
-import { BrowserRouter, HashRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import AppLayout from "./layout/AppLayout";
+import DgiiPruebasLayout from "./layout/DgiiPruebasLayout";
 import Invoices from "./pages/Invoices";
 import Clients from "./pages/Clients";
 import CotizacionCreate from "./pages/CotizacionCreate";
@@ -12,6 +13,8 @@ import CotizacionEdit from "./pages/CotizacionEdit";
 import { AUTH_STORAGE_KEY, type AuthSession } from "./types/session";
 import CompanyProfile from "./pages/CompanyProfile";
 import EcfExcelBatch from "./pages/EcfExcelBatch";
+import DgiiAprobacionesComerciales from "./pages/DgiiAprobacionesComerciales";
+import DgiiPruebasHub from "./pages/DgiiPruebasHub";
 import { documentTitleWithCompany } from "./utils/productBranding";
 
 function App() {
@@ -79,7 +82,32 @@ function App() {
         <Route element={<AppLayout company={company} onLogout={handleLogout} />}>
           <Route path="/" element={<Dashboard company={company} user={session.user} />} />
           <Route path="/ecf" element={<ECF company={company} />} />
-          <Route path="/ecf-excel-batch" element={<EcfExcelBatch company={company} />} />
+          <Route path="/dgii-pruebas" element={<DgiiPruebasLayout />}>
+            <Route index element={<DgiiPruebasHub />} />
+            <Route
+              path="ecf-excel"
+              element={
+                <EcfExcelBatch
+                  company={company}
+                  onCompanyUpdated={(c) => handleProfileUpdated(session.user, c)}
+                />
+              }
+            />
+            <Route
+              path="aprobaciones-comerciales"
+              element={
+                <DgiiAprobacionesComerciales
+                  company={company}
+                  onCompanyUpdated={(c) => handleProfileUpdated(session.user, c)}
+                />
+              }
+            />
+          </Route>
+          <Route path="/ecf-excel-batch" element={<Navigate to="/dgii-pruebas/ecf-excel" replace />} />
+          <Route
+            path="/dgii-aprobaciones-comerciales"
+            element={<Navigate to="/dgii-pruebas/aprobaciones-comerciales" replace />}
+          />
           <Route path="/clients" element={<Clients />} />
           <Route path="/cotizaciones/nueva" element={<CotizacionCreate />} />
           <Route path="/cotizaciones/:id/editar" element={<CotizacionEdit />} />

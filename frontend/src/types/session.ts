@@ -23,6 +23,7 @@ export type AuthCompany = {
   dgiiAuthUrl?: string | null;
   dgiiReceptionUrl?: string | null;
   dgiiConsultUrl?: string | null;
+  dgiiCommercialApprovalUrl?: string | null;
   dgiiSeedUrl?: string | null;
   dgiiValidateSeedUrl?: string | null;
   dgiiEcfReceiveUrl?: string | null;

@@ -44,6 +44,7 @@ export type UpdateCompanyBody = {
   dgii_auth_url?: string;
   dgii_reception_url?: string;
   dgii_consult_url?: string;
+  dgii_commercial_approval_url?: string;
   dgii_seed_url?: string;
   dgii_validate_seed_url?: string;
   dgii_ecf_receive_url?: string;

@@ -8,6 +8,9 @@ export const DGII_ECF_SANDBOX_DEFAULTS = {
   consult: "https://ecf.dgii.gov.do/CerteCF/ConsultaResultado/api/consultas/estado",
   /** RFCE reception. Official doc: fc.dgii.gov.do/{ambiente}/recepcionfc; CerteCF also works at ecf.dgii.gov.do. */
   consumerSummaryReception: "https://ecf.dgii.gov.do/CerteCF/RecepcionFC",
+  /** Solo referencia / placeholder en UI; la URL efectiva viene del perfil de empresa. */
+  commercialApprovalReception:
+    "https://ecf.dgii.gov.do/CerteCF/aprobacioncomercial/api/aprobacioncomercial",
   seed: "https://ecf.dgii.gov.do/CerteCF/Autenticacion/api/Autenticacion/Semilla",
   validateSeed: "https://ecf.dgii.gov.do/CerteCF/Autenticacion/api/Autenticacion/ValidarSemilla",
 } as const;

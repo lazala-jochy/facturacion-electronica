@@ -130,7 +130,8 @@ export default function AppLayout({
             </NavLink>
 
             <NavLink
-              to="/ecf-excel-batch"
+              to="/dgii-pruebas"
+              end={false}
               onClick={() => setSidebarOpen(false)}
               className={({ isActive }) =>
                 `block p-2 rounded transition-all duration-200 ${
@@ -140,7 +141,7 @@ export default function AppLayout({
                 }`
               }
             >
-              Casos DGII Excel
+              Pruebas DGII
             </NavLink>
 
             <NavLink
