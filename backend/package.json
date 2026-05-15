@@ -10,7 +10,8 @@
     "migrate:deploy": "DATABASE_URL=\"file:./prisma/dev.db\" prisma migrate deploy",
     "prisma:generate": "DATABASE_URL=\"file:./prisma/dev.db\" prisma generate",
     "ecf-excel-batch": "node script/run.js",
-    "test:signer": "npm run build && node --test dist/services/dgiiXmlSigner.test.js"
+    "test:signer": "npm run build && node --test dist/services/dgiiXmlSigner.test.js",
+    "test:acecf": "npm run build && node --test dist/commercial-approvals/acecfSheet.test.js dist/commercial-approvals/acecfXmlBuilder.test.js dist/commercial-approvals/acecfDgiiResponse.test.js"
   },
   "keywords": [],
   "author": "",

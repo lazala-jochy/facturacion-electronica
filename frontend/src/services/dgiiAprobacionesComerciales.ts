@@ -36,6 +36,13 @@ export function companyAcecfDgiiUrls(company: AuthCompany): AcecfDgiiUrlFields {
 
 export const DGII_PORTAL_CERT_URL = "https://ecf.dgii.gov.do/certecf/portalcertificacion";
 
+/** Respuesta DGII Paso 3 — Aprobaciones o Rechazos Comerciales (no es TrackId de e-CF). */
+export const ACECF_DGII_VALIDATION_LABELS = {
+  OK: "OK — validación satisfactoria",
+  ERROR: "Error — validación no satisfactoria",
+  INCORRECTO: "Incorrecto — validación no satisfactoria",
+} as const;
+
 export type AcecfCaseStatus = "pendiente" | "enviado" | "aprobado" | "rechazado" | "observado";
 
 export type AcecfExcelSelection = {

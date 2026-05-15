@@ -47,8 +47,9 @@ export default function AcecfExcelSelector({ selection, onSelect, onClear }: Pro
           Excel DGII — Aprobaciones comerciales
         </label>
         <p className="mt-1 text-xs text-slate-600 leading-relaxed">
-          Archivo oficial del portal CerteCF con los <strong>11 casos</strong>. No modifiques columnas, orden de
-          filas ni formatos de celda.
+          Archivo que descargás del portal CerteCF (Paso 3), p. ej.{" "}
+          <code className="text-[11px] bg-slate-100 px-1 rounded">04900920846-15052026124136.xlsx</code>, con hoja{" "}
+          <strong>ACEECF_Generadas</strong> y <strong>11 filas</strong>. No modifiques columnas ni formatos.
         </p>
       </div>
 
@@ -102,8 +103,8 @@ export default function AcecfExcelSelector({ selection, onSelect, onClear }: Pro
           )}
           {!selection.filePath && (
             <p className="text-xs text-emerald-800">
-              El archivo queda en esta sesión del navegador. Para generar XML después, volvé a seleccionarlo si
-              recargás la página.
+              Podés generar y firmar ACECF con este archivo en la misma sesión. Si recargás la página, volvé a
+              seleccionarlo.
             </p>
           )}
         </div>

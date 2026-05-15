@@ -13,6 +13,8 @@ import type { DgiiSubmissionResult } from "../types/dgiiEcf";
 import { DgiiEcfError } from "../types/dgiiEcf";
 import { describeFetchFailure, submitEcfToDgii } from "./dgiiService";
 import { submitRfceToDgii } from "./rfceSubmission.service";
+import { submitAcecfToDgii } from "../commercial-approvals/acecfSubmission.service";
+import type { AcecfDgiiSendResult } from "../commercial-approvals/acecfDgiiResponse";
 import { dgiiAuthService } from "./dgiiAuth.service";
 
 const makeMockTrackId = () => `MOCK-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
@@ -348,6 +350,45 @@ export async function submitSignedRfceWithTenantConfig(
 
   appendDgiiLog(`[rfce-send] company=${company.id} endpoint=${endpoint}`);
   return submitRfceToDgii(signedXml, {
+    endpoint,
+    bearerToken: token || null,
+  });
+}
+
+/** URL de recepción ACECF (aprobación comercial). */
+export function resolveDgiiCommercialApprovalUrl(
+  company: Pick<Company, "dgiiCommercialApprovalUrl">,
+): string {
+  return normalizeDgiiEcfUrl(
+    company.dgiiCommercialApprovalUrl?.trim() || DGII_ECF_SANDBOX_DEFAULTS.commercialApprovalReception || "",
+  );
+}
+
+/** Envío ACECF firmado — flujo dedicado, no altera e-CF ni RFCE. */
+export async function submitSignedAcecfWithTenantConfig(
+  company: Company,
+  signedXml: string,
+): Promise<AcecfDgiiSendResult> {
+  const endpoint = resolveDgiiCommercialApprovalUrl(company);
+  if (!endpoint) {
+    throw new DgiiEcfError(
+      "Falta URL de aprobación comercial (dgii_commercial_approval_url). Configurala en Pruebas DGII → Aprobaciones comerciales.",
+      "MISSING_CREDENTIALS",
+      400,
+    );
+  }
+
+  let token: string;
+  if (company.dgiiSeedUrl?.trim() && company.dgiiValidateSeedUrl?.trim()) {
+    token = await dgiiAuthService.getToken(company.id);
+  } else if (tenantHasPasswordAuth(company)) {
+    token = await authenticateDgii(company);
+  } else {
+    token = process.env.DGII_ECF_TOKEN?.trim() ?? "";
+  }
+
+  appendDgiiLog(`[acecf-send] company=${company.id} endpoint=${endpoint}`);
+  return submitAcecfToDgii(signedXml, {
     endpoint,
     bearerToken: token || null,
   });

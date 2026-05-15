@@ -15,3 +15,9 @@ export const ecfCertificateUpload = multer({
   limits: { fileSize: 14 * 1024 * 1024 },
 }).single("certificate");
 
+/** Excel ACECF del set DGII (hasta 8 MB). */
+export const acecfExcelUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+}).single("excel");
+

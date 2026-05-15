@@ -4,9 +4,14 @@ import * as clientsController from "../controllers/clients.controller";
 import * as cotizacionesController from "../controllers/cotizaciones.controller";
 import * as ecfExcelBatchController from "../controllers/ecfExcelBatch.controller";
 import * as portalConsumoMenor250Controller from "../controllers/portalConsumoMenor250.controller";
+import * as commercialApprovalsController from "../controllers/commercialApprovals.controller";
 import { asyncHandler } from "../middleware/asyncHandler";
 import { requireAuth } from "../middleware/auth.middleware";
-import { authFormUpload, ecfCertificateUpload } from "../middleware/registerUpload.middleware";
+import {
+  acecfExcelUpload,
+  authFormUpload,
+  ecfCertificateUpload,
+} from "../middleware/registerUpload.middleware";
 
 export const buildRouter = () => {
   const router = Router();
@@ -100,6 +105,28 @@ export const buildRouter = () => {
     "/portal-consumo-menor-250/export",
     requireAuth,
     asyncHandler(portalConsumoMenor250Controller.exportPortalConsumoMenor250Handler),
+  );
+
+  router.post(
+    "/commercial-approvals/accept",
+    requireAuth,
+    asyncHandler(commercialApprovalsController.commercialApprovalAcceptHandler),
+  );
+  router.post(
+    "/commercial-approvals/reject",
+    requireAuth,
+    asyncHandler(commercialApprovalsController.commercialApprovalRejectHandler),
+  );
+  router.post(
+    "/commercial-approvals/batch/run",
+    requireAuth,
+    acecfExcelUpload,
+    asyncHandler(commercialApprovalsController.commercialApprovalBatchRunHandler),
+  );
+  router.post(
+    "/commercial-approvals/batch/send",
+    requireAuth,
+    asyncHandler(commercialApprovalsController.commercialApprovalBatchSendHandler),
   );
 
   return router;
