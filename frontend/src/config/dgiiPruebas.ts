@@ -1,6 +1,6 @@
 /** Tipos de prueba CerteCF — cada uno con ruta y vista propia. */
 
-export type DgiiPruebaTypeId = "ecf-excel" | "aprobaciones-comerciales";
+export type DgiiPruebaTypeId = "ecf-excel" | "aprobaciones-comerciales" | "ecf-simulacion";
 
 export type DgiiPruebaTypeConfig = {
   id: DgiiPruebaTypeId;
@@ -28,6 +28,15 @@ export const DGII_PRUEBA_TYPES: DgiiPruebaTypeConfig[] = [
     shortLabel: "Aprobaciones comerciales",
     paso: "Paso 3",
     description: "11 XML de aprobación comercial referenciando e-CF ya aceptados en CerteCF.",
+  },
+  {
+    id: "ecf-simulacion",
+    path: "/dgii-pruebas/ecf-simulacion",
+    label: "Simulación e-CF",
+    shortLabel: "Simulación e-CF",
+    paso: "Paso 4",
+    description:
+      "Cuatro URLs DGII propias (autenticación, recepción e-CF, consulta, resúmenes consumo &lt; RD$ 250k). Sin compartir con otras vistas.",
   },
 ];
 

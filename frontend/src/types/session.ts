@@ -30,6 +30,15 @@ export type AuthCompany = {
   dgiiTrackUrl?: string | null;
   dgiiStatusUrl?: string | null;
   dgiiEnvironment?: "CERTIFICACION" | "PRODUCCION" | null;
+  /** Paso 4 — simulación e-CF (exclusivo; no usa URLs del Paso 2). */
+  dgiiPaso4AuthUrl?: string | null;
+  dgiiPaso4ReceptionUrl?: string | null;
+  dgiiPaso4ConsultUrl?: string | null;
+  dgiiPaso4RfceUrl?: string | null;
+  dgiiPaso4Environment?: "CERTIFICACION" | "PRODUCCION" | null;
+  dgiiPaso4SeedUrl?: string | null;
+  dgiiPaso4ValidateSeedUrl?: string | null;
+  dgiiPaso4EcfReceiveUrl?: string | null;
   certificatePath?: string | null;
   tokenExpiration?: string | null;
   token_cached?: boolean;

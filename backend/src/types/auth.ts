@@ -51,6 +51,12 @@ export type UpdateCompanyBody = {
   dgii_track_url?: string;
   dgii_status_url?: string;
   dgii_environment?: "CERTIFICACION" | "PRODUCCION";
+  /** Paso 4 — simulación e-CF (solo estos campos; no afectan Paso 2). */
+  dgii_paso4_auth_url?: string;
+  dgii_paso4_reception_url?: string;
+  dgii_paso4_consult_url?: string;
+  dgii_paso4_rfce_url?: string;
+  dgii_paso4_environment?: "CERTIFICACION" | "PRODUCCION";
   certificate_path?: string;
   certificate_password?: string;
 };

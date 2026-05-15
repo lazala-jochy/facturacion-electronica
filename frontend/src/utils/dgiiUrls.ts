@@ -62,3 +62,19 @@ export function buildDgiiEcfUrlsBody(urls: DgiiEcfUrlFields): Record<string, str
     dgii_status_url: "",
   };
 }
+
+/** Solo Paso 4 — PUT /auth/company sin tocar columnas del Paso 2. */
+export function buildDgiiPaso4UrlsBody(urls: DgiiEcfUrlFields): Record<string, string> {
+  const dgiiAuthBase = normalizeAuthBaseUrl(urls.authUrl || "");
+  const dgiiReceptionBase = normalizeDgiiUrl(urls.receptionUrl || "");
+  const dgiiConsultBase = normalizeDgiiUrl(urls.consultUrl || "");
+  const dgiiRfceBase = normalizeDgiiUrl(urls.consumerSummaryUrl || "");
+
+  return {
+    dgii_paso4_environment: urls.environment,
+    dgii_paso4_auth_url: dgiiAuthBase,
+    dgii_paso4_reception_url: dgiiReceptionBase,
+    dgii_paso4_consult_url: dgiiConsultBase,
+    dgii_paso4_rfce_url: dgiiRfceBase,
+  };
+}

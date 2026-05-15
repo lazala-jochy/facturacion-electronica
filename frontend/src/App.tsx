@@ -15,6 +15,7 @@ import CompanyProfile from "./pages/CompanyProfile";
 import EcfExcelBatch from "./pages/EcfExcelBatch";
 import DgiiAprobacionesComerciales from "./pages/DgiiAprobacionesComerciales";
 import DgiiPruebasHub from "./pages/DgiiPruebasHub";
+import DgiiEcfSimulacion from "./pages/DgiiEcfSimulacion";
 import { documentTitleWithCompany } from "./utils/productBranding";
 
 function App() {
@@ -97,6 +98,15 @@ function App() {
               path="aprobaciones-comerciales"
               element={
                 <DgiiAprobacionesComerciales
+                  company={company}
+                  onCompanyUpdated={(c) => handleProfileUpdated(session.user, c)}
+                />
+              }
+            />
+            <Route
+              path="ecf-simulacion"
+              element={
+                <DgiiEcfSimulacion
                   company={company}
                   onCompanyUpdated={(c) => handleProfileUpdated(session.user, c)}
                 />

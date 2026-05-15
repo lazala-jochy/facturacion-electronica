@@ -49,6 +49,11 @@ const updateCompanyBodyFromReq = (req: Request): UpdateCompanyBody => {
     dgii_track_url: pickStr(b, "dgii_track_url"),
     dgii_status_url: pickStr(b, "dgii_status_url"),
     dgii_environment: pickStr(b, "dgii_environment") as "CERTIFICACION" | "PRODUCCION" | undefined,
+    dgii_paso4_auth_url: pickStr(b, "dgii_paso4_auth_url"),
+    dgii_paso4_reception_url: pickStr(b, "dgii_paso4_reception_url"),
+    dgii_paso4_consult_url: pickStr(b, "dgii_paso4_consult_url"),
+    dgii_paso4_rfce_url: pickStr(b, "dgii_paso4_rfce_url"),
+    dgii_paso4_environment: pickStr(b, "dgii_paso4_environment") as "CERTIFICACION" | "PRODUCCION" | undefined,
     certificate_path: pickStr(b, "certificate_path"),
     certificate_password: pickStr(b, "certificate_password"),
   };

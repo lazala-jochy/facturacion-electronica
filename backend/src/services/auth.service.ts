@@ -25,6 +25,10 @@ import {
 } from "../utils/validation";
 import { clearDgiiTokenCache } from "./dgiiEcfApi.service";
 import { normalizeDgiiEcfUrl } from "../config/dgiiEcf.constants";
+import {
+  paso4SeedUrlFromAuthBase,
+  paso4ValidateSeedUrlFromAuthBase,
+} from "../utils/dgiiPaso4Urls";
 
 export type PublicCompany = Pick<
   Company,
@@ -48,6 +52,14 @@ export type PublicCompany = Pick<
   | "dgiiTrackUrl"
   | "dgiiStatusUrl"
   | "dgiiEnvironment"
+  | "dgiiPaso4AuthUrl"
+  | "dgiiPaso4ReceptionUrl"
+  | "dgiiPaso4ConsultUrl"
+  | "dgiiPaso4RfceUrl"
+  | "dgiiPaso4Environment"
+  | "dgiiPaso4SeedUrl"
+  | "dgiiPaso4ValidateSeedUrl"
+  | "dgiiPaso4EcfReceiveUrl"
   | "certificatePath"
   | "tokenExpiration"
 > & {
@@ -115,6 +127,14 @@ const publicCompany = (c: Company): PublicCompany => ({
   dgiiTrackUrl: c.dgiiTrackUrl,
   dgiiStatusUrl: c.dgiiStatusUrl,
   dgiiEnvironment: c.dgiiEnvironment,
+  dgiiPaso4AuthUrl: c.dgiiPaso4AuthUrl,
+  dgiiPaso4ReceptionUrl: c.dgiiPaso4ReceptionUrl,
+  dgiiPaso4ConsultUrl: c.dgiiPaso4ConsultUrl,
+  dgiiPaso4RfceUrl: c.dgiiPaso4RfceUrl,
+  dgiiPaso4Environment: c.dgiiPaso4Environment,
+  dgiiPaso4SeedUrl: c.dgiiPaso4SeedUrl,
+  dgiiPaso4ValidateSeedUrl: c.dgiiPaso4ValidateSeedUrl,
+  dgiiPaso4EcfReceiveUrl: c.dgiiPaso4EcfReceiveUrl,
   certificatePath: c.certificatePath,
   tokenExpiration: c.tokenExpiration,
   certificateConfigured: companyHasCertificateRecord(c),
@@ -501,6 +521,79 @@ export const authService = {
       }
       dgiiTenantMerge.dgiiEnvironment = env;
     }
+
+    const dgiiPaso4Merge: Partial<
+      Pick<
+        Company,
+        | "dgiiPaso4AuthUrl"
+        | "dgiiPaso4ReceptionUrl"
+        | "dgiiPaso4ConsultUrl"
+        | "dgiiPaso4RfceUrl"
+        | "dgiiPaso4Environment"
+        | "dgiiPaso4SeedUrl"
+        | "dgiiPaso4ValidateSeedUrl"
+        | "dgiiPaso4EcfReceiveUrl"
+      >
+    > = {};
+
+    if (body.dgii_paso4_auth_url !== undefined) {
+      const v = parseTenantUrl(body.dgii_paso4_auth_url, "autenticación DGII (Paso 4)");
+      if (v && typeof v === "object" && "ok" in v && v.ok === false) return v;
+      dgiiPaso4Merge.dgiiPaso4AuthUrl = v === null || typeof v === "string" ? v : null;
+    }
+    if (body.dgii_paso4_reception_url !== undefined) {
+      const v = parseTenantUrl(body.dgii_paso4_reception_url, "recepción e-CF (Paso 4)");
+      if (v && typeof v === "object" && "ok" in v && v.ok === false) return v;
+      dgiiPaso4Merge.dgiiPaso4ReceptionUrl = v === null || typeof v === "string" ? v : null;
+    }
+    if (body.dgii_paso4_consult_url !== undefined) {
+      const v = parseTenantUrl(body.dgii_paso4_consult_url, "consulta de envío (Paso 4)");
+      if (v && typeof v === "object" && "ok" in v && v.ok === false) return v;
+      dgiiPaso4Merge.dgiiPaso4ConsultUrl = v === null || typeof v === "string" ? v : null;
+    }
+    if (body.dgii_paso4_rfce_url !== undefined) {
+      const v = parseTenantUrl(body.dgii_paso4_rfce_url, "recepción resúmenes consumo (Paso 4)");
+      if (v && typeof v === "object" && "ok" in v && v.ok === false) return v;
+      dgiiPaso4Merge.dgiiPaso4RfceUrl = v === null || typeof v === "string" ? v : null;
+    }
+    if (body.dgii_paso4_environment !== undefined) {
+      const env = (body.dgii_paso4_environment ?? "").trim().toUpperCase();
+      if (env !== "CERTIFICACION" && env !== "PRODUCCION") {
+        return {
+          ok: false,
+          status: 400,
+          message: "dgii_paso4_environment debe ser CERTIFICACION o PRODUCCION.",
+        };
+      }
+      dgiiPaso4Merge.dgiiPaso4Environment = env;
+    }
+
+    const hasPaso4InBody =
+      body.dgii_paso4_auth_url !== undefined ||
+      body.dgii_paso4_reception_url !== undefined ||
+      body.dgii_paso4_consult_url !== undefined ||
+      body.dgii_paso4_rfce_url !== undefined ||
+      body.dgii_paso4_environment !== undefined;
+
+    if (hasPaso4InBody) {
+      const effAuth =
+        body.dgii_paso4_auth_url !== undefined
+          ? dgiiPaso4Merge.dgiiPaso4AuthUrl ?? null
+          : existingCompany.dgiiPaso4AuthUrl;
+      if (effAuth) {
+        dgiiPaso4Merge.dgiiPaso4SeedUrl = paso4SeedUrlFromAuthBase(effAuth) || null;
+        dgiiPaso4Merge.dgiiPaso4ValidateSeedUrl = paso4ValidateSeedUrlFromAuthBase(effAuth) || null;
+      } else {
+        dgiiPaso4Merge.dgiiPaso4SeedUrl = null;
+        dgiiPaso4Merge.dgiiPaso4ValidateSeedUrl = null;
+      }
+      const effRec =
+        body.dgii_paso4_reception_url !== undefined
+          ? dgiiPaso4Merge.dgiiPaso4ReceptionUrl ?? null
+          : existingCompany.dgiiPaso4ReceptionUrl;
+      dgiiPaso4Merge.dgiiPaso4EcfReceiveUrl = effRec;
+    }
+
     if (body.certificate_path !== undefined) {
       const p = (body.certificate_path ?? "").trim();
       dgiiTenantMerge.certificatePath = p || null;
@@ -558,6 +651,7 @@ export const authService = {
           regime: regime || "Régimen general",
           ...(dgiiEcfEndpointUpdate ?? {}),
           ...dgiiTenantMerge,
+          ...(hasPaso4InBody ? dgiiPaso4Merge : {}),
         },
       });
       const userRow = await tx.user.update({
@@ -766,7 +860,8 @@ export const authService = {
       body.dgii_reception_url !== undefined ||
       body.dgii_seed_url !== undefined ||
       body.dgii_validate_seed_url !== undefined ||
-      body.dgii_ecf_receive_url !== undefined
+      body.dgii_ecf_receive_url !== undefined ||
+      body.dgii_paso4_auth_url !== undefined
     ) {
       clearDgiiTokenCache(companyId);
       await prisma.company.update({
