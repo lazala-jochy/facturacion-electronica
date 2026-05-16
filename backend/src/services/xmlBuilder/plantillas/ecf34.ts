@@ -1,22 +1,29 @@
 /**
  * Plantilla exclusiva **e-CF 34** — Nota de crédito electrónica.
- * Requiere NCFModificado (referenceEncf).
+ * Dos perfiles DGII:
+ * - Con ITBIS (cotización habitual): IndicadorNotaCredito 0 + IndicadorMontoGravado + TipoIngresos + TipoPago.
+ * - Sin ITBIS (muestra E340000000016): IndicadorNotaCredito 1 + TipoPago, totales MontoNoFacturable, ítems fact. 0.
  */
 
 import { create } from "xmlbuilder2";
 import type { EcfPayload } from "../../validation";
-import { DEFAULT_FECHA_VENC_SEC } from "../common";
 import {
   appendComprador,
   appendDetallesItems,
   appendEmisor,
   appendFechaHoraFirma,
-  appendIdDocTipoPagoYFormas,
+  appendInformacionReferencia,
   appendTotalesItbis18,
+  appendTotalesMontoNoFacturable,
 } from "../bloques";
 
+/** Código modificación nota de crédito (muestras DGII tipo 34). */
+const CODIGO_MODIFICACION_NOTA_CREDITO = "2";
+
+const usesGravadoItbis = (payload: EcfPayload) => payload.itbis > 0.001;
+
 export function plantillaEcf34(payload: EcfPayload): string {
-  const ref = (payload.referenceEncf ?? "").trim();
+  const gravado = usesGravadoItbis(payload);
 
   const doc = create({ version: "1.0", encoding: "utf-8" });
   const root = doc.ele("ECF");
@@ -26,20 +33,28 @@ export function plantillaEcf34(payload: EcfPayload): string {
   const idDoc = enc.ele("IdDoc");
   idDoc.ele("TipoeCF").txt("34");
   idDoc.ele("eNCF").txt(payload.ecfNumber.trim());
-  if (ref) idDoc.ele("NCFModificado").txt(ref);
-  idDoc.ele("IndicadorNotaCredito").txt("1");
-  idDoc.ele("FechaVencimientoSecuencia").txt(DEFAULT_FECHA_VENC_SEC);
-  idDoc.ele("IndicadorMontoGravado").txt("0");
-  idDoc.ele("TipoIngresos").txt("01");
-  appendIdDocTipoPagoYFormas(idDoc, payload);
+  if (gravado) {
+    idDoc.ele("IndicadorNotaCredito").txt("0");
+    idDoc.ele("IndicadorMontoGravado").txt("0");
+    idDoc.ele("TipoIngresos").txt("01");
+    idDoc.ele("TipoPago").txt("1");
+  } else {
+    idDoc.ele("IndicadorNotaCredito").txt("1");
+    idDoc.ele("TipoPago").txt("1");
+  }
   idDoc.up();
 
   appendEmisor(enc, payload);
   appendComprador(enc, payload);
-  appendTotalesItbis18(enc, payload);
+  if (gravado) {
+    appendTotalesItbis18(enc, payload);
+  } else {
+    appendTotalesMontoNoFacturable(enc, payload);
+  }
   enc.up();
 
-  appendDetallesItems(root, payload);
+  appendDetallesItems(root, payload, gravado ? "1" : "0");
+  appendInformacionReferencia(root, payload, CODIGO_MODIFICACION_NOTA_CREDITO);
   appendFechaHoraFirma(root);
 
   return doc.end({ prettyPrint: true });

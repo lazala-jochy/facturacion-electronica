@@ -78,12 +78,33 @@ export function appendTotalesItbis18(enc: XMLBuilder, payload: EcfPayload): void
   tot.up();
 }
 
-export function appendDetallesItems(root: XMLBuilder, payload: EcfPayload): void {
+/** Muestra DGII E340000000016 (NC certificación sin ITBIS en totales). */
+export function appendTotalesMontoNoFacturable(enc: XMLBuilder, payload: EcfPayload): void {
+  const tot = enc.ele("Totales");
+  tot.ele("MontoTotal").txt("0.00");
+  tot.ele("MontoNoFacturable").txt(money(payload.total));
+  tot.up();
+}
+
+/** Gastos menores e-CF 43: MontoExento + MontoTotal (muestra E430000000011). */
+export function appendTotalesExento(enc: XMLBuilder, payload: EcfPayload): void {
+  const exento = payload.itbis > 0 ? payload.subtotal : payload.total;
+  const tot = enc.ele("Totales");
+  tot.ele("MontoExento").txt(money(exento));
+  tot.ele("MontoTotal").txt(money(payload.total));
+  tot.up();
+}
+
+export function appendDetallesItems(
+  root: XMLBuilder,
+  payload: EcfPayload,
+  indicadorFacturacion: "0" | "1" | "4" = "1",
+): void {
   const detalles = root.ele("DetallesItems");
   for (const item of payload.items) {
     const line = detalles.ele("Item");
     line.ele("NumeroLinea").txt(String(item.itemNumber));
-    line.ele("IndicadorFacturacion").txt("1");
+    line.ele("IndicadorFacturacion").txt(indicadorFacturacion);
     line.ele("NombreItem").txt(item.description.trim());
     line.ele("IndicadorBienoServicio").txt(indicadorBienServicio(item.unit, item.description));
     line.ele("CantidadItem").txt(qty(item.quantity));

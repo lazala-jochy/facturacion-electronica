@@ -187,7 +187,7 @@ test("XML e-CF 33: NCFModificado en InformacionReferencia, no en IdDoc", () => {
   );
 });
 
-test("XML e-CF 34: con referenceEncf incluye NCFModificado bajo IdDoc", () => {
+test("XML e-CF 34 gravado: IndicadorMontoGravado + TipoIngresos, sin TablaFormasPago", () => {
   const issueDate = new Date("2024-06-15T12:00:00.000Z");
   const p: EcfPayload = {
     ecfNumber: "E340000000001",
@@ -224,14 +224,62 @@ test("XML e-CF 34: con referenceEncf incluye NCFModificado bajo IdDoc", () => {
   const xml = buildEcfXml(p);
   assert.match(
     xml,
-    /<IdDoc>[\s\S]*?<eNCF>E340000000001<\/eNCF>[\s\S]*?<NCFModificado>E310000000999<\/NCFModificado>\s*<IndicadorNotaCredito>1<\/IndicadorNotaCredito>\s*<FechaVencimientoSecuencia>/,
+    /<eNCF>E340000000001<\/eNCF>\s*<IndicadorNotaCredito>0<\/IndicadorNotaCredito>\s*<IndicadorMontoGravado>0<\/IndicadorMontoGravado>\s*<TipoIngresos>01<\/TipoIngresos>\s*<TipoPago>1<\/TipoPago>/,
+  );
+  assert.doesNotMatch(xml, /<TablaFormasPago>/);
+  assert.match(xml, /<MontoGravadoTotal>/);
+  assert.match(
+    xml,
+    /<InformacionReferencia>[\s\S]*<CodigoModificacion>2<\/CodigoModificacion>/,
   );
 });
 
-test("Plantilla 43: sin bloque Comprador en ECF", () => {
+test("XML e-CF 34 sin ITBIS: perfil E340000000016 (IndicadorNotaCredito 1, MontoNoFacturable)", () => {
   const issueDate = new Date("2024-06-15T12:00:00.000Z");
   const p: EcfPayload = {
-    ecfNumber: "E430000000001",
+    ecfNumber: "E340000000016",
+    issueDate,
+    issuer: {
+      rnc: "131880738",
+      name: "ACME",
+      address: "Calle 1",
+      phone: null,
+      email: null,
+    },
+    buyer: {
+      name: "Cliente",
+      rncCedula: "40212345678",
+      address: null,
+      contact: null,
+    },
+    items: [
+      {
+        itemNumber: 1,
+        description: "Servicio",
+        quantity: 1,
+        unit: "43",
+        unitPrice: 1,
+        totalValue: 1,
+      },
+    ],
+    subtotal: 1,
+    itbis: 0,
+    total: 1,
+    ecfTipo: "34",
+    referenceEncf: "E410000000010",
+  };
+  const xml = buildEcfXml(p);
+  assert.match(xml, /<IndicadorNotaCredito>1<\/IndicadorNotaCredito>\s*<TipoPago>1<\/TipoPago>/);
+  assert.doesNotMatch(xml, /<IndicadorMontoGravado>/);
+  assert.doesNotMatch(xml, /<TipoIngresos>/);
+  assert.match(xml, /<MontoNoFacturable>1\.00<\/MontoNoFacturable>/);
+  assert.match(xml, /<IndicadorFacturacion>0<\/IndicadorFacturacion>/);
+});
+
+test("Plantilla 43: IdDoc mínimo, MontoExento, IndicadorFacturacion 4, sin Comprador", () => {
+  const issueDate = new Date("2024-06-15T12:00:00.000Z");
+  const p: EcfPayload = {
+    ecfNumber: "E430000000011",
     ecfTipo: "43",
     issueDate,
     issuer: {
@@ -258,12 +306,17 @@ test("Plantilla 43: sin bloque Comprador en ECF", () => {
       },
     ],
     subtotal: 100,
-    itbis: 18,
-    total: 118,
+    itbis: 0,
+    total: 100,
   };
   const xml = buildEcfXml(p);
   assert.match(xml, /<TipoeCF>43<\/TipoeCF>/);
+  assert.match(xml, /<FechaVencimientoSecuencia>[\s\S]*<\/IdDoc>/);
   assert.doesNotMatch(xml, /<Comprador>/);
+  assert.doesNotMatch(xml, /<IndicadorMontoGravado>/);
+  assert.doesNotMatch(xml, /<TablaFormasPago>/);
+  assert.match(xml, /<MontoExento>100\.00<\/MontoExento>/);
+  assert.match(xml, /<IndicadorFacturacion>4<\/IndicadorFacturacion>/);
 });
 
 test("resolvePlantillaEcfTipo prioriza tipo de comprobante fiscal sobre prefijo e-NCF", () => {
