@@ -61,10 +61,38 @@ const handlerExportacion46: EcfTipoHandler = {
   },
 };
 
+/** Pago al exterior: exento, ISR 27% por defecto (muestra E470000000009). */
+const handlerPagoExterior47: EcfTipoHandler = {
+  validateCotizacionContext: ({ clientRncCedula }) => {
+    if (!clientRncCedula.trim()) {
+      return ["Tipo 47: indicá el identificador del comprador extranjero."];
+    }
+    return [];
+  },
+  refinePayload: (p) => {
+    const exento = gravadoFromPayload(p);
+    const totalIsr =
+      p.totalIsrRetencion != null ? round2(p.totalIsrRetencion) : round2(exento * 0.27);
+    return {
+      ...p,
+      subtotal: exento,
+      itbis: 0,
+      total: exento,
+      totalIsrRetencion: totalIsr,
+      buyer: {
+        ...p.buyer,
+        identificadorExtranjero:
+          (p.buyer.identificadorExtranjero ?? p.buyer.rncCedula).trim() || undefined,
+      },
+    };
+  },
+};
+
 const registry: Record<string, EcfTipoHandler> = {
   "33": refRequired("33"),
   "34": refRequired("34"),
   "46": handlerExportacion46,
+  "47": handlerPagoExterior47,
 };
 
 export const getEcfTipoHandler = (ecfTipo: string): EcfTipoHandler => {

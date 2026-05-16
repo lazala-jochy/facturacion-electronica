@@ -599,6 +599,80 @@ test("Plantilla 46: MontoTotal = gravado si la cotización traía ITBIS 18%", ()
   assert.doesNotMatch(xml, /<MontoTotal>1180\.00<\/MontoTotal>/);
 });
 
+test("Plantilla 47: alineada a E470000000009 (extranjero, exento, ISR)", () => {
+  const issueDate = new Date("2020-04-01T12:00:00.000Z");
+  const p: EcfPayload = {
+    ecfNumber: "E470000000009",
+    ecfTipo: "47",
+    issueDate,
+    issuer: {
+      rnc: "131880738",
+      name: "ACME",
+      address: "Calle 1",
+      phone: null,
+      email: null,
+    },
+    buyer: {
+      name: "DOCUMENTOS ELECTRONICOS DE 03",
+      rncCedula: "350555123",
+      identificadorExtranjero: "350555123",
+    },
+    items: [
+      {
+        itemNumber: 1,
+        description: "Asesoria Legal P/H",
+        quantity: 60,
+        unit: "19",
+        unitPrice: 450,
+        totalValue: 27000,
+        montoIsrRetenido: 7290,
+      },
+      {
+        itemNumber: 2,
+        description: "Asesoria Legal P/H",
+        quantity: 70,
+        unit: "19",
+        unitPrice: 200,
+        totalValue: 14000,
+        montoIsrRetenido: 3780,
+      },
+      {
+        itemNumber: 3,
+        description: "Asesoria Legal P/H",
+        quantity: 100,
+        unit: "19",
+        unitPrice: 250,
+        totalValue: 25000,
+        montoIsrRetenido: 6750,
+      },
+    ],
+    subtotal: 66000,
+    itbis: 0,
+    total: 66000,
+    totalIsrRetencion: 17820,
+  };
+  const xml = buildEcfXml(p);
+  assert.doesNotMatch(xml, /<IndicadorMontoGravado>/);
+  assert.doesNotMatch(xml, /<TipoIngresos>/);
+  assert.doesNotMatch(xml, /<RNCComprador>/);
+  assert.match(
+    xml,
+    /<IdentificadorExtranjero>350555123<\/IdentificadorExtranjero>\s*<RazonSocialComprador>/,
+  );
+  assert.match(
+    xml,
+    /<MontoExento>66000\.00<\/MontoExento>\s*<MontoTotal>66000\.00<\/MontoTotal>\s*<MontoPeriodo>66000\.00<\/MontoPeriodo>\s*<ValorPagar>66000\.00<\/ValorPagar>\s*<TotalISRRetencion>17820\.00<\/TotalISRRetencion>/,
+  );
+  assert.doesNotMatch(xml, /<MontoGravadoTotal>/);
+  assert.match(
+    xml,
+    /<IndicadorFacturacion>4<\/IndicadorFacturacion>\s*<Retencion>\s*<IndicadorAgenteRetencionoPercepcion>1<\/IndicadorAgenteRetencionoPercepcion>\s*<MontoISRRetenido>7290\.00<\/MontoISRRetenido>/,
+  );
+  assert.doesNotMatch(xml, /<MontoITBISRetenido>/);
+  assert.match(xml, /<IndicadorBienoServicio>2<\/IndicadorBienoServicio>/);
+  assert.match(xml, /<PrecioUnitarioItem>450\.0000<\/PrecioUnitarioItem>/);
+});
+
 test("resolvePlantillaEcfTipo prioriza tipo de comprobante fiscal sobre prefijo e-NCF", () => {
   assert.equal(
     resolvePlantillaEcfTipo({
@@ -607,6 +681,33 @@ test("resolvePlantillaEcfTipo prioriza tipo de comprobante fiscal sobre prefijo 
     }),
     "32",
   );
+});
+
+test("validateEcfPayload rechaza línea con MontoItem cero", () => {
+  const issueDate = new Date("2024-06-15T12:00:00.000Z");
+  const p: EcfPayload = {
+    ecfNumber: "E470000000009",
+    ecfTipo: "47",
+    issueDate,
+    issuer: { rnc: "1", name: "E", address: "A" },
+    buyer: { name: "C", rncCedula: "350555123" },
+    items: [
+      {
+        itemNumber: 1,
+        description: "Servicio",
+        quantity: 1,
+        unit: "19",
+        unitPrice: 100,
+        totalValue: 0,
+      },
+    ],
+    subtotal: 0,
+    itbis: 0,
+    total: 0,
+  };
+  const v = validateEcfPayload(p);
+  assert.equal(v.valid, false);
+  assert.match(v.errors.join(" "), /MontoItem.*mayor que cero/i);
 });
 
 test("validateEcfPayload rechaza tipo comprobante distinto al prefijo del e-NCF", () => {

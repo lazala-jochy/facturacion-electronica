@@ -11,6 +11,8 @@ type EcfIssuer = {
 type EcfBuyer = {
   name: string;
   rncCedula: string;
+  /** e-CF 47: IdentificadorExtranjero (si no se indica, se usa rncCedula). */
+  identificadorExtranjero?: string;
   address?: string | null;
   contact?: string | null;
 };
@@ -60,6 +62,8 @@ export type EcfPayload = {
 const round2 = (value: number) => Number(value.toFixed(2));
 
 const isPositiveNumber = (value: number) => Number.isFinite(value) && value >= 0;
+/** DGII Decimal18D2ValidationTypeMayor: MontoItem y montos de línea deben ser > 0. */
+const isStrictlyPositive = (value: number) => Number.isFinite(value) && value > 0;
 
 export const validateEcfPayload = (payload: EcfPayload) => {
   const errors: string[] = [];
@@ -75,11 +79,17 @@ export const validateEcfPayload = (payload: EcfPayload) => {
   payload.items.forEach((item, idx) => {
     if (!item.description.trim()) errors.push(`Item ${idx + 1}: descripcion obligatoria.`);
     if (!item.unit.trim()) errors.push(`Item ${idx + 1}: unidad obligatoria.`);
-    if (!isPositiveNumber(item.quantity)) errors.push(`Item ${idx + 1}: cantidad invalida.`);
-    if (!isPositiveNumber(item.unitPrice))
-      errors.push(`Item ${idx + 1}: precio unitario invalido.`);
-    if (!isPositiveNumber(item.totalValue))
-      errors.push(`Item ${idx + 1}: total de linea invalido.`);
+    if (!isStrictlyPositive(item.quantity)) {
+      errors.push(`Item ${idx + 1}: la cantidad debe ser mayor que cero.`);
+    }
+    if (!isStrictlyPositive(item.unitPrice)) {
+      errors.push(`Item ${idx + 1}: el precio unitario debe ser mayor que cero.`);
+    }
+    if (!isStrictlyPositive(item.totalValue)) {
+      errors.push(
+        `Item ${idx + 1}: el monto de línea (MontoItem) debe ser mayor que cero; revisá cantidad y precio.`,
+      );
+    }
     const expected = round2(item.quantity * item.unitPrice);
     if (Math.abs(expected - round2(item.totalValue)) > 0.01) {
       errors.push(`Item ${idx + 1}: total de linea no coincide con cantidad x precio.`);
@@ -95,14 +105,14 @@ export const validateEcfPayload = (payload: EcfPayload) => {
     errors.push("Subtotal no coincide con la suma de items.");
   }
   const t = resolvePlantillaEcfTipo(payload);
-  if (t === "46") {
-    const gravado = round2(payload.items.reduce((acc, i) => acc + i.totalValue, 0));
-    const base = payload.subtotal > 0 ? round2(payload.subtotal) : gravado;
+  if (t === "46" || t === "47") {
+    const exento = round2(payload.items.reduce((acc, i) => acc + i.totalValue, 0));
+    const base = payload.subtotal > 0 ? round2(payload.subtotal) : exento;
     if (payload.itbis > 0.001) {
-      errors.push("Tipo 46 (exportación): el ITBIS debe ser cero en totales DGII.");
+      errors.push(`Tipo ${t} (${t === "46" ? "exportación" : "pago al exterior"}): el ITBIS debe ser cero.`);
     }
     if (Math.abs(base - round2(payload.total)) > 0.01) {
-      errors.push("Tipo 46: el total debe coincidir con el subtotal gravado (sin ITBIS).");
+      errors.push(`Tipo ${t}: el total debe coincidir con el monto exento (sin ITBIS).`);
     }
   } else {
     const recomputedTotal = round2(payload.subtotal + payload.itbis);

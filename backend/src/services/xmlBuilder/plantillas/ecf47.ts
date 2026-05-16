@@ -1,17 +1,18 @@
 /**
  * Plantilla exclusiva **e-CF 47** — Pagos al exterior.
+ * Alineado a muestra DGII E470000000009: comprador extranjero, exento, retención ISR.
  */
 
 import { create } from "xmlbuilder2";
 import type { EcfPayload } from "../../validation";
 import { DEFAULT_FECHA_VENC_SEC } from "../common";
 import {
-  appendComprador,
-  appendDetallesItems,
+  appendCompradorExtranjero47,
+  appendDetallesItemsPagoExterior47,
   appendEmisor,
   appendFechaHoraFirma,
   appendIdDocTipoPagoYFormas,
-  appendTotalesItbis18,
+  appendTotalesPagoExterior47,
 } from "../bloques";
 
 export function plantillaEcf47(payload: EcfPayload): string {
@@ -24,17 +25,15 @@ export function plantillaEcf47(payload: EcfPayload): string {
   idDoc.ele("TipoeCF").txt("47");
   idDoc.ele("eNCF").txt(payload.ecfNumber.trim());
   idDoc.ele("FechaVencimientoSecuencia").txt(DEFAULT_FECHA_VENC_SEC);
-  idDoc.ele("IndicadorMontoGravado").txt("0");
-  idDoc.ele("TipoIngresos").txt("01");
   appendIdDocTipoPagoYFormas(idDoc, payload);
   idDoc.up();
 
   appendEmisor(enc, payload);
-  appendComprador(enc, payload);
-  appendTotalesItbis18(enc, payload);
+  appendCompradorExtranjero47(enc, payload);
+  appendTotalesPagoExterior47(enc, payload);
   enc.up();
 
-  appendDetallesItems(root, payload);
+  appendDetallesItemsPagoExterior47(root, payload);
   appendFechaHoraFirma(root);
 
   return doc.end({ prettyPrint: true });

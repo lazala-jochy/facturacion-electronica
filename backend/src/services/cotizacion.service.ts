@@ -257,6 +257,15 @@ const normalizeIncomingItems = (
   });
 };
 
+const validateLinesHavePositiveAmount = (
+  lines: Array<{ itemNumber: number; totalValue: number }>,
+): string | null => {
+  const bad = lines.filter((l) => l.totalValue <= 0);
+  if (!bad.length) return null;
+  const nums = bad.map((l) => l.itemNumber).join(", ");
+  return `Línea(s) ${nums}: el monto debe ser mayor que cero (cantidad × precio). DGII no acepta MontoItem 0.00.`;
+};
+
 export const cotizacionService = {
   async createClientWithCotizacion(
     companyId: number,
@@ -309,6 +318,10 @@ export const cotizacionService = {
     }
 
     const lines = normalizeIncomingItems(input.items);
+    const lineAmountErr = validateLinesHavePositiveAmount(lines);
+    if (lineAmountErr) {
+      return { ok: false as const, status: 400, message: lineAmountErr };
+    }
     const autoTotals = calculateTotalsFromItems(
       lines.map((l) => ({ totalValue: l.totalValue })),
     );
@@ -527,6 +540,10 @@ export const cotizacionService = {
     }
 
     const lines = normalizeIncomingItems(input.items);
+    const lineAmountErr = validateLinesHavePositiveAmount(lines);
+    if (lineAmountErr) {
+      return { ok: false as const, status: 400, message: lineAmountErr };
+    }
     const autoTotals = calculateTotalsFromItems(
       lines.map((l) => ({ totalValue: l.totalValue })),
     );

@@ -54,6 +54,16 @@ export function appendEmisor(enc: XMLBuilder, payload: EcfPayload): void {
   em.up();
 }
 
+/** e-CF 47 — comprador extranjero (muestra E470000000009). */
+export function appendCompradorExtranjero47(enc: XMLBuilder, payload: EcfPayload): void {
+  const id =
+    (payload.buyer.identificadorExtranjero ?? payload.buyer.rncCedula).trim();
+  const comp = enc.ele("Comprador");
+  comp.ele("IdentificadorExtranjero").txt(id);
+  comp.ele("RazonSocialComprador").txt(payload.buyer.name.trim());
+  comp.up();
+}
+
 /** Comprador mínimo (muestra e-CF 41: solo RNC y razón social). */
 export function appendCompradorMinimal(enc: XMLBuilder, payload: EcfPayload): void {
   const comp = enc.ele("Comprador");
@@ -168,6 +178,60 @@ export function appendTotalesExportacion46(enc: XMLBuilder, payload: EcfPayload)
   tot.ele("TotalITBIS3").txt("0.00");
   tot.ele("MontoTotal").txt(money(gravado));
   tot.up();
+}
+
+function montoExentoFromPayload(payload: EcfPayload): number {
+  const fromItems = round2(payload.items.reduce((acc, i) => acc + i.totalValue, 0));
+  return payload.subtotal > 0 ? round2(payload.subtotal) : fromItems;
+}
+
+/** e-CF 47 — pago al exterior: exento + retención ISR (muestra E470000000009). */
+export function appendTotalesPagoExterior47(enc: XMLBuilder, payload: EcfPayload): void {
+  const exento = montoExentoFromPayload(payload);
+  const totalIsr =
+    payload.totalIsrRetencion != null
+      ? round2(payload.totalIsrRetencion)
+      : round2(exento * 0.27);
+  const tot = enc.ele("Totales");
+  tot.ele("MontoExento").txt(money(exento));
+  tot.ele("MontoTotal").txt(money(exento));
+  tot.ele("MontoPeriodo").txt(money(exento));
+  tot.ele("ValorPagar").txt(money(exento));
+  tot.ele("TotalISRRetencion").txt(money(totalIsr));
+  tot.up();
+}
+
+/** e-CF 47: fact. 4, retención ISR por línea (27% por defecto). */
+export function appendDetallesItemsPagoExterior47(root: XMLBuilder, payload: EcfPayload): void {
+  const exento = montoExentoFromPayload(payload);
+  const totalIsr =
+    payload.totalIsrRetencion != null
+      ? round2(payload.totalIsrRetencion)
+      : round2(exento * 0.27);
+  const isrPerLine = prorateByLineTotal(
+    payload.items,
+    exento,
+    totalIsr,
+    (i) => i.montoIsrRetenido,
+  );
+
+  const detalles = root.ele("DetallesItems");
+  payload.items.forEach((item, idx) => {
+    const line = detalles.ele("Item");
+    line.ele("NumeroLinea").txt(String(item.itemNumber));
+    line.ele("IndicadorFacturacion").txt("4");
+    const ret = line.ele("Retencion");
+    ret.ele("IndicadorAgenteRetencionoPercepcion").txt("1");
+    ret.ele("MontoISRRetenido").txt(money(isrPerLine[idx]));
+    ret.up();
+    line.ele("NombreItem").txt(item.description.trim());
+    line.ele("IndicadorBienoServicio").txt("2");
+    line.ele("CantidadItem").txt(qty(item.quantity));
+    line.ele("UnidadMedida").txt(mapUnidadMedidaDgii(item.unit));
+    line.ele("PrecioUnitarioItem").txt(unitPrice4(item.unitPrice));
+    line.ele("MontoItem").txt(money(item.totalValue));
+  });
+  detalles.up();
 }
 
 /** e-CF 46: IndicadorFacturacion 3, TablaCodigosItem opcional. */
