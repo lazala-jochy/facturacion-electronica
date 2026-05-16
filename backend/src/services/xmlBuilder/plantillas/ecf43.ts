@@ -1,16 +1,16 @@
 /**
- * Plantilla exclusiva **e-CF 43** — Gastos menores.
- * IdDoc alineado a muestra DGII E430000000011: solo FechaVencimientoSecuencia; sin Comprador.
+ * Plantilla exclusiva **e-CF 43** — Gastos menores electrónicos.
+ * Alineado a muestra DGII E430000000011: IdDoc mínimo, sin Comprador, totales exentos, ítems fact. 4.
  */
 
 import { create } from "xmlbuilder2";
 import type { EcfPayload } from "../../validation";
 import { DEFAULT_FECHA_VENC_SEC } from "../common";
 import {
-  appendDetallesItems,
+  appendDetallesItemsGastosMenores43,
   appendEmisor,
   appendFechaHoraFirma,
-  appendTotalesExento,
+  appendTotalesGastosMenores43,
 } from "../bloques";
 
 export function plantillaEcf43(payload: EcfPayload): string {
@@ -26,10 +26,10 @@ export function plantillaEcf43(payload: EcfPayload): string {
   idDoc.up();
 
   appendEmisor(enc, payload);
-  appendTotalesExento(enc, payload);
+  appendTotalesGastosMenores43(enc, payload);
   enc.up();
 
-  appendDetallesItems(root, payload, "4");
+  appendDetallesItemsGastosMenores43(root, payload);
   appendFechaHoraFirma(root);
 
   return doc.end({ prettyPrint: true });

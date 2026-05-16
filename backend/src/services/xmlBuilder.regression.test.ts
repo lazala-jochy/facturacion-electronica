@@ -325,7 +325,7 @@ test("XML e-CF 41: IdDoc sin TipoIngresos, retenciones y Comprador mínimo", () 
   assert.doesNotMatch(xml, /<MunicipioComprador>/);
 });
 
-test("Plantilla 43: IdDoc mínimo, MontoExento, IndicadorFacturacion 4, sin Comprador", () => {
+test("Plantilla 43: alineada a E430000000011 (IdDoc, totales exentos, ítems)", () => {
   const issueDate = new Date("2024-06-15T12:00:00.000Z");
   const p: EcfPayload = {
     ecfNumber: "E430000000011",
@@ -347,25 +347,39 @@ test("Plantilla 43: IdDoc mínimo, MontoExento, IndicadorFacturacion 4, sin Comp
     items: [
       {
         itemNumber: 1,
-        description: "Gasto",
-        quantity: 1,
+        description: "Gasto personal en comida (kiosko)",
+        quantity: 15,
         unit: "43",
-        unitPrice: 100,
-        totalValue: 100,
+        unitPrice: 330,
+        totalValue: 4950,
+      },
+      {
+        itemNumber: 2,
+        description: "Gasto personal en comida (kiosko) segunda semana",
+        quantity: 12,
+        unit: "43",
+        unitPrice: 350,
+        totalValue: 4200,
       },
     ],
-    subtotal: 100,
+    subtotal: 9150,
     itbis: 0,
-    total: 100,
+    total: 9150,
   };
   const xml = buildEcfXml(p);
-  assert.match(xml, /<TipoeCF>43<\/TipoeCF>/);
-  assert.match(xml, /<FechaVencimientoSecuencia>[\s\S]*<\/IdDoc>/);
+  assert.match(
+    xml,
+    /<IdDoc>\s*<TipoeCF>43<\/TipoeCF>\s*<eNCF>E430000000011<\/eNCF>\s*<FechaVencimientoSecuencia>[\s\S]*?<\/IdDoc>/,
+  );
+  assert.doesNotMatch(xml, /<TipoPago>/);
   assert.doesNotMatch(xml, /<Comprador>/);
   assert.doesNotMatch(xml, /<IndicadorMontoGravado>/);
   assert.doesNotMatch(xml, /<TablaFormasPago>/);
-  assert.match(xml, /<MontoExento>100\.00<\/MontoExento>/);
-  assert.match(xml, /<IndicadorFacturacion>4<\/IndicadorFacturacion>/);
+  assert.match(xml, /<MontoExento>9150\.00<\/MontoExento>\s*<MontoTotal>9150\.00<\/MontoTotal>/);
+  assert.match(
+    xml,
+    /<IndicadorFacturacion>4<\/IndicadorFacturacion>\s*<NombreItem>Gasto personal en comida \(kiosko\)<\/NombreItem>\s*<IndicadorBienoServicio>2<\/IndicadorBienoServicio>/,
+  );
 });
 
 test("resolvePlantillaEcfTipo prioriza tipo de comprobante fiscal sobre prefijo e-NCF", () => {
