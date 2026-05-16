@@ -1,6 +1,6 @@
 /**
  * Plantilla exclusiva **e-CF 33** — Nota de débito electrónica.
- * Requiere NCFModificado (referenceEncf). Tras referencias: misma cola IdDoc que factura 31.
+ * IdDoc alineado a muestra DGII: sin NCFModificado (va en InformacionReferencia).
  */
 
 import { create } from "xmlbuilder2";
@@ -12,12 +12,14 @@ import {
   appendEmisor,
   appendFechaHoraFirma,
   appendIdDocTipoPagoYFormas,
+  appendInformacionReferencia,
   appendTotalesItbis18,
 } from "../bloques";
 
-export function plantillaEcf33(payload: EcfPayload): string {
-  const ref = (payload.referenceEncf ?? "").trim();
+/** Código modificación nota de débito (muestra DGII tipo 33). */
+const CODIGO_MODIFICACION_NOTA_DEBITO = "3";
 
+export function plantillaEcf33(payload: EcfPayload): string {
   const doc = create({ version: "1.0", encoding: "utf-8" });
   const root = doc.ele("ECF");
   const enc = root.ele("Encabezado");
@@ -26,8 +28,6 @@ export function plantillaEcf33(payload: EcfPayload): string {
   const idDoc = enc.ele("IdDoc");
   idDoc.ele("TipoeCF").txt("33");
   idDoc.ele("eNCF").txt(payload.ecfNumber.trim());
-  if (ref) idDoc.ele("NCFModificado").txt(ref);
-  idDoc.ele("IndicadorNotaCredito").txt("0");
   idDoc.ele("FechaVencimientoSecuencia").txt(DEFAULT_FECHA_VENC_SEC);
   idDoc.ele("IndicadorMontoGravado").txt("0");
   idDoc.ele("TipoIngresos").txt("01");
@@ -40,6 +40,7 @@ export function plantillaEcf33(payload: EcfPayload): string {
   enc.up();
 
   appendDetallesItems(root, payload);
+  appendInformacionReferencia(root, payload, CODIGO_MODIFICACION_NOTA_DEBITO);
   appendFechaHoraFirma(root);
 
   return doc.end({ prettyPrint: true });

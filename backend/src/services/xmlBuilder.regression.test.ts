@@ -139,7 +139,55 @@ test("IdDoc e-CF 32 XSD: sin FechaVencimientoSecuencia ni IndicadorServicioTodoI
   assert.doesNotMatch(xml, /<IndicadorServicioTodoIncluido>/);
 });
 
-test("XML e-CF: con referenceEncf incluye NCFModificado bajo IdDoc", () => {
+test("XML e-CF 33: NCFModificado en InformacionReferencia, no en IdDoc", () => {
+  const issueDate = new Date("2024-06-15T12:00:00.000Z");
+  const p: EcfPayload = {
+    ecfNumber: "E330000000001",
+    issueDate,
+    issuer: {
+      rnc: "131880738",
+      name: "ACME",
+      address: "Calle 1",
+      phone: null,
+      email: null,
+    },
+    buyer: {
+      name: "Cliente",
+      rncCedula: "40212345678",
+      address: null,
+      contact: null,
+    },
+    items: [
+      {
+        itemNumber: 1,
+        description: "Ajuste",
+        quantity: 1,
+        unit: "43",
+        unitPrice: 50,
+        totalValue: 50,
+      },
+    ],
+    subtotal: 50,
+    itbis: 9,
+    total: 59,
+    ecfTipo: "33",
+    referenceEncf: "E320000000006",
+  };
+  const xml = buildEcfXml(p);
+  assert.match(
+    xml,
+    /<eNCF>E330000000001<\/eNCF>\s*<FechaVencimientoSecuencia>[\s\S]*?<IndicadorMontoGravado>0<\/IndicadorMontoGravado>\s*<TipoIngresos>/,
+    "IdDoc 33: IndicadorMontoGravado requerido con totales gravados",
+  );
+  const idDocInner = xml.match(/<IdDoc>([\s\S]*?)<\/IdDoc>/)?.[1] ?? "";
+  assert.doesNotMatch(idDocInner, /NCFModificado/, "IdDoc 33 no debe incluir NCFModificado");
+  assert.match(
+    xml,
+    /<DetallesItems>[\s\S]*<\/DetallesItems>\s*<InformacionReferencia>\s*<NCFModificado>E320000000006<\/NCFModificado>\s*<FechaNCFModificado>15-06-2024<\/FechaNCFModificado>\s*<CodigoModificacion>3<\/CodigoModificacion>\s*<\/InformacionReferencia>/,
+  );
+});
+
+test("XML e-CF 34: con referenceEncf incluye NCFModificado bajo IdDoc", () => {
   const issueDate = new Date("2024-06-15T12:00:00.000Z");
   const p: EcfPayload = {
     ecfNumber: "E340000000001",

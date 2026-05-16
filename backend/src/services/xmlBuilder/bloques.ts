@@ -97,3 +97,19 @@ export function appendDetallesItems(root: XMLBuilder, payload: EcfPayload): void
 export function appendFechaHoraFirma(root: XMLBuilder): void {
   root.ele("FechaHoraFirma").txt(fechaHoraFirmaDgii());
 }
+
+/** Referencia al comprobante modificado (notas 33/34): va fuera de IdDoc, tras DetallesItems. */
+export function appendInformacionReferencia(
+  root: XMLBuilder,
+  payload: EcfPayload,
+  codigoModificacion: string,
+): void {
+  const ref = (payload.referenceEncf ?? "").trim();
+  if (!ref) return;
+
+  const info = root.ele("InformacionReferencia");
+  info.ele("NCFModificado").txt(ref);
+  info.ele("FechaNCFModificado").txt(fechaEmisionDdMmYyyy(payload.issueDate));
+  info.ele("CodigoModificacion").txt(codigoModificacion);
+  info.up();
+}

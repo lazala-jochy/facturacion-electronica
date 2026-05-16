@@ -11,7 +11,6 @@ import { extractEncfFromDgiiResponse, isDgiiSequenceRejection } from "../utils/d
 import {
   allocateNextAfterUsedSeq,
   allocateNextEcfNcfSeq,
-  getLastEcfNcfSeq,
   markEcfNcfSeqUsed,
 } from "./ecfSeq.service";
 import { isValidPhoneFormat } from "../utils/validation";
@@ -113,14 +112,6 @@ export async function ensureCotizacionSeqAdvancedAfterSequenceReject(
     if (usedSeq < 1) return { advanced: false };
     if (cot.ecfNcfSeq > usedSeq) return { advanced: false };
     return advanceToNext(usedSeq);
-  }
-
-  /** Respuesta DGII ya fue sobrescrita al preparar XML, pero el correlativo local quedó atrás del contador. */
-  const lastGlobal = await prisma.$transaction((tx) =>
-    getLastEcfNcfSeq(tx, companyId, tipo),
-  );
-  if (cot.ecfNcfSeq > 0 && cot.ecfNcfSeq <= lastGlobal) {
-    return advanceToNext(lastGlobal);
   }
 
   return { advanced: false };
@@ -584,9 +575,14 @@ export const cotizacionService = {
         ecfTipoFinal = existing.ecfTipo;
         ecfNcfSeq = existing.ecfNcfSeq;
         ecfReferenceFinal = existing.ecfReferenceNcf;
-      } else if (ecfTipoFinal !== existing.ecfTipo) {
+      } else       if (ecfTipoFinal !== existing.ecfTipo) {
         ecfNcfSeq = await allocateEcfNcfSeq(tx, companyId, ecfTipoFinal);
       }
+
+      const resetDgiiAfterNonSequenceReject =
+        existing.dgiiStatus === "rejected" &&
+        Boolean(existing.dgiiResponse?.trim()) &&
+        !isDgiiSequenceRejection(existing.dgiiResponse);
 
       await tx.cotizacion.update({
         where: { id },
@@ -603,6 +599,13 @@ export const cotizacionService = {
           subtotal: totals.subtotal,
           itbis: totals.itbis,
           total: totals.total,
+          ...(resetDgiiAfterNonSequenceReject
+            ? {
+                dgiiStatus: null,
+                dgiiResponse: null,
+                signedXml: null,
+              }
+            : {}),
         },
       });
 

@@ -315,6 +315,18 @@ export default function Clients() {
       setEcfError("Debes conectarte a internet para enviar a DGII.");
       return;
     }
+    const cotRow = clients
+      .flatMap((c) => c.cotizaciones.map((co) => ({ ...co, clientId: c.id })))
+      .find((co) => co.id === cotizacionId);
+    if (
+      cotRow?.dgii_status === "rejected" &&
+      cotRow.dgii_resubmit_new_seq !== true
+    ) {
+      setEcfError(
+        "DGII rechazó este comprobante por un error distinto a «secuencia ya utilizada». Editá y guardá la cotización; después podrás usar «Enviar DGII». «Reenviar» solo aplica cuando DGII indica secuencia ya utilizada.",
+      );
+      return;
+    }
     setSendingEcfId(cotizacionId);
     setEcfError("");
     setEcfSuccess("");
@@ -364,7 +376,7 @@ export default function Clients() {
           );
         } else {
           setEcfWarning(
-            `DGII rechazó el comprobante. Track ID: ${out.track_id}. ${detail} El correlativo en la app no cambia (no es un rechazo por secuencia): corregí el XML o los datos y pulsá «Reintentar envío».`.trim(),
+            `DGII rechazó el comprobante. Track ID: ${out.track_id}. ${detail} No es rechazo por secuencia: el mismo e-NCF se conserva. Corregí la cotización y usá «Enviar DGII» (no «Reenviar», que solo aplica cuando DGII indica secuencia ya utilizada).`.trim(),
           );
         }
       } else {
@@ -461,7 +473,7 @@ export default function Clients() {
           );
         } else {
           setEcfWarning(
-            `DGII rechazó el comprobante. Track ID: ${out.track_id}. ${detail} El correlativo no cambió: corregí el XML o los datos y pulsá «Reintentar envío».`.trim(),
+            `DGII rechazó el comprobante. Track ID: ${out.track_id}. ${detail} Corregí la cotización y usá «Enviar DGII» (el correlativo no cambia).`.trim(),
           );
         }
       } else {
@@ -817,10 +829,12 @@ export default function Clients() {
                 <tbody className="divide-y divide-gray-100">
                   {pageRows.map(({ client, last }) => {
                     const dgiiStatus = last?.dgii_status;
-                    const dgiiSendLocked =
-                      dgiiStatus === "accepted" || dgiiStatus === "pending";
-
                     const seqResubmit = last?.dgii_resubmit_new_seq === true;
+                    const dgiiSendLocked =
+                      dgiiStatus === "accepted" ||
+                      dgiiStatus === "pending" ||
+                      (dgiiStatus === "rejected" && !seqResubmit);
+
                     const sendLabel = !last
                       ? "-"
                       : sendingEcfId === last.id
@@ -828,22 +842,22 @@ export default function Clients() {
                         : dgiiSendLocked
                           ? dgiiStatus === "accepted"
                             ? "Enviado"
-                            : "Pendiente"
-                          : dgiiStatus === "rejected"
-                            ? seqResubmit
-                              ? "Reenviar DGII"
-                              : "Reintentar"
+                            : dgiiStatus === "pending"
+                              ? "Pendiente"
+                              : "Rechazado"
+                          : dgiiStatus === "rejected" && seqResubmit
+                            ? "Reenviar DGII"
                             : "Enviar DGII";
                     const sendTitle = !isOnline
                       ? "Sin internet: no se puede enviar a DGII"
                       : dgiiSendLocked
                         ? dgiiStatus === "accepted"
                           ? "Comprobante aceptado por DGII"
-                          : "Envío pendiente/procesándose"
-                        : dgiiStatus === "rejected"
-                          ? seqResubmit
-                            ? "Rechazo por correlativo/secuencia: esta app ya pasó al siguiente e-NCF. Volvé a enviar."
-                            : "Revisá el texto de rechazo DGII abajo (no es rechazo por secuencia); el correlativo no cambió — corregí y reintentá."
+                          : dgiiStatus === "pending"
+                            ? "Envío pendiente/procesándose"
+                            : "Rechazado por DGII (no es secuencia ya utilizada): editá y guardá la cotización antes de volver a enviar."
+                        : dgiiStatus === "rejected" && seqResubmit
+                          ? "DGII indicó secuencia ya utilizada: la app asignó el siguiente e-NCF. Pulsá para reenviar."
                           : "Enviar e-CF a DGII";
 
                     const dgiiSendBtnClass = dgiiSendLocked
@@ -1044,10 +1058,12 @@ export default function Clients() {
             <div className="md:hidden divide-y divide-gray-100">
               {pageRows.map(({ client, last }) => {
                 const dgiiStatus = last?.dgii_status;
-                const dgiiSendLocked =
-                  dgiiStatus === "accepted" || dgiiStatus === "pending";
-
                 const seqResubmit = last?.dgii_resubmit_new_seq === true;
+                const dgiiSendLocked =
+                  dgiiStatus === "accepted" ||
+                  dgiiStatus === "pending" ||
+                  (dgiiStatus === "rejected" && !seqResubmit);
+
                 const sendLabel = !last
                   ? "-"
                   : sendingEcfId === last.id
@@ -1055,22 +1071,22 @@ export default function Clients() {
                     : dgiiSendLocked
                       ? dgiiStatus === "accepted"
                         ? "Enviado"
-                        : "Pendiente"
-                      : dgiiStatus === "rejected"
-                        ? seqResubmit
-                          ? "Reenviar"
-                          : "Reintentar"
+                        : dgiiStatus === "pending"
+                          ? "Pendiente"
+                          : "Rechazado"
+                      : dgiiStatus === "rejected" && seqResubmit
+                        ? "Reenviar"
                         : "Enviar";
                 const sendTitle = !isOnline
                   ? "Sin internet: no se puede enviar a DGII"
                   : dgiiSendLocked
                     ? dgiiStatus === "accepted"
                       ? "Comprobante aceptado por DGII"
-                      : "Envío pendiente/procesándose"
-                    : dgiiStatus === "rejected"
-                      ? seqResubmit
-                        ? "Rechazo por correlativo/secuencia: correlativo ya avanzó en la app."
-                        : "Rechazo distinto a secuencia: revisá el mensaje; mismo correlativo."
+                      : dgiiStatus === "pending"
+                        ? "Envío pendiente/procesándose"
+                        : "Editá y guardá la cotización para volver a enviar (solo «Reenviar» si DGII indica secuencia ya utilizada)."
+                    : dgiiStatus === "rejected" && seqResubmit
+                      ? "Secuencia ya utilizada: reenviar con el nuevo e-NCF."
                       : "Enviar e-CF a DGII";
 
                 const dgiiSendBtnClass = dgiiSendLocked
@@ -1357,9 +1373,8 @@ export default function Clients() {
                     {formatEcfNumberDisplay(detail.ecf_tipo, detail.ecf_ncf_seq ?? undefined)}
                   </p>
                   <p className="text-xs leading-snug text-slate-500 sm:col-span-2">
-                    Tras un rechazo, el correlativo solo avanza en esta app cuando DGII indica problema de
-                    secuencia/correlativo ya usado (el botón muestra «Reenviar»). En otros rechazos («Reintentar»),
-                    el e-NCF no cambia: leé el mensaje, corregí el XML o datos y volvé a enviar.
+                    «Reenviar DGII» solo aparece si DGII indica que el número de secuencia ya fue utilizado.
+                    En cualquier otro rechazo el e-NCF no cambia: corregí la cotización y usá «Enviar DGII».
                   </p>
                   <p>
                     <span className="font-semibold">Referencia NCF (ND/NC):</span>{" "}
@@ -1396,13 +1411,12 @@ export default function Clients() {
                     )}
                     {detail.dgii_resubmit_new_seq === true ? (
                       <p className="mt-2 text-xs text-amber-900">
-                        Clasificado como rechazo por secuencia/correlativo: en el listado aparece «Reenviar DGII» y el
-                        sistema ya puede haber pasado al siguiente correlativo.
+                        Rechazo por secuencia ya utilizada: en el listado el botón es «Reenviar DGII» y el correlativo
+                        puede haber avanzado.
                       </p>
                     ) : (
                       <p className="mt-2 text-xs text-amber-900">
-                        No es un rechazo por secuencia según los mensajes: el correlativo sigue igual; pulsá «Reintentar»
-                        tras corregir.
+                        No es rechazo por secuencia: el mismo e-NCF se mantiene. Corregí la cotización y usá «Enviar DGII».
                       </p>
                     )}
                     {detail.dgii_response?.trim() ? (
