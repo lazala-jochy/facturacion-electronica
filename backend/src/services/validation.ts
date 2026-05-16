@@ -22,6 +22,10 @@ type EcfItem = {
   unit: string;
   unitPrice: number;
   totalValue: number;
+  /** e-CF 41: retención ITBIS por línea (opcional; se prorratea si falta). */
+  montoItbisRetenido?: number;
+  /** e-CF 41: retención ISR por línea (opcional; se prorratea si falta). */
+  montoIsrRetenido?: number;
 };
 
 export type EcfPayload = {
@@ -37,6 +41,9 @@ export type EcfPayload = {
   ecfTipo?: string;
   /** e-NCF documento modificado / referencia (p. ej. notas crédito/débito). */
   referenceEncf?: string | null;
+  /** e-CF 41: totales de retención en encabezado (opcional). */
+  totalItbisRetenido?: number;
+  totalIsrRetencion?: number;
 };
 
 const round2 = (value: number) => Number(value.toFixed(2));

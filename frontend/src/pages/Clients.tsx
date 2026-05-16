@@ -92,8 +92,10 @@ export default function Clients() {
   const [modalEncryptionSecret, setModalEncryptionSecret] = useState("");
   const [ecfCertModalLoading, setEcfCertModalLoading] = useState(false);
   const [query, setQuery] = useState("");
-  const [sortBy, setSortBy] = useState<"name" | "rnc" | "number" | "total" | "status">("name");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [sortBy, setSortBy] = useState<"recent" | "name" | "rnc" | "number" | "total" | "status">(
+    "recent",
+  );
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -623,6 +625,11 @@ export default function Clients() {
       const bTotal = b.last?.total ?? -1;
 
       let compare = 0;
+      if (sortBy === "recent") {
+        const aTs = Date.parse(a.client.created_at ?? "") || a.client.id;
+        const bTs = Date.parse(b.client.created_at ?? "") || b.client.id;
+        compare = aTs - bTs;
+      }
       if (sortBy === "name") compare = a.client.name.localeCompare(b.client.name);
       if (sortBy === "rnc") compare = a.client.rnc_cedula.localeCompare(b.client.rnc_cedula);
       if (sortBy === "number") compare = aNumber - bNumber;
@@ -735,9 +742,14 @@ export default function Clients() {
             />
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as "name" | "rnc" | "number" | "total" | "status")}
+              onChange={(e) =>
+                setSortBy(
+                  e.target.value as "recent" | "name" | "rnc" | "number" | "total" | "status",
+                )
+              }
               className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
             >
+              <option value="recent">Más recientes</option>
               <option value="name">Ordenar por Nombre</option>
               <option value="rnc">Ordenar por RNC/Cedula</option>
               <option value="number">Ordenar por No. Cotizacion</option>

@@ -70,6 +70,7 @@ export const listClients: RequestHandler = async (req, res) => {
       phone: c.phone,
       email: c.email,
       company_id: c.companyId,
+      created_at: c.createdAt.toISOString(),
       cotizaciones: c.cotizaciones.map((z) => ({
         id: z.id,
         number: z.number,

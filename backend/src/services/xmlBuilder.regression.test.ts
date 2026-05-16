@@ -276,6 +276,55 @@ test("XML e-CF 34 sin ITBIS: perfil E340000000016 (IndicadorNotaCredito 1, Monto
   assert.match(xml, /<IndicadorFacturacion>0<\/IndicadorFacturacion>/);
 });
 
+test("XML e-CF 41: IdDoc sin TipoIngresos, retenciones y Comprador mínimo", () => {
+  const issueDate = new Date("2024-06-15T12:00:00.000Z");
+  const p: EcfPayload = {
+    ecfNumber: "E410000000007",
+    ecfTipo: "41",
+    issueDate,
+    issuer: {
+      rnc: "131880738",
+      name: "ACME",
+      address: "Calle 1",
+      phone: null,
+      email: null,
+    },
+    buyer: {
+      name: "Proveedor SA",
+      rncCedula: "533445861",
+      address: "Calle 2",
+      contact: "Ana",
+    },
+    items: [
+      {
+        itemNumber: 1,
+        description: "Servicio profesional",
+        quantity: 1,
+        unit: "43",
+        unitPrice: 1000,
+        totalValue: 1000,
+      },
+    ],
+    subtotal: 1000,
+    itbis: 180,
+    total: 1180,
+  };
+  const xml = buildEcfXml(p);
+  assert.match(
+    xml,
+    /<FechaVencimientoSecuencia>[\s\S]*<IndicadorMontoGravado>0<\/IndicadorMontoGravado>\s*<TipoPago>1<\/TipoPago>\s*<TablaFormasPago>/,
+  );
+  assert.doesNotMatch(xml, /<TipoIngresos>/);
+  assert.match(xml, /<TotalITBISRetenido>/);
+  assert.match(xml, /<TotalISRRetencion>/);
+  assert.match(
+    xml,
+    /<IndicadorFacturacion>1<\/IndicadorFacturacion>\s*<Retencion>\s*<IndicadorAgenteRetencionoPercepcion>1<\/IndicadorAgenteRetencionoPercepcion>/,
+  );
+  assert.match(xml, /<RNCComprador>533445861<\/RNCComprador>/);
+  assert.doesNotMatch(xml, /<MunicipioComprador>/);
+});
+
 test("Plantilla 43: IdDoc mínimo, MontoExento, IndicadorFacturacion 4, sin Comprador", () => {
   const issueDate = new Date("2024-06-15T12:00:00.000Z");
   const p: EcfPayload = {

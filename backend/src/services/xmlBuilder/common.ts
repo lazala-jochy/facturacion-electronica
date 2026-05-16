@@ -14,6 +14,7 @@ export const DEFAULT_FECHA_VENC_SEC = process.env.DGII_ENCF_FECHA_VENC_SECUENCIA
 
 export const money = (value: number) => value.toFixed(2);
 export const qty = (value: number) => value.toFixed(2);
+export const unitPrice4 = (value: number) => value.toFixed(4);
 
 /** Fecha emisión (bloque Emisor): DD-MM-YYYY */
 export const fechaEmisionDdMmYyyy = (d: Date) => {

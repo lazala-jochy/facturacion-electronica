@@ -16,6 +16,7 @@ import {
   money,
   qty,
   splitPhones,
+  unitPrice4,
 } from "./common";
 import type { XMLBuilder } from "xmlbuilder2/lib/interfaces";
 
@@ -52,6 +53,14 @@ export function appendEmisor(enc: XMLBuilder, payload: EcfPayload): void {
   em.up();
 }
 
+/** Comprador mínimo (muestra e-CF 41: solo RNC y razón social). */
+export function appendCompradorMinimal(enc: XMLBuilder, payload: EcfPayload): void {
+  const comp = enc.ele("Comprador");
+  comp.ele("RNCComprador").txt(payload.buyer.rncCedula.trim());
+  comp.ele("RazonSocialComprador").txt(payload.buyer.name.trim());
+  comp.up();
+}
+
 export function appendComprador(enc: XMLBuilder, payload: EcfPayload): void {
   const comp = enc.ele("Comprador");
   comp.ele("RNCComprador").txt(payload.buyer.rncCedula.trim());
@@ -76,6 +85,102 @@ export function appendTotalesItbis18(enc: XMLBuilder, payload: EcfPayload): void
   tot.ele("TotalITBIS1").txt(money(payload.itbis));
   tot.ele("MontoTotal").txt(money(payload.total));
   tot.up();
+}
+
+const round2 = (value: number) => Number(value.toFixed(2));
+
+/** Reparte un total entre líneas según peso (totalValue); ajusta la última por redondeo. */
+function prorateByLineTotal(
+  items: EcfPayload["items"],
+  subtotal: number,
+  target: number,
+  pick: (item: EcfPayload["items"][number]) => number | undefined,
+): number[] {
+  if (!items.length || target <= 0) return items.map(() => 0);
+  const explicit = items.map((i) => pick(i));
+  if (explicit.every((v) => v != null && v >= 0)) {
+    return explicit.map((v) => round2(v ?? 0));
+  }
+  const base = subtotal > 0 ? subtotal : items.reduce((a, i) => a + i.totalValue, 0);
+  const out: number[] = [];
+  let assigned = 0;
+  for (let i = 0; i < items.length; i++) {
+    if (i === items.length - 1) {
+      out.push(round2(target - assigned));
+    } else {
+      const share = base > 0 ? round2((target * items[i].totalValue) / base) : 0;
+      out.push(share);
+      assigned = round2(assigned + share);
+    }
+  }
+  return out;
+}
+
+/** e-CF 41 — compras: ITBIS gravado + retenciones en totales (muestra E410000000007). */
+export function appendTotalesCompras41(enc: XMLBuilder, payload: EcfPayload): void {
+  const totalItbisRet =
+    payload.totalItbisRetenido != null
+      ? round2(payload.totalItbisRetenido)
+      : round2(payload.itbis);
+  const totalIsr =
+    payload.totalIsrRetencion != null
+      ? round2(payload.totalIsrRetencion)
+      : round2(payload.subtotal * 0.1);
+
+  const tot = enc.ele("Totales");
+  tot.ele("MontoGravadoTotal").txt(money(payload.subtotal));
+  tot.ele("MontoGravadoI1").txt(money(payload.subtotal));
+  tot.ele("ITBIS1").txt("18");
+  tot.ele("TotalITBIS").txt(money(payload.itbis));
+  tot.ele("TotalITBIS1").txt(money(payload.itbis));
+  tot.ele("MontoTotal").txt(money(payload.total));
+  tot.ele("TotalITBISRetenido").txt(money(totalItbisRet));
+  tot.ele("TotalISRRetencion").txt(money(totalIsr));
+  tot.up();
+}
+
+/** e-CF 41 — ítems con Retencion antes de NombreItem (orden muestra DGII). */
+export function appendDetallesItemsCompras41(root: XMLBuilder, payload: EcfPayload): void {
+  const totalItbisRet =
+    payload.totalItbisRetenido != null
+      ? round2(payload.totalItbisRetenido)
+      : round2(payload.itbis);
+  const totalIsr =
+    payload.totalIsrRetencion != null
+      ? round2(payload.totalIsrRetencion)
+      : round2(payload.subtotal * 0.1);
+
+  const itbisPerLine = prorateByLineTotal(
+    payload.items,
+    payload.subtotal,
+    totalItbisRet,
+    (i) => i.montoItbisRetenido,
+  );
+  const isrPerLine = prorateByLineTotal(
+    payload.items,
+    payload.subtotal,
+    totalIsr,
+    (i) => i.montoIsrRetenido,
+  );
+
+  const detalles = root.ele("DetallesItems");
+  payload.items.forEach((item, idx) => {
+    const line = detalles.ele("Item");
+    line.ele("NumeroLinea").txt(String(item.itemNumber));
+    line.ele("IndicadorFacturacion").txt("1");
+    const ret = line.ele("Retencion");
+    ret.ele("IndicadorAgenteRetencionoPercepcion").txt("1");
+    ret.ele("MontoITBISRetenido").txt(money(itbisPerLine[idx]));
+    ret.ele("MontoISRRetenido").txt(money(isrPerLine[idx]));
+    ret.up();
+    line.ele("NombreItem").txt(item.description.trim());
+    line.ele("IndicadorBienoServicio").txt(indicadorBienServicio(item.unit, item.description));
+    line.ele("CantidadItem").txt(qty(item.quantity));
+    line.ele("UnidadMedida").txt(mapUnidadMedidaDgii(item.unit));
+    line.ele("PrecioUnitarioItem").txt(unitPrice4(item.unitPrice));
+    line.ele("MontoItem").txt(money(item.totalValue));
+  });
+  detalles.up();
 }
 
 /** Muestra DGII E340000000016 (NC certificación sin ITBIS en totales). */

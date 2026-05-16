@@ -15,6 +15,7 @@ export type ClientListItem = {
   phone: string | null;
   email: string | null;
   company_id: number;
+  created_at?: string;
   cotizaciones: Array<{
     id: number;
     number: number;

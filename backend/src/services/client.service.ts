@@ -67,7 +67,7 @@ export const clientService = {
   listByCompany(companyId: number) {
     return prisma.client.findMany({
       where: { companyId },
-      orderBy: { id: "desc" },
+      orderBy: { createdAt: "desc" },
       include: {
         cotizaciones: {
           where: { companyId },
