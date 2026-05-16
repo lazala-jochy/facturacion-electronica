@@ -11,6 +11,7 @@ import {
   EMISOR_DEFAULT_PROVINCIA,
   fechaEmisionDdMmYyyy,
   fechaHoraFirmaDgii,
+  fechaLimitePagoDesdeEmision,
   indicadorBienServicio,
   mapUnidadMedidaDgii,
   money,
@@ -76,6 +77,8 @@ export function appendComprador(enc: XMLBuilder, payload: EcfPayload): void {
   comp.up();
 }
 
+const round2 = (value: number) => Number(value.toFixed(2));
+
 export function appendTotalesItbis18(enc: XMLBuilder, payload: EcfPayload): void {
   const tot = enc.ele("Totales");
   tot.ele("MontoGravadoTotal").txt(money(payload.subtotal));
@@ -87,7 +90,132 @@ export function appendTotalesItbis18(enc: XMLBuilder, payload: EcfPayload): void
   tot.up();
 }
 
-const round2 = (value: number) => Number(value.toFixed(2));
+function gravadoPorIndicadorFacturacion(payload: EcfPayload): { i1: number; i2: number } {
+  let i1 = 0;
+  let i2 = 0;
+  for (const item of payload.items) {
+    if (item.indicadorFacturacion === "2") {
+      i2 = round2(i2 + item.totalValue);
+    } else {
+      i1 = round2(i1 + item.totalValue);
+    }
+  }
+  if (i1 <= 0 && i2 <= 0 && payload.subtotal > 0) {
+    i1 = round2(payload.subtotal);
+  }
+  return { i1, i2 };
+}
+
+/** e-CF 45 — gubernamental: ITBIS 18% + 16% opcional, ValorPagar (muestra E450000000002). */
+export function appendTotalesGubernamental45(enc: XMLBuilder, payload: EcfPayload): void {
+  const { i1: gravadoI1, i2: gravadoI2 } = gravadoPorIndicadorFacturacion(payload);
+  const dual = gravadoI2 > 0.001;
+  const itbis1 = dual ? round2(gravadoI1 * 0.18) : round2(payload.itbis);
+  const itbis2 = dual ? round2(gravadoI2 * 0.16) : 0;
+  const totalItbis = dual ? round2(itbis1 + itbis2) : round2(payload.itbis);
+
+  const tot = enc.ele("Totales");
+  tot.ele("MontoGravadoTotal").txt(money(payload.subtotal));
+  tot.ele("MontoGravadoI1").txt(money(gravadoI1));
+  if (dual) {
+    tot.ele("MontoGravadoI2").txt(money(gravadoI2));
+  }
+  tot.ele("ITBIS1").txt("18");
+  if (dual) {
+    tot.ele("ITBIS2").txt("16");
+  }
+  tot.ele("TotalITBIS").txt(money(totalItbis));
+  tot.ele("TotalITBIS1").txt(money(itbis1));
+  if (dual) {
+    tot.ele("TotalITBIS2").txt(money(itbis2));
+  }
+  tot.ele("MontoTotal").txt(money(payload.total));
+  tot.ele("ValorPagar").txt(money(payload.total));
+  tot.up();
+}
+
+/** Monto gravado exportación (sin ITBIS): debe ser la base de MontoTotal y MontoPago. */
+export function gravadoExportacion46(payload: EcfPayload): number {
+  const fromItems = round2(payload.items.reduce((acc, i) => acc + i.totalValue, 0));
+  return payload.subtotal > 0 ? round2(payload.subtotal) : fromItems;
+}
+
+/** e-CF 46 — IdDoc crédito (muestra E460000000001). */
+export function appendIdDocExportacion46(idDoc: XMLBuilder, payload: EcfPayload): void {
+  const gravado = gravadoExportacion46(payload);
+  const tipoPago = payload.tipoPago ?? "2";
+  const formaPago = payload.formaPago ?? "2";
+  idDoc.ele("TipoPago").txt(tipoPago);
+  idDoc
+    .ele("FechaLimitePago")
+    .txt(payload.fechaLimitePago ?? fechaLimitePagoDesdeEmision(payload.issueDate));
+  idDoc.ele("TerminoPago").txt(payload.terminoPago ?? "1 mes");
+  const tabFormas = idDoc.ele("TablaFormasPago");
+  const forma = tabFormas.ele("FormaDePago");
+  forma.ele("FormaPago").txt(formaPago);
+  forma.ele("MontoPago").txt(money(gravado));
+  tabFormas.up();
+}
+
+/** e-CF 46 — exportación: gravado I3, ITBIS 0% (muestra E460000000001). */
+export function appendTotalesExportacion46(enc: XMLBuilder, payload: EcfPayload): void {
+  const gravado = gravadoExportacion46(payload);
+  const tot = enc.ele("Totales");
+  tot.ele("MontoGravadoTotal").txt(money(gravado));
+  tot.ele("MontoGravadoI3").txt(money(gravado));
+  tot.ele("ITBIS3").txt("0");
+  tot.ele("TotalITBIS").txt("0.00");
+  tot.ele("TotalITBIS3").txt("0.00");
+  tot.ele("MontoTotal").txt(money(gravado));
+  tot.up();
+}
+
+/** e-CF 46: IndicadorFacturacion 3, TablaCodigosItem opcional. */
+export function appendDetallesItemsExportacion46(root: XMLBuilder, payload: EcfPayload): void {
+  const detalles = root.ele("DetallesItems");
+  for (const item of payload.items) {
+    const line = detalles.ele("Item");
+    line.ele("NumeroLinea").txt(String(item.itemNumber));
+    const codigo = (item.codigoItem ?? "").trim();
+    if (codigo) {
+      const tabla = line.ele("TablaCodigosItem");
+      const cod = tabla.ele("CodigosItem");
+      cod.ele("TipoCodigo").txt((item.tipoCodigoItem ?? "INTERNA").trim());
+      cod.ele("CodigoItem").txt(codigo);
+      cod.up();
+      tabla.up();
+    }
+    line.ele("IndicadorFacturacion").txt("3");
+    line.ele("NombreItem").txt(item.description.trim());
+    line.ele("IndicadorBienoServicio").txt(
+      indicadorBienServicio(item.unit, item.description),
+    );
+    line.ele("CantidadItem").txt(qty(item.quantity));
+    line.ele("UnidadMedida").txt(mapUnidadMedidaDgii(item.unit));
+    line.ele("PrecioUnitarioItem").txt(money(item.unitPrice));
+    line.ele("MontoItem").txt(money(item.totalValue));
+  }
+  detalles.up();
+}
+
+/** e-CF 45: IndicadorFacturacion 1|2 por línea, precio 4 decimales. */
+export function appendDetallesItemsGubernamental45(root: XMLBuilder, payload: EcfPayload): void {
+  const detalles = root.ele("DetallesItems");
+  for (const item of payload.items) {
+    const line = detalles.ele("Item");
+    line.ele("NumeroLinea").txt(String(item.itemNumber));
+    line.ele("IndicadorFacturacion").txt(item.indicadorFacturacion ?? "1");
+    line.ele("NombreItem").txt(item.description.trim());
+    line.ele("IndicadorBienoServicio").txt(
+      indicadorBienServicio(item.unit, item.description),
+    );
+    line.ele("CantidadItem").txt(qty(item.quantity));
+    line.ele("UnidadMedida").txt(mapUnidadMedidaDgii(item.unit));
+    line.ele("PrecioUnitarioItem").txt(unitPrice4(item.unitPrice));
+    line.ele("MontoItem").txt(money(item.totalValue));
+  }
+  detalles.up();
+}
 
 /** Reparte un total entre líneas según peso (totalValue); ajusta la última por redondeo. */
 function prorateByLineTotal(

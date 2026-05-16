@@ -1,5 +1,6 @@
 /**
- * Plantilla exclusiva **e-CF 45** — Comprobante gubernamental.
+ * Plantilla exclusiva **e-CF 45** — Gubernamental.
+ * Alineado a muestra DGII E450000000002: dual ITBIS 18%/16%, ValorPagar, ítems fact. 1|2.
  */
 
 import { create } from "xmlbuilder2";
@@ -7,11 +8,11 @@ import type { EcfPayload } from "../../validation";
 import { DEFAULT_FECHA_VENC_SEC } from "../common";
 import {
   appendComprador,
-  appendDetallesItems,
+  appendDetallesItemsGubernamental45,
   appendEmisor,
   appendFechaHoraFirma,
   appendIdDocTipoPagoYFormas,
-  appendTotalesItbis18,
+  appendTotalesGubernamental45,
 } from "../bloques";
 
 export function plantillaEcf45(payload: EcfPayload): string {
@@ -31,10 +32,10 @@ export function plantillaEcf45(payload: EcfPayload): string {
 
   appendEmisor(enc, payload);
   appendComprador(enc, payload);
-  appendTotalesItbis18(enc, payload);
+  appendTotalesGubernamental45(enc, payload);
   enc.up();
 
-  appendDetallesItems(root, payload);
+  appendDetallesItemsGubernamental45(root, payload);
   appendFechaHoraFirma(root);
 
   return doc.end({ prettyPrint: true });

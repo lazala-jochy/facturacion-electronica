@@ -45,9 +45,26 @@ const refRequired =
     }),
   });
 
+const round2 = (value: number) => Number(value.toFixed(2));
+
+const gravadoFromPayload = (p: EcfPayload) => {
+  const fromItems = round2(p.items.reduce((acc, i) => acc + i.totalValue, 0));
+  return p.subtotal > 0 ? round2(p.subtotal) : fromItems;
+};
+
+/** Exportación: totales sin ITBIS; MontoTotal = suma de ítems (muestra E460000000001). */
+const handlerExportacion46: EcfTipoHandler = {
+  validateCotizacionContext: () => [],
+  refinePayload: (p) => {
+    const gravado = gravadoFromPayload(p);
+    return { ...p, subtotal: gravado, itbis: 0, total: gravado };
+  },
+};
+
 const registry: Record<string, EcfTipoHandler> = {
   "33": refRequired("33"),
   "34": refRequired("34"),
+  "46": handlerExportacion46,
 };
 
 export const getEcfTipoHandler = (ecfTipo: string): EcfTipoHandler => {

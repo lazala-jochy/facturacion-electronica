@@ -24,6 +24,13 @@ export const fechaEmisionDdMmYyyy = (d: Date) => {
   return `${dd}-${mm}-${y}`;
 };
 
+/** Fecha límite de pago (IdDoc crédito): DD-MM-YYYY, días desde emisión. */
+export const fechaLimitePagoDesdeEmision = (issueDate: Date, days = 35) => {
+  const d = new Date(issueDate);
+  d.setDate(d.getDate() + days);
+  return fechaEmisionDdMmYyyy(d);
+};
+
 /** FechaHoraFirma (antes de Signature): DD-MM-YYYY HH:mm:ss */
 export const fechaHoraFirmaDgii = () => {
   const d = new Date();

@@ -22,6 +22,11 @@ type EcfItem = {
   unit: string;
   unitPrice: number;
   totalValue: number;
+  /** e-CF 45: 1=gravado ITBIS 18%, 2=gravado ITBIS 16% (muestra E450000000002). */
+  indicadorFacturacion?: "1" | "2";
+  /** e-CF 46: código interno del ítem (TablaCodigosItem). */
+  codigoItem?: string;
+  tipoCodigoItem?: string;
   /** e-CF 41: retención ITBIS por línea (opcional; se prorratea si falta). */
   montoItbisRetenido?: number;
   /** e-CF 41: retención ISR por línea (opcional; se prorratea si falta). */
@@ -44,6 +49,12 @@ export type EcfPayload = {
   /** e-CF 41: totales de retención en encabezado (opcional). */
   totalItbisRetenido?: number;
   totalIsrRetencion?: number;
+  /** e-CF 46: pago a crédito (muestra E460000000001). */
+  tipoPago?: "1" | "2";
+  formaPago?: "1" | "2";
+  /** DD-MM-YYYY */
+  fechaLimitePago?: string;
+  terminoPago?: string;
 };
 
 const round2 = (value: number) => Number(value.toFixed(2));
@@ -83,12 +94,23 @@ export const validateEcfPayload = (payload: EcfPayload) => {
   if (Math.abs(recomputedSubtotal - round2(payload.subtotal)) > 0.01) {
     errors.push("Subtotal no coincide con la suma de items.");
   }
-  const recomputedTotal = round2(payload.subtotal + payload.itbis);
-  if (Math.abs(recomputedTotal - round2(payload.total)) > 0.01) {
-    errors.push("Total no coincide con subtotal + ITBIS.");
+  const t = resolvePlantillaEcfTipo(payload);
+  if (t === "46") {
+    const gravado = round2(payload.items.reduce((acc, i) => acc + i.totalValue, 0));
+    const base = payload.subtotal > 0 ? round2(payload.subtotal) : gravado;
+    if (payload.itbis > 0.001) {
+      errors.push("Tipo 46 (exportación): el ITBIS debe ser cero en totales DGII.");
+    }
+    if (Math.abs(base - round2(payload.total)) > 0.01) {
+      errors.push("Tipo 46: el total debe coincidir con el subtotal gravado (sin ITBIS).");
+    }
+  } else {
+    const recomputedTotal = round2(payload.subtotal + payload.itbis);
+    if (Math.abs(recomputedTotal - round2(payload.total)) > 0.01) {
+      errors.push("Total no coincide con subtotal + ITBIS.");
+    }
   }
 
-  const t = resolvePlantillaEcfTipo(payload);
   if ((t === "33" || t === "34") && !String(payload.referenceEncf ?? "").trim()) {
     errors.push("Tipo 33/34: debe incluirse NCFModificado (documento de referencia).");
   }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildEcfXml, resolvePlantillaEcfTipo } from "./xmlBuilder";
+import { refinePayloadForEcfTipo } from "./ecfTipoHandlers";
 import { validateEcfPayload } from "./validation";
 import type { EcfPayload } from "./validation";
 
@@ -431,6 +432,171 @@ test("Plantilla 44: alineada a E440000000010 (IdDoc, totales exentos, ítems fac
     /<IndicadorFacturacion>4<\/IndicadorFacturacion>\s*<NombreItem>ZAPATOS<\/NombreItem>/,
   );
   assert.match(xml, /<Comprador>/);
+});
+
+test("Plantilla 45: alineada a E450000000002 (dual ITBIS, ValorPagar, ítems fact. 1|2)", () => {
+  const issueDate = new Date("2024-06-15T12:00:00.000Z");
+  const p: EcfPayload = {
+    ecfNumber: "E450000000002",
+    ecfTipo: "45",
+    issueDate,
+    issuer: {
+      rnc: "131880738",
+      name: "ACME",
+      address: "Calle 1",
+      phone: null,
+      email: null,
+    },
+    buyer: {
+      name: "Cliente Gov",
+      rncCedula: "131880681",
+      address: "Calle comprador",
+    },
+    items: [
+      {
+        itemNumber: 1,
+        description: "BLOCK",
+        quantity: 100,
+        unit: "23",
+        unitPrice: 450,
+        totalValue: 45000,
+        indicadorFacturacion: "1",
+      },
+      {
+        itemNumber: 2,
+        description: "CEMENTO GRIS",
+        quantity: 400,
+        unit: "23",
+        unitPrice: 250,
+        totalValue: 100000,
+        indicadorFacturacion: "2",
+      },
+    ],
+    subtotal: 145000,
+    itbis: 24100,
+    total: 169100,
+  };
+  const xml = buildEcfXml(p);
+  assert.match(xml, /<IndicadorMontoGravado>0<\/IndicadorMontoGravado>/);
+  assert.match(
+    xml,
+    /<MontoGravadoI1>45000\.00<\/MontoGravadoI1>\s*<MontoGravadoI2>100000\.00<\/MontoGravadoI2>\s*<ITBIS1>18<\/ITBIS1>\s*<ITBIS2>16<\/ITBIS2>/,
+  );
+  assert.match(
+    xml,
+    /<TotalITBIS1>8100\.00<\/TotalITBIS1>\s*<TotalITBIS2>16000\.00<\/TotalITBIS2>/,
+  );
+  assert.match(xml, /<ValorPagar>169100\.00<\/ValorPagar>/);
+  assert.match(
+    xml,
+    /<IndicadorFacturacion>1<\/IndicadorFacturacion>\s*<NombreItem>BLOCK<\/NombreItem>/,
+  );
+  assert.match(
+    xml,
+    /<IndicadorFacturacion>2<\/IndicadorFacturacion>\s*<NombreItem>CEMENTO GRIS<\/NombreItem>/,
+  );
+  assert.match(xml, /<PrecioUnitarioItem>450\.0000<\/PrecioUnitarioItem>/);
+});
+
+test("Plantilla 46: alineada a E460000000001 (crédito, I3/ITBIS 0, ítems fact. 3)", () => {
+  const issueDate = new Date("2020-04-01T12:00:00.000Z");
+  const p: EcfPayload = {
+    ecfNumber: "E460000000001",
+    ecfTipo: "46",
+    issueDate,
+    issuer: {
+      rnc: "131880738",
+      name: "ACME",
+      address: "Calle 1",
+      phone: null,
+      email: null,
+    },
+    buyer: {
+      name: "ZONA FRANCA LOI",
+      rncCedula: "131880681",
+      address: "ZONA HAINA",
+    },
+    items: [
+      {
+        itemNumber: 1,
+        description: "AGUACATE CRIOLLO",
+        quantity: 100,
+        unit: "43",
+        unitPrice: 18000,
+        totalValue: 1800000,
+        codigoItem: "123456",
+      },
+    ],
+    subtotal: 1800000,
+    itbis: 0,
+    total: 1800000,
+    fechaLimitePago: "06-05-2020",
+    terminoPago: "1 mes",
+  };
+  const xml = buildEcfXml(p);
+  assert.doesNotMatch(xml, /<IndicadorMontoGravado>/);
+  assert.match(
+    xml,
+    /<TipoIngresos>01<\/TipoIngresos>\s*<TipoPago>2<\/TipoPago>\s*<FechaLimitePago>06-05-2020<\/FechaLimitePago>\s*<TerminoPago>1 mes<\/TerminoPago>/,
+  );
+  assert.match(xml, /<FormaPago>2<\/FormaPago>\s*<MontoPago>1800000\.00<\/MontoPago>/);
+  assert.match(
+    xml,
+    /<MontoGravadoI3>1800000\.00<\/MontoGravadoI3>\s*<ITBIS3>0<\/ITBIS3>\s*<TotalITBIS>0\.00<\/TotalITBIS>\s*<TotalITBIS3>0\.00<\/TotalITBIS3>/,
+  );
+  assert.doesNotMatch(xml, /<MontoGravadoI1>/);
+  assert.doesNotMatch(xml, /<ValorPagar>/);
+  assert.match(
+    xml,
+    /<TablaCodigosItem>[\s\S]*<CodigoItem>123456<\/CodigoItem>[\s\S]*<IndicadorFacturacion>3<\/IndicadorFacturacion>/,
+  );
+  assert.match(xml, /<PrecioUnitarioItem>18000\.00<\/PrecioUnitarioItem>/);
+  assert.match(
+    xml,
+    /<MontoTotal>1800000\.00<\/MontoTotal>/,
+  );
+});
+
+test("Plantilla 46: MontoTotal = gravado si la cotización traía ITBIS 18%", () => {
+  const issueDate = new Date("2020-04-01T12:00:00.000Z");
+  const raw: EcfPayload = {
+    ecfNumber: "E460000000002",
+    ecfTipo: "46",
+    issueDate,
+    issuer: {
+      rnc: "131880738",
+      name: "ACME",
+      address: "Calle 1",
+    },
+    buyer: { name: "Cliente", rncCedula: "131880681" },
+    items: [
+      {
+        itemNumber: 1,
+        description: "Producto export",
+        quantity: 10,
+        unit: "6",
+        unitPrice: 100,
+        totalValue: 1000,
+      },
+    ],
+    subtotal: 1000,
+    itbis: 180,
+    total: 1180,
+  };
+  const refined = refinePayloadForEcfTipo(raw, {
+    ecfTipo: "46",
+    ecfReferenceNcf: null,
+    client: { rncCedula: "131880681" },
+  } as Parameters<typeof refinePayloadForEcfTipo>[1]);
+  assert.equal(refined.itbis, 0);
+  assert.equal(refined.total, 1000);
+  const xml = buildEcfXml(refined);
+  assert.match(
+    xml,
+    /<MontoGravadoTotal>1000\.00<\/MontoGravadoTotal>[\s\S]*<MontoTotal>1000\.00<\/MontoTotal>/,
+  );
+  assert.match(xml, /<MontoPago>1000\.00<\/MontoPago>/);
+  assert.doesNotMatch(xml, /<MontoTotal>1180\.00<\/MontoTotal>/);
 });
 
 test("resolvePlantillaEcfTipo prioriza tipo de comprobante fiscal sobre prefijo e-NCF", () => {
