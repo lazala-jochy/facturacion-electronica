@@ -1,4 +1,5 @@
 import PDFDocument from "pdfkit";
+import { ECF_TIPO_LABELS } from "./ecfTipo";
 
 type CotizacionForPdf = {
   number: number;
@@ -9,6 +10,8 @@ type CotizacionForPdf = {
   comment: string | null;
   documentTitle: string;
   fiscalLegend: string;
+  ecfTipo?: string | null;
+  ecfReferenceNcf?: string | null;
   subtotal: number;
   itbis: number;
   total: number;
@@ -106,6 +109,22 @@ export const buildCotizacionPdfBuffer = (
 
     doc.font("Helvetica-Bold").fontSize(13);
     doc.text(cotizacion.documentTitle || "Pre-factura", { align: "center" });
+    const tipo = (cotizacion.ecfTipo ?? "").trim();
+    if (tipo) {
+      doc.font("Helvetica").fontSize(9).fillColor("#444444");
+      const lbl = ECF_TIPO_LABELS[tipo] ?? "";
+      doc.text(
+        lbl ? `Tipo comprobante (e-CF): ${tipo} — ${lbl}` : `Tipo comprobante (e-CF): ${tipo}`,
+        { align: "center" },
+      );
+      doc.fillColor("#000000");
+    }
+    const refDoc = (cotizacion.ecfReferenceNcf ?? "").trim();
+    if (refDoc) {
+      doc.font("Helvetica").fontSize(9).fillColor("#444444");
+      doc.text(`Documento referencia (NCFModificado): ${refDoc}`, { align: "center" });
+      doc.fillColor("#000000");
+    }
     doc.text("Con valor fiscal", { align: "center" });
     doc.moveDown(0.55);
 

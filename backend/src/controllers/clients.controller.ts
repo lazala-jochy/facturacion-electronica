@@ -1,6 +1,8 @@
 import "../types/express-auth.augment";
 import type { RequestHandler } from "express";
 import { clientService } from "../services/client.service";
+import { isDgiiSequenceRejection, summarizeDgiiResponse } from "../utils/dgiiRejection";
+import { buildEcfNumber } from "../utils/ecfTipo";
 
 const pickRncCedula = (body: Record<string, unknown>) => {
   const v = body.rnc_cedula ?? body.rncCedula;
@@ -71,12 +73,24 @@ export const listClients: RequestHandler = async (req, res) => {
       cotizaciones: c.cotizaciones.map((z) => ({
         id: z.id,
         number: z.number,
+        ecf_tipo: z.ecfTipo,
+        ecf_ncf_seq: z.ecfNcfSeq,
+        ecf_number:
+          z.ecfNcfSeq > 0 ? buildEcfNumber(z.ecfTipo, z.ecfNcfSeq) : null,
         subtotal: z.subtotal,
         itbis: z.itbis,
         total: z.total,
         dgii_status: z.dgiiStatus,
         dgii_track_id: z.dgiiTrackId,
         dgii_submitted_at: z.dgiiSubmittedAt?.toISOString() ?? null,
+        dgii_rejection_summary:
+          z.dgiiStatus === "rejected" && z.dgiiResponse?.trim()
+            ? summarizeDgiiResponse(z.dgiiResponse)
+            : null,
+        dgii_resubmit_new_seq:
+          z.dgiiStatus === "rejected" && z.dgiiResponse?.trim()
+            ? isDgiiSequenceRejection(z.dgiiResponse)
+            : false,
         created_at: z.createdAt.toISOString(),
       })),
     })),

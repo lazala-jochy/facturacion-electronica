@@ -1,4 +1,4 @@
-import { apiFetch, apiUrl, readAuthSessionFromStorage, ApiError } from "./api";
+import { apiFetch, authenticatedFetch, readAuthSessionFromStorage, ApiError } from "./api";
 
 export type CommercialApprovalResult = {
   ok: boolean;
@@ -88,14 +88,10 @@ export async function runCommercialApprovalBatch(body: {
       fd.append("desktop_parent_dir", body.desktop_parent_dir.trim());
     }
 
-    const headers = new Headers();
-    headers.set("Authorization", `Bearer ${session.token}`);
-
     let response: Response;
     try {
-      response = await fetch(`${apiUrl}/commercial-approvals/batch/run`, {
+      response = await authenticatedFetch("/commercial-approvals/batch/run", {
         method: "POST",
-        headers,
         body: fd,
       });
     } catch {

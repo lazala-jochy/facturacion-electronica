@@ -1,5 +1,4 @@
-import { apiFetch, apiUrl, ApiError, readAuthSessionFromStorage } from "./api";
-import { AUTH_STORAGE_KEY, type AuthSession } from "../types/session";
+import { apiFetch, authenticatedFetch, ApiError, readAuthSessionFromStorage } from "./api";
 
 export type CotizacionItemDraft = {
   quantity: number;
@@ -14,7 +13,9 @@ export type CotizacionListItem = {
   client_id: number;
   company_id: number;
   payment_terms: string;
+  payment_method?: string | null;
   account_manager: string;
+  comment?: string | null;
   subtotal: number;
   itbis: number;
   total: number;
@@ -24,6 +25,11 @@ export type CotizacionListItem = {
   dgii_status?: string | null;
   dgii_track_id?: string | null;
   dgii_submitted_at?: string | null;
+  dgii_rejection_summary?: string | null;
+  dgii_resubmit_new_seq?: boolean;
+  ecf_tipo?: string;
+  ecf_ncf_seq?: number | null;
+  ecf_reference_ncf?: string | null;
   items_count: number;
 };
 
@@ -41,7 +47,15 @@ export type CotizacionDetail = {
   dgii_status?: string | null;
   dgii_track_id?: string | null;
   dgii_response?: string | null;
+  dgii_rejection_summary?: string | null;
+  dgii_resubmit_new_seq?: boolean;
   signed_xml?: string | null;
+  ecf_ri_pdf_path?: string | null;
+  ecf_ri_qr_url?: string | null;
+  ecf_ri_generated_at?: string | null;
+  ecf_tipo?: string;
+  ecf_ncf_seq?: number;
+  ecf_reference_ncf?: string | null;
   client: {
     name: string;
     rnc_cedula: string;
@@ -72,12 +86,16 @@ export type CreateClientWithCotizacionPayload = {
     payment_method?: string;
     account_manager: string;
     comment?: string;
+    ecf_tipo?: string;
+    ecf_reference_ncf?: string;
     calc_mode?: "auto" | "manual";
     subtotal?: number;
     itbis?: number;
     total?: number;
   };
   items: CotizacionItemDraft[];
+  /** Clave de cifrado del .p12 (mín. 8); obligatoria si la empresa tiene certificado sin clave guardada en perfil. */
+  certificate_encryption_secret?: string;
 };
 
 export const createClientWithCotizacion = (payload: CreateClientWithCotizacionPayload) =>
@@ -116,44 +134,22 @@ export const deleteCotizacion = (id: number) =>
   });
 
 export const generateEcfXml = (id: number) =>
-  apiFetch<{ message: string; ecf_number: string; xml: string }>(
+  apiFetch<{ message: string; ecf_number: string; xml: string; signed?: boolean }>(
     `/cotizaciones/${id}/ecf/xml`,
     { method: "GET" },
   );
 
-/** Consulta estado en DGII por trackId guardado en la cotización (GET). */
-export const queryDgiiEcfForCotizacion = (id: number) =>
-  apiFetch<{ message: string; http_status: number; dgii_response: string }>(
-    `/cotizaciones/${id}/ecf/dgii/query`,
-    { method: "GET" },
-  );
-
-export type SubmitEcfResult = {
-  message: string;
-  status: "accepted" | "rejected";
-  track_id: string;
-  accepted: boolean;
-  dgii_response: string;
-  certificate_saved?: boolean;
-};
-
-export const submitEcf = async (
+/** Firma el XML con el certificado de la empresa sin enviar a DGII (misma autenticación que submit). */
+export const signEcfXmlLocal = async (
   id: number,
   opts?: {
     certificate?: File;
     certificatePassword?: string;
-    /** Misma clave que al guardar el .p12; obligatoria si ya hay certificado guardado o al subir uno en este envío. */
     certificateEncryptionSecret?: string;
   },
-): Promise<SubmitEcfResult> => {
-  if (typeof navigator !== "undefined" && !navigator.onLine) {
-    throw new Error("Debes conectarte a internet para enviar a DGII.");
-  }
+): Promise<{ message: string; ecf_number: string; signed_xml: string }> => {
   const session = readAuthSessionFromStorage();
   if (!session?.token) throw new ApiError("No hay sesión.", 401);
-
-  const headers = new Headers();
-  headers.set("Authorization", `Bearer ${session.token}`);
 
   const fd = new FormData();
   const fromCompany = session.company?.certificate_keyphrase?.trim() ?? "";
@@ -164,9 +160,86 @@ export const submitEcf = async (
     fd.append("certificate_password", opts.certificatePassword ?? "");
   }
 
-  const response = await fetch(`${apiUrl}/cotizaciones/${id}/ecf/submit`, {
+  const response = await authenticatedFetch(`/cotizaciones/${id}/ecf/sign`, {
     method: "POST",
-    headers,
+    body: fd,
+  });
+  const data = (await response.json().catch(() => ({}))) as { message?: string; signed_xml?: string; ecf_number?: string; code?: string };
+  if (!response.ok) {
+    throw new ApiError(data.message ?? "No se pudo firmar el XML.", response.status, data as Record<string, unknown>);
+  }
+  return data as { message: string; ecf_number: string; signed_xml: string };
+};
+
+/** Consulta estado en DGII por trackId guardado en la cotización (GET). Opcional `dgii_cert_profile=paso4` si usás solo URLs Paso 4. */
+export const queryDgiiEcfForCotizacion = (
+  id: number,
+  opts?: { dgiiCertProfile?: "paso2" | "paso4" },
+) => {
+  const q =
+    opts?.dgiiCertProfile != null
+      ? `?dgii_cert_profile=${encodeURIComponent(opts.dgiiCertProfile)}`
+      : "";
+  return apiFetch<{
+    message: string;
+    http_status: number;
+    dgii_response: string;
+    dgii_status?: string | null;
+  }>(
+    `/cotizaciones/${id}/ecf/dgii/query${q}`,
+    { method: "GET" },
+  );
+};
+
+export type SubmitEcfResult = {
+  message: string;
+  status: "accepted" | "rejected" | "prepared" | "pending";
+  track_id: string;
+  accepted: boolean;
+  dgii_response: string;
+  certificate_saved?: boolean;
+  /** Correlativo e-NCF guardado tras el envío (p. ej. tras rechazo por secuencia). */
+  ecf_ncf_seq?: number;
+  /** e-NCF completo, p. ej. E310000000017 */
+  ecf_number?: string;
+  /** Resumen legible del estado DGII (aceptado, rechazado o pendiente). */
+  dgii_status_summary?: string;
+  /** Presente si status === rejected: texto legible de mensajes DGII. */
+  dgii_rejection_summary?: string;
+  /** true si el rechazo se clasifica como secuencia/correlativo (avanzar e-NCF). */
+  dgii_resubmit_new_seq?: boolean;
+};
+
+export const submitEcf = async (
+  id: number,
+  opts?: {
+    certificate?: File;
+    certificatePassword?: string;
+    /** Misma clave que al guardar el .p12; obligatoria si ya hay certificado guardado o al subir uno en este envío. */
+    certificateEncryptionSecret?: string;
+    /** Solo certificación: paso2 (URLs estándar) vs paso4 (simulación e-CF). */
+    dgiiCertProfile?: "paso2" | "paso4";
+  },
+): Promise<SubmitEcfResult> => {
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    throw new Error("Debes conectarte a internet para enviar a DGII.");
+  }
+  const session = readAuthSessionFromStorage();
+  if (!session?.token) throw new ApiError("No hay sesión.", 401);
+
+  const fd = new FormData();
+  const fromCompany = session.company?.certificate_keyphrase?.trim() ?? "";
+  const enc = (opts?.certificateEncryptionSecret?.trim() || fromCompany || "").trim();
+  if (enc.length >= 8) fd.append("certificate_encryption_secret", enc);
+  const profile = opts?.dgiiCertProfile ?? "paso2";
+  fd.append("dgii_cert_profile", profile);
+  if (opts?.certificate) {
+    fd.append("certificate", opts.certificate);
+    fd.append("certificate_password", opts.certificatePassword ?? "");
+  }
+
+  const response = await authenticatedFetch(`/cotizaciones/${id}/ecf/submit`, {
+    method: "POST",
     body: fd,
   });
   const data = (await response.json().catch(() => ({}))) as SubmitEcfResult & {
@@ -185,26 +258,8 @@ export const submitEcf = async (
  */
 export const downloadCotizacionPDF = async (id: number, fileName?: string) => {
   try {
-    const session = (() => {
-      const raw = localStorage.getItem(AUTH_STORAGE_KEY);
-      if (!raw) return null;
-      try {
-        const s = JSON.parse(raw) as Partial<AuthSession>;
-        if (s?.token && s?.user && s?.company) return s as AuthSession;
-        return null;
-      } catch {
-        return null;
-      }
-    })();
-
-    const headers = new Headers();
-    if (session?.token) {
-      headers.set("Authorization", `Bearer ${session.token}`);
-    }
-
-    const response = await fetch(`${apiUrl}/cotizaciones/${id}/pdf`, {
+    const response = await authenticatedFetch(`/cotizaciones/${id}/pdf`, {
       method: "GET",
-      headers,
     });
 
     if (!response.ok) {
@@ -227,5 +282,30 @@ export const downloadCotizacionPDF = async (id: number, fileName?: string) => {
         : "Error al descargar el PDF"
     );
   }
+};
+
+/** Representación impresa e-CF (PDF con QR consulta timbre DGII). */
+export const downloadRepresentacionImpresaEcf = async (id: number, fileName?: string) => {
+  const session = readAuthSessionFromStorage();
+  if (!session?.token) throw new Error("No hay sesión.");
+
+  const response = await authenticatedFetch(`/cotizaciones/${id}/ecf/representacion-impresa`, {
+    method: "GET",
+  });
+
+  if (!response.ok) {
+    const data = (await response.json().catch(() => ({}))) as { message?: string };
+    throw new Error(data.message ?? "No se pudo descargar la representación impresa.");
+  }
+
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName || `representacion-ecf-${id}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
 };
 

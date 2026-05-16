@@ -1,7 +1,14 @@
 import { createHash, randomBytes } from "crypto";
 import type { Company, User } from "@prisma/client";
 import { prisma } from "../prisma";
-import type { ForgotPasswordBody, LoginBody, RegisterBody, ResetPasswordBody, UpdateCompanyBody } from "../types/auth";
+import type {
+  ForgotPasswordBody,
+  LoginBody,
+  RefreshBody,
+  RegisterBody,
+  ResetPasswordBody,
+  UpdateCompanyBody,
+} from "../types/auth";
 import {
   assertCertificateEncryptionSecret,
   verifyPkcs12Password,
@@ -70,9 +77,38 @@ export type PublicCompany = Pick<
   token_cached: boolean;
 };
 
+const REFRESH_TOKEN_DAYS = Math.max(
+  1,
+  Number.parseInt(process.env.REFRESH_TOKEN_DAYS ?? "30", 10) || 30,
+);
+const REFRESH_TTL_MS = REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000;
+
+const hashOpaqueToken = (raw: string) => createHash("sha256").update(raw).digest("hex");
+
+const issueRefreshToken = async (userId: number): Promise<string> => {
+  const raw = randomBytes(32).toString("hex");
+  const tokenHash = hashOpaqueToken(raw);
+  const expiresAt = new Date(Date.now() + REFRESH_TTL_MS);
+  await prisma.refreshToken.create({
+    data: { userId, tokenHash, expiresAt },
+  });
+  return raw;
+};
+
+const createSessionPair = async (user: User & { company: Company }) => {
+  const token = signSessionToken({
+    sub: user.id,
+    companyId: user.companyId,
+    email: user.email,
+  });
+  const refresh_token = await issueRefreshToken(user.id);
+  return { token, refresh_token };
+};
+
 export type AuthOk = {
   ok: true;
   token: string;
+  refresh_token: string;
   user: {
     id: number;
     email: string;
@@ -313,15 +349,13 @@ export const authService = {
       }
     }
 
-    const token = signSessionToken({
-      sub: user.id,
-      companyId: company.id,
-      email: user.email,
-    });
+    await prisma.refreshToken.deleteMany({ where: { userId: user.id } });
+    const { token, refresh_token } = await createSessionPair({ ...user, company: companyOut });
 
     return {
       ok: true,
       token,
+      refresh_token,
       user: publicUser(user),
       company: publicCompany(companyOut),
     };
@@ -348,17 +382,46 @@ export const authService = {
       };
     }
 
-    const token = signSessionToken({
-      sub: user.id,
-      companyId: user.companyId,
-      email: user.email,
-    });
+    await prisma.refreshToken.deleteMany({ where: { userId: user.id } });
+    const { token, refresh_token } = await createSessionPair(user);
 
     return {
       ok: true,
       token,
+      refresh_token,
       user: publicUser(user),
       company: publicCompany(user.company),
+    };
+  },
+
+  async refresh(body: RefreshBody): Promise<AuthOk | AuthErr> {
+    const raw = typeof body.refresh_token === "string" ? body.refresh_token.trim() : "";
+    if (!raw) {
+      return { ok: false, status: 400, message: "refresh_token es obligatorio." };
+    }
+
+    const tokenHash = hashOpaqueToken(raw);
+    const row = await prisma.refreshToken.findUnique({
+      where: { tokenHash },
+      include: { user: { include: { company: true } } },
+    });
+
+    if (!row || row.expiresAt < new Date()) {
+      if (row) {
+        await prisma.refreshToken.delete({ where: { id: row.id } }).catch(() => undefined);
+      }
+      return { ok: false, status: 401, message: "Sesion invalida o expirada." };
+    }
+
+    await prisma.refreshToken.delete({ where: { id: row.id } });
+    const { token, refresh_token } = await createSessionPair(row.user);
+
+    return {
+      ok: true,
+      token,
+      refresh_token,
+      user: publicUser(row.user),
+      company: publicCompany(row.user.company),
     };
   },
 
@@ -935,6 +998,7 @@ export const authService = {
         data: { password: hashPassword(password) },
       }),
       prisma.passwordResetToken.deleteMany({ where: { userId: row.userId } }),
+      prisma.refreshToken.deleteMany({ where: { userId: row.userId } }),
     ]);
 
     return { ok: true };

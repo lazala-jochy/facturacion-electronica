@@ -1,10 +1,21 @@
 import type { Prisma } from "@prisma/client";
+import { ECF_NCF_SEQ_EXCEEDED_MESSAGE } from "../config/dgiiEcf.constants";
 import { prisma } from "../prisma";
 import {
   calculateTotalsFromItems,
   itemLineTotalValue,
 } from "../utils/tax";
+import type { DgiiSubmissionResult } from "../types/dgiiEcf";
+import { normalizeEcfTipo } from "../utils/ecfTipo";
+import { extractEncfFromDgiiResponse, isDgiiSequenceRejection } from "../utils/dgiiRejection";
+import {
+  allocateNextAfterUsedSeq,
+  allocateNextEcfNcfSeq,
+  getLastEcfNcfSeq,
+  markEcfNcfSeqUsed,
+} from "./ecfSeq.service";
 import { isValidPhoneFormat } from "../utils/validation";
+import { validateCotizacionEcfBusiness } from "./ecfTipoHandlers";
 
 export type IncomingItem = {
   quantity: number;
@@ -28,6 +39,8 @@ export type CreateClientWithCotizacionInput = {
     comment?: string | null;
     document_title?: string | null;
     fiscal_legend?: string | null;
+    ecf_tipo?: string | null;
+    ecf_reference_ncf?: string | null;
     calc_mode?: "auto" | "manual";
     subtotal?: number;
     itbis?: number;
@@ -44,6 +57,164 @@ const trimOrNull = (v: string | undefined | null) => {
 };
 const toDocDigits = (value: string) => value.replace(/\D/g, "");
 const round2 = (value: number) => Math.round(value * 100) / 100;
+
+/** Error name (no subclass) para detectar límite DGII sin acoplar mensajes en distintos idiomas. */
+export const ECF_NCF_SEQ_EXCEEDED_ERROR_NAME = "EcfNcfSeqExceededError";
+
+const allocateEcfNcfSeq = allocateNextEcfNcfSeq;
+
+/**
+ * Si el último envío fue rechazado por secuencia ya usada y el correlativo en BD no avanzó,
+ * sube a la siguiente secuencia libre antes de generar/firmar de nuevo.
+ */
+export async function ensureCotizacionSeqAdvancedAfterSequenceReject(
+  cotizacionId: number,
+  companyId: number,
+): Promise<{ advanced: boolean; newSeq?: number }> {
+  const cot = await prisma.cotizacion.findFirst({
+    where: { id: cotizacionId, companyId },
+    select: {
+      ecfNcfSeq: true,
+      ecfTipo: true,
+      dgiiStatus: true,
+      dgiiResponse: true,
+    },
+  });
+  if (!cot || cot.dgiiStatus !== "rejected") return { advanced: false };
+
+  const tipo = normalizeEcfTipo(cot.ecfTipo);
+  const raw = cot.dgiiResponse?.trim() ?? "";
+
+  const advanceToNext = async (usedSeq: number) => {
+    const newSeq = await prisma.$transaction(async (tx) => {
+      if (usedSeq > 0) {
+        await markEcfNcfSeqUsed(tx, companyId, tipo, usedSeq);
+      }
+      const next = await allocateNextAfterUsedSeq(tx, companyId, tipo, usedSeq, {
+        excludeCotizacionId: cotizacionId,
+      });
+      await tx.cotizacion.update({
+        where: { id: cotizacionId },
+        data: { ecfNcfSeq: next, signedXml: null },
+      });
+      return next;
+    });
+    return { advanced: true as const, newSeq };
+  };
+
+  if (raw && isDgiiSequenceRejection(raw)) {
+    const fromEncf = extractEncfFromDgiiResponse(raw);
+    const usedSeq =
+      fromEncf && fromEncf.tipo === tipo
+        ? fromEncf.seq
+        : cot.ecfNcfSeq > 0
+          ? cot.ecfNcfSeq
+          : fromEncf?.seq ?? 0;
+    if (usedSeq < 1) return { advanced: false };
+    if (cot.ecfNcfSeq > usedSeq) return { advanced: false };
+    return advanceToNext(usedSeq);
+  }
+
+  /** Respuesta DGII ya fue sobrescrita al preparar XML, pero el correlativo local quedó atrás del contador. */
+  const lastGlobal = await prisma.$transaction((tx) =>
+    getLastEcfNcfSeq(tx, companyId, tipo),
+  );
+  if (cot.ecfNcfSeq > 0 && cot.ecfNcfSeq <= lastGlobal) {
+    return advanceToNext(lastGlobal);
+  }
+
+  return { advanced: false };
+}
+
+/**
+ * Persiste el resultado de recepción DGII. Si el estado es **rejected** y el cuerpo indica
+ * **rechazo por secuencia/correlativo** (`isDgiiSequenceRejection`), se asigna el siguiente `ecfNcfSeq`
+ * y se borra el XML firmado. Si es rechazo por otra causa, se conserva `ecfNcfSeq` y solo se borra
+ * `signed_xml` para forzar regeneración con la plantilla actual.
+ */
+export async function persistCotizacionAfterDgiiSubmission(
+  cotizacionId: number,
+  companyId: number,
+  ecfTipo: string,
+  args: {
+    dgiiResponse: DgiiSubmissionResult;
+    signedXml: string;
+    dgiiSubmittedAt: Date;
+  },
+): Promise<{ newSeq?: number }> {
+  const tipo = normalizeEcfTipo(ecfTipo);
+  const { dgiiResponse, signedXml, dgiiSubmittedAt } = args;
+
+  return prisma.$transaction(async (tx) => {
+    const cotRow = await tx.cotizacion.findFirst({
+      where: { id: cotizacionId, companyId },
+      select: { ecfNcfSeq: true },
+    });
+
+    const sequenceReject = isDgiiSequenceRejection(dgiiResponse.rawResponse);
+
+    if (dgiiResponse.status === "rejected") {
+      if (sequenceReject) {
+        const fromEncf = extractEncfFromDgiiResponse(dgiiResponse.rawResponse);
+        const usedSeq =
+          fromEncf && fromEncf.tipo === tipo
+            ? fromEncf.seq
+            : cotRow?.ecfNcfSeq && cotRow.ecfNcfSeq > 0
+              ? cotRow.ecfNcfSeq
+              : fromEncf?.seq ?? 0;
+        if (usedSeq > 0) {
+          await markEcfNcfSeqUsed(tx, companyId, tipo, usedSeq);
+        }
+        const newSeq =
+          usedSeq > 0
+            ? await allocateNextAfterUsedSeq(tx, companyId, tipo, usedSeq, {
+                excludeCotizacionId: cotizacionId,
+              })
+            : await allocateEcfNcfSeq(tx, companyId, tipo);
+        await tx.cotizacion.update({
+          where: { id: cotizacionId },
+          data: {
+            signedXml: null,
+            dgiiTrackId: dgiiResponse.trackId,
+            dgiiStatus: dgiiResponse.status,
+            dgiiResponse: dgiiResponse.rawResponse,
+            dgiiSubmittedAt,
+            ecfNcfSeq: newSeq,
+          },
+        });
+        return { newSeq };
+      }
+
+      await tx.cotizacion.update({
+        where: { id: cotizacionId },
+        data: {
+          signedXml: null,
+          dgiiTrackId: dgiiResponse.trackId,
+          dgiiStatus: dgiiResponse.status,
+          dgiiResponse: dgiiResponse.rawResponse,
+          dgiiSubmittedAt,
+        },
+      });
+      return {};
+    }
+
+    if (cotRow?.ecfNcfSeq && cotRow.ecfNcfSeq > 0) {
+      await markEcfNcfSeqUsed(tx, companyId, tipo, cotRow.ecfNcfSeq);
+    }
+
+    await tx.cotizacion.update({
+      where: { id: cotizacionId },
+      data: {
+        signedXml,
+        dgiiTrackId: dgiiResponse.trackId,
+        dgiiStatus: dgiiResponse.status,
+        dgiiResponse: dgiiResponse.rawResponse,
+        dgiiSubmittedAt,
+      },
+    });
+    return {};
+  });
+}
 
 const nextCotizacionNumber = async (
   tx: Prisma.TransactionClient,
@@ -128,6 +299,16 @@ export const cotizacionService = {
       trimOrNull(input.cotizacion.document_title ?? undefined) ?? "Pre-factura";
     const fiscalLegend =
       trimOrNull(input.cotizacion.fiscal_legend ?? undefined) ?? "Sin valor fiscal";
+    const ecfTipo = normalizeEcfTipo(input.cotizacion.ecf_tipo ?? undefined);
+    const ecfReferenceNcf = trimOrNull(input.cotizacion.ecf_reference_ncf ?? undefined);
+    const bizErr = validateCotizacionEcfBusiness(ecfTipo, ecfReferenceNcf, cRnc ?? "");
+    if (bizErr.length) {
+      return {
+        ok: false as const,
+        status: 400,
+        message: bizErr.join(" "),
+      };
+    }
     if (!paymentTerms || !accountManager) {
       return {
         ok: false as const,
@@ -161,8 +342,10 @@ export const cotizacionService = {
           }
         : autoTotals;
 
-    const result = await prisma.$transaction(async (tx) => {
-      const clientByRnc = maybeRnc
+    let result;
+    try {
+      result = await prisma.$transaction(async (tx) => {
+        const clientByRnc = maybeRnc
         ? await tx.client.findFirst({
             where: { companyId, rnc: maybeRnc },
             orderBy: { id: "desc" },
@@ -193,6 +376,7 @@ export const cotizacionService = {
         }));
 
       const number = await nextCotizacionNumber(tx, companyId);
+      const ecfNcfSeq = await allocateEcfNcfSeq(tx, companyId, ecfTipo);
 
       const cotizacion = await tx.cotizacion.create({
         data: {
@@ -205,6 +389,9 @@ export const cotizacionService = {
           paymentMethod,
           accountManager,
           comment,
+          ecfTipo,
+          ecfNcfSeq,
+          ecfReferenceNcf,
           subtotal: totals.subtotal,
           itbis: totals.itbis,
           total: totals.total,
@@ -236,6 +423,16 @@ export const cotizacionService = {
 
       return { client, cotizacion: full };
     });
+    } catch (e) {
+      if (e instanceof Error && e.name === ECF_NCF_SEQ_EXCEEDED_ERROR_NAME) {
+        return {
+          ok: false as const,
+          status: 400,
+          message: e.message,
+        };
+      }
+      throw e;
+    }
 
     return { ok: true as const, ...result };
   },
@@ -307,6 +504,29 @@ export const cotizacionService = {
       trimOrNull(input.cotizacion.document_title ?? undefined) ?? "Pre-factura";
     const fiscalLegend =
       trimOrNull(input.cotizacion.fiscal_legend ?? undefined) ?? "Sin valor fiscal";
+
+    const dgiiLocked =
+      Boolean(existing.dgiiTrackId?.trim()) || existing.dgiiSubmittedAt != null;
+
+    let ecfTipo = normalizeEcfTipo(input.cotizacion.ecf_tipo ?? undefined);
+    let ecfReferenceNcf = trimOrNull(input.cotizacion.ecf_reference_ncf ?? undefined);
+
+    if (dgiiLocked) {
+      ecfTipo = existing.ecfTipo;
+      ecfReferenceNcf = existing.ecfReferenceNcf;
+    }
+
+    if (!dgiiLocked) {
+      const bizErr = validateCotizacionEcfBusiness(ecfTipo, ecfReferenceNcf, cRnc ?? "");
+      if (bizErr.length) {
+        return {
+          ok: false as const,
+          status: 400,
+          message: bizErr.join(" "),
+        };
+      }
+    }
+
     if (!paymentTerms || !accountManager) {
       return {
         ok: false as const,
@@ -340,8 +560,10 @@ export const cotizacionService = {
           }
         : autoTotals;
 
-    const cotizacion = await prisma.$transaction(async (tx) => {
-      await tx.client.update({
+    let cotizacion;
+    try {
+      cotizacion = await prisma.$transaction(async (tx) => {
+        await tx.client.update({
         where: { id: existing.client.id },
         data: {
           name: cName,
@@ -354,6 +576,18 @@ export const cotizacionService = {
         },
       });
 
+      let ecfNcfSeq = existing.ecfNcfSeq;
+      let ecfTipoFinal = ecfTipo;
+      let ecfReferenceFinal = ecfReferenceNcf;
+
+      if (dgiiLocked) {
+        ecfTipoFinal = existing.ecfTipo;
+        ecfNcfSeq = existing.ecfNcfSeq;
+        ecfReferenceFinal = existing.ecfReferenceNcf;
+      } else if (ecfTipoFinal !== existing.ecfTipo) {
+        ecfNcfSeq = await allocateEcfNcfSeq(tx, companyId, ecfTipoFinal);
+      }
+
       await tx.cotizacion.update({
         where: { id },
         data: {
@@ -363,6 +597,9 @@ export const cotizacionService = {
           comment,
           documentTitle,
           fiscalLegend,
+          ecfTipo: ecfTipoFinal,
+          ecfNcfSeq,
+          ecfReferenceNcf: ecfReferenceFinal,
           subtotal: totals.subtotal,
           itbis: totals.itbis,
           total: totals.total,
@@ -395,6 +632,16 @@ export const cotizacionService = {
         },
       });
     });
+    } catch (e) {
+      if (e instanceof Error && e.name === ECF_NCF_SEQ_EXCEEDED_ERROR_NAME) {
+        return {
+          ok: false as const,
+          status: 400,
+          message: e.message,
+        };
+      }
+      throw e;
+    }
 
     return { ok: true as const, cotizacion };
   },

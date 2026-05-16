@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { AuthCompany } from "../types/session";
 import { BuildingIcon } from "../icons/branding";
 import { companyUploadedLogoUrl } from "../utils/companyLogo";
+import { RouteErrorBoundary } from "../components/RouteErrorBoundary";
 
 export default function AppLayout({
   company,
@@ -232,7 +233,9 @@ export default function AppLayout({
 
       {/* Main Content */}
       <main className="flex-1 w-full min-w-0 pt-16 lg:pt-0 px-3 py-4 sm:p-6 overflow-x-hidden overflow-y-auto">
-        <Outlet />
+        <RouteErrorBoundary>
+          <Outlet />
+        </RouteErrorBoundary>
       </main>
     </div>
   );

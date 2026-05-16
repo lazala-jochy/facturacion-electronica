@@ -22,6 +22,7 @@ export const buildRouter = () => {
 
   router.post("/auth/register", authFormUpload, asyncHandler(authController.register));
   router.post("/auth/login", asyncHandler(authController.login));
+  router.post("/auth/refresh", asyncHandler(authController.refresh));
   router.post("/auth/forgot-password", asyncHandler(authController.forgotPassword));
   router.post("/auth/reset-password", asyncHandler(authController.resetPassword));
   router.get("/auth/me", requireAuth, asyncHandler(authController.me));
@@ -59,6 +60,11 @@ export const buildRouter = () => {
     asyncHandler(cotizacionesController.deleteCotizacionById),
   );
   router.get(
+    "/cotizaciones/:id/ecf/representacion-impresa",
+    requireAuth,
+    asyncHandler(cotizacionesController.downloadRepresentacionImpresaEcf),
+  );
+  router.get(
     "/cotizaciones/:id/pdf",
     requireAuth,
     asyncHandler(cotizacionesController.downloadCotizacionPdf),
@@ -67,6 +73,12 @@ export const buildRouter = () => {
     "/cotizaciones/:id/ecf/xml",
     requireAuth,
     asyncHandler(cotizacionesController.generateEcfXmlByCotizacion),
+  );
+  router.post(
+    "/cotizaciones/:id/ecf/sign",
+    requireAuth,
+    ecfCertificateUpload,
+    asyncHandler(cotizacionesController.signEcfXmlByCotizacion),
   );
   router.post(
     "/cotizaciones/:id/ecf/submit",

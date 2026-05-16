@@ -1,3 +1,5 @@
+import { normalizeEcfTipo, resolvePlantillaEcfTipo } from "../utils/ecfTipo";
+
 type EcfIssuer = {
   rnc: string;
   name: string;
@@ -31,6 +33,10 @@ export type EcfPayload = {
   subtotal: number;
   itbis: number;
   total: number;
+  /** Tipo de comprobante fiscal DGII (31, 32, …); determina la plantilla XML y debe alinear el prefijo del e-NCF. */
+  ecfTipo?: string;
+  /** e-NCF documento modificado / referencia (p. ej. notas crédito/débito). */
+  referenceEncf?: string | null;
 };
 
 const round2 = (value: number) => Number(value.toFixed(2));
@@ -73,6 +79,23 @@ export const validateEcfPayload = (payload: EcfPayload) => {
   const recomputedTotal = round2(payload.subtotal + payload.itbis);
   if (Math.abs(recomputedTotal - round2(payload.total)) > 0.01) {
     errors.push("Total no coincide con subtotal + ITBIS.");
+  }
+
+  const t = resolvePlantillaEcfTipo(payload);
+  if ((t === "33" || t === "34") && !String(payload.referenceEncf ?? "").trim()) {
+    errors.push("Tipo 33/34: debe incluirse NCFModificado (documento de referencia).");
+  }
+
+  const tipoDeclarado = String(payload.ecfTipo ?? "").trim();
+  const fromEncf = payload.ecfNumber.trim().match(/^E(\d{2})/)?.[1];
+  if (tipoDeclarado.length > 0 && fromEncf) {
+    const td = normalizeEcfTipo(tipoDeclarado);
+    const te = normalizeEcfTipo(fromEncf.padStart(2, "0"));
+    if (td !== te) {
+      errors.push(
+        "El tipo de comprobante fiscal no coincide con el prefijo del e-NCF (p. ej. tipo 32 con número E31…). Unificá tipo y secuencia.",
+      );
+    }
   }
 
   return {

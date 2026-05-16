@@ -18,18 +18,33 @@ export type ClientListItem = {
   cotizaciones: Array<{
     id: number;
     number: number;
+    ecf_tipo?: string;
+    ecf_ncf_seq?: number;
+    ecf_number?: string | null;
     subtotal: number;
     itbis: number;
     total: number;
     dgii_status?: string | null;
     dgii_track_id?: string | null;
     dgii_submitted_at?: string | null;
+    dgii_rejection_summary?: string | null;
+    dgii_resubmit_new_seq?: boolean;
     created_at: string;
   }>;
 };
 
-export const listClients = () =>
-  apiFetch<{ clients: ClientListItem[] }>("/clients", { method: "GET" });
+function normalizeClientListItem(raw: ClientListItem): ClientListItem {
+  return {
+    ...raw,
+    cotizaciones: Array.isArray(raw.cotizaciones) ? raw.cotizaciones : [],
+  };
+}
+
+export const listClients = async () => {
+  const data = await apiFetch<{ clients?: ClientListItem[] }>("/clients", { method: "GET" });
+  const list = Array.isArray(data.clients) ? data.clients : [];
+  return { clients: list.map(normalizeClientListItem) };
+};
 
 export const updateClient = (id: number, payload: CreateClientPayload) =>
   apiFetch<ClientCreatedResponse>(`/clients/${id}`, {

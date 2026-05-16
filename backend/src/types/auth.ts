@@ -17,6 +17,10 @@ export type LoginBody = {
   password?: string;
 };
 
+export type RefreshBody = {
+  refresh_token?: string;
+};
+
 export type ForgotPasswordBody = {
   email?: string;
 };

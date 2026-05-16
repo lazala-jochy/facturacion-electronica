@@ -24,6 +24,7 @@ const postJson = async <T>(path: string, payload: object): Promise<T> => {
 
 const toSession = (data: AuthLoginResponse): AuthSession => ({
   token: data.token,
+  refresh_token: data.refresh_token,
   user: data.user,
   company: data.company,
 });

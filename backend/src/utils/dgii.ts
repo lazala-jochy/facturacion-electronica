@@ -1,4 +1,5 @@
 import type { Client, Company, Cotizacion, CotizacionItem } from "@prisma/client";
+import { buildEcfNumber } from "./ecfTipo";
 
 export type CotizacionForDGII = Cotizacion & {
   company: Company;
@@ -11,7 +12,15 @@ export type CotizacionForDGII = Cotizacion & {
  */
 export const generateDGIIData = (cotizacion: CotizacionForDGII) => {
   const fecha = cotizacion.createdAt.toISOString().slice(0, 10);
+  const ncfSeq =
+    Number.isFinite(cotizacion.ecfNcfSeq) && cotizacion.ecfNcfSeq > 0
+      ? cotizacion.ecfNcfSeq
+      : cotizacion.number;
   return {
+    tipo_ecf: cotizacion.ecfTipo,
+    ecf_ncf_seq: ncfSeq,
+    ncf_modificado: cotizacion.ecfReferenceNcf ?? null,
+    ecf_ejemplo: buildEcfNumber(cotizacion.ecfTipo, ncfSeq),
     rnc_emisor: cotizacion.company.rnc,
     rnc_cliente: cotizacion.client.rncCedula,
     monto_total: cotizacion.total,

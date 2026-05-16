@@ -52,8 +52,22 @@ model Company {
   users        User[]
   clients      Client[]
   cotizaciones Cotizacion[]
+  ecfSeqCounters CompanyEcfSeqCounter[]
 
   @@map("companies")
+}
+
+/// Última secuencia e-NCF consumida por empresa y tipo (cola DGII: siguiente = lastSeq + 1).
+model CompanyEcfSeqCounter {
+  id        Int     @id @default(autoincrement())
+  companyId Int     @map("company_id")
+  ecfTipo   String  @map("ecf_tipo")
+  lastSeq   Int     @default(0) @map("last_seq")
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, ecfTipo], name: "company_ecf_tipo_seq")
+  @@index([companyId])
+  @@map("company_ecf_seq_counters")
 }
 
 model User {
@@ -66,9 +80,23 @@ model User {
   company              Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
   createdAt            DateTime              @default(now()) @map("created_at")
   passwordResetTokens PasswordResetToken[]
+  refreshTokens       RefreshToken[]
 
   @@index([companyId])
   @@map("users")
+}
+
+model RefreshToken {
+  id        Int      @id @default(autoincrement())
+  tokenHash String   @unique @map("token_hash")
+  userId    Int      @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
 }
 
 model PasswordResetToken {
@@ -122,12 +150,24 @@ model Cotizacion {
   dgiiResponse   String?          @map("dgii_response")
   signedXml      String?          @map("signed_xml")
   dgiiSubmittedAt DateTime?       @map("dgii_submitted_at")
+  /// Código tipo e-NCF (ej. 31 factura crédito fiscal, 32 consumo).
+  ecfTipo        String           @default("31") @map("ecf_tipo")
+  /// Correlativo e-NCF por empresa y tipo (cola numérica del e-CF).
+  ecfNcfSeq      Int              @map("ecf_ncf_seq")
+  /// e-NCF / NCF del comprobante asociado (notas débito/crédito, etc.).
+  ecfReferenceNcf String?         @map("ecf_reference_ncf")
+  /// Representación impresa (PDF) conservada tras envío e-CF; ruta relativa a uploads.
+  ecfRiPdfPath    String?         @map("ecf_ri_pdf_path")
+  /// URL exacta incrustada en el QR (consulta timbre DGII).
+  ecfRiQrUrl      String?         @map("ecf_ri_qr_url")
+  ecfRiGeneratedAt DateTime?      @map("ecf_ri_generated_at")
   createdAt      DateTime         @default(now()) @map("created_at")
   client         Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
   company        Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   items          CotizacionItem[]
 
   @@unique([companyId, number])
+  @@unique([companyId, ecfTipo, ecfNcfSeq], name: "cotizacion_company_tipo_encf_seq")
   @@index([companyId])
   @@index([clientId])
   @@map("cotizaciones")

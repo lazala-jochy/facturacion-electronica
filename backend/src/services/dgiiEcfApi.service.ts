@@ -9,6 +9,8 @@ import type { Company } from "@prisma/client";
 import fs from "node:fs";
 import path from "node:path";
 import { DGII_ECF_SANDBOX_DEFAULTS, normalizeDgiiEcfUrl } from "../config/dgiiEcf.constants";
+import { readGlobalDgiiBearerToken } from "../config/dgiiGlobalToken";
+import type { DgiiCertProfile } from "../types/dgiiCertProfile";
 import type { DgiiSubmissionResult } from "../types/dgiiEcf";
 import { DgiiEcfError } from "../types/dgiiEcf";
 import { describeFetchFailure, submitEcfToDgii } from "./dgiiService";
@@ -16,6 +18,7 @@ import { submitRfceToDgii } from "./rfceSubmission.service";
 import { submitAcecfToDgii } from "../commercial-approvals/acecfSubmission.service";
 import type { AcecfDgiiSendResult } from "../commercial-approvals/acecfDgiiResponse";
 import { dgiiAuthService } from "./dgiiAuth.service";
+import { paso4SeedUrlFromAuthBase, paso4ValidateSeedUrlFromAuthBase } from "../utils/dgiiPaso4Urls";
 
 const makeMockTrackId = () => `MOCK-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
 
@@ -38,38 +41,82 @@ function appendDgiiLog(message: string): void {
 
 export function clearDgiiTokenCache(companyId: number): void {
   tokenCache.delete(companyId);
+  dgiiAuthService.clearPaso4TokenCache(companyId);
 }
 
 const rncDigits = (rnc: string) => rnc.replace(/\D/g, "");
+
+function hasPaso4SeedFlow(company: Company): boolean {
+  if (company.dgiiPaso4SeedUrl?.trim() && company.dgiiPaso4ValidateSeedUrl?.trim()) return true;
+  const auth = company.dgiiPaso4AuthUrl?.trim();
+  if (!auth) return false;
+  return Boolean(paso4SeedUrlFromAuthBase(auth) && paso4ValidateSeedUrlFromAuthBase(auth));
+}
 
 export function resolveDgiiAuthUrl(company: Pick<Company, "dgiiAuthUrl">): string {
   return normalizeDgiiEcfUrl(company.dgiiAuthUrl || DGII_ECF_SANDBOX_DEFAULTS.auth);
 }
 
 export function resolveDgiiReceptionUrl(
-  company: Pick<Company, "dgiiEcfReceiveUrl" | "dgiiReceptionUrl" | "dgiiEcfEndpoint">,
+  company: Pick<
+    Company,
+    "dgiiEcfReceiveUrl" | "dgiiReceptionUrl" | "dgiiEcfEndpoint" | "dgiiPaso4ReceptionUrl" | "dgiiPaso4EcfReceiveUrl"
+  >,
+  profile: DgiiCertProfile = "paso2",
 ): string {
+  if (profile === "paso4") {
+    return normalizeDgiiEcfUrl(
+      company.dgiiPaso4EcfReceiveUrl?.trim() || company.dgiiPaso4ReceptionUrl?.trim() || "",
+    );
+  }
   return normalizeDgiiEcfUrl(
     company.dgiiEcfReceiveUrl?.trim() ||
-    company.dgiiReceptionUrl?.trim() ||
-    company.dgiiEcfEndpoint?.trim() ||
-    process.env.DGII_ECF_ENDPOINT?.trim() ||
-    "",
+      company.dgiiReceptionUrl?.trim() ||
+      company.dgiiEcfEndpoint?.trim() ||
+      process.env.DGII_ECF_ENDPOINT?.trim() ||
+      "",
   );
 }
 
+/** Ruta oficial de consulta por track (sensible a mayúsculas en algunos hosts IIS). */
+const DGII_CONSULT_ESTADO_PATH = "/api/Consultas/Estado";
+
+export type ResolveDgiiConsultUrlOptions = {
+  /** Si es `paso4`, se prioriza `dgii_paso4_consult_url` sobre la consulta del Paso 2. */
+  certProfile?: DgiiCertProfile;
+};
+
 export function resolveDgiiConsultUrl(
-  company: Pick<Company, "dgiiStatusUrl" | "dgiiTrackUrl" | "dgiiConsultUrl">,
+  company: Pick<
+    Company,
+    "dgiiStatusUrl" | "dgiiTrackUrl" | "dgiiConsultUrl" | "dgiiPaso4ConsultUrl"
+  >,
+  options?: ResolveDgiiConsultUrlOptions,
 ): string {
-  const url = normalizeDgiiEcfUrl(
-    company.dgiiStatusUrl?.trim() ||
-    company.dgiiTrackUrl?.trim() ||
-    company.dgiiConsultUrl?.trim() ||
-    DGII_ECF_SANDBOX_DEFAULTS.consult,
-  );
-  return /\/api\/consultas\/estado\/?$/i.test(url)
-    ? url
-    : `${url.replace(/\/+$/, "")}/api/consultas/estado`;
+  const preferPaso4 =
+    options?.certProfile === "paso4" ||
+    (!company.dgiiConsultUrl?.trim() && Boolean(company.dgiiPaso4ConsultUrl?.trim()));
+
+  const candidates = preferPaso4
+    ? [
+        company.dgiiStatusUrl?.trim(),
+        company.dgiiTrackUrl?.trim(),
+        company.dgiiPaso4ConsultUrl?.trim(),
+        company.dgiiConsultUrl?.trim(),
+      ]
+    : [
+        company.dgiiStatusUrl?.trim(),
+        company.dgiiTrackUrl?.trim(),
+        company.dgiiConsultUrl?.trim(),
+        company.dgiiPaso4ConsultUrl?.trim(),
+      ];
+
+  const raw = normalizeDgiiEcfUrl(candidates.find(Boolean) || DGII_ECF_SANDBOX_DEFAULTS.consult);
+  let url = raw.replace(/\/+$/, "");
+  if (/\/api\/Consultas\/estado$/i.test(url)) {
+    return url.replace(/\/api\/Consultas\/estado$/i, DGII_CONSULT_ESTADO_PATH);
+  }
+  return `${url}${DGII_CONSULT_ESTADO_PATH}`;
 }
 
 function tenantHasPasswordAuth(company: Pick<Company, "dgiiUsername" | "dgiiPassword">): boolean {
@@ -275,16 +322,54 @@ export function mockDgiiSubmission(signedXml: string): DgiiSubmissionResult {
   };
 }
 
-/** Envío multi-tenant: token + recepción, o POST directo sin token (legacy). */
 export async function submitSignedEcfWithTenantConfig(
   company: Company,
   signedXml: string,
+  options?: { certProfile?: DgiiCertProfile },
 ): Promise<DgiiSubmissionResult> {
-  // Nuevo flujo DGII: semilla + validar semilla + bearer token.
+  const profile = options?.certProfile ?? "paso2";
+
+  const globalTok = readGlobalDgiiBearerToken();
+  if (globalTok) {
+    const reception = resolveDgiiReceptionUrl(company, profile);
+    if (reception) {
+      appendDgiiLog(`[send] company=${company.id} mode=global-env-token profile=${profile}`);
+      return submitEcfToDgii(signedXml, {
+        endpoint: reception,
+        bearerToken: globalTok,
+      });
+    }
+  }
+
+  if (profile === "paso4") {
+    if (!hasPaso4SeedFlow(company)) {
+      throw new DgiiEcfError(
+        "Para envío con URLs Paso 4 configurá dgii_paso4_auth_url o dgii_paso4_seed_url y dgii_paso4_validate_seed_url en Perfil de empresa (o la vista «DGII · Pruebas → Paso 4»).",
+        "MISSING_CREDENTIALS",
+        400,
+      );
+    }
+    appendDgiiLog(`[send] company=${company.id} mode=seed-flow profile=paso4`);
+    const token = await dgiiAuthService.getToken(company.id, { certProfile: "paso4" });
+    const reception = resolveDgiiReceptionUrl(company, "paso4");
+    if (!reception) {
+      throw new DgiiEcfError(
+        "Falta URL de recepción e-CF para Paso 4 (dgii_paso4_ecf_receive_url o dgii_paso4_reception_url).",
+        "MISSING_CREDENTIALS",
+        400,
+      );
+    }
+    return submitEcfToDgii(signedXml, {
+      endpoint: reception,
+      bearerToken: token,
+    });
+  }
+
+  // Nuevo flujo DGII: semilla + validar semilla + bearer token (Paso 2 / perfil estándar).
   if (company.dgiiSeedUrl?.trim() && company.dgiiValidateSeedUrl?.trim()) {
-    appendDgiiLog(`[send] company=${company.id} mode=seed-flow`);
+    appendDgiiLog(`[send] company=${company.id} mode=seed-flow profile=paso2`);
     const token = await dgiiAuthService.getToken(company.id);
-    const reception = resolveDgiiReceptionUrl(company);
+    const reception = resolveDgiiReceptionUrl(company, "paso2");
     if (!reception) {
       throw new DgiiEcfError(
         "Falta URL de recepción DGII (dgii_ecf_receive_url o dgii_reception_url).",
@@ -298,7 +383,7 @@ export async function submitSignedEcfWithTenantConfig(
     });
   }
 
-  const reception = resolveDgiiReceptionUrl(company);
+  const reception = resolveDgiiReceptionUrl(company, "paso2");
   if (!reception) {
     return mockDgiiSubmission(signedXml);
   }
@@ -309,7 +394,7 @@ export async function submitSignedEcfWithTenantConfig(
     appendDgiiLog(`[send] company=${company.id} mode=legacy-direct`);
     return submitEcfToDgii(signedXml, {
       endpoint: reception,
-      bearerToken: process.env.DGII_ECF_TOKEN?.trim() || null,
+      bearerToken: readGlobalDgiiBearerToken(),
     });
   }
 
@@ -339,13 +424,15 @@ export async function submitSignedRfceWithTenantConfig(
   const endpoint = `${baseUrl.replace(/\/+$/, "")}/api/recepcion/ecf`;
 
   let token: string;
-  if (company.dgiiSeedUrl?.trim() && company.dgiiValidateSeedUrl?.trim()) {
+  const rfceGlobal = readGlobalDgiiBearerToken();
+  if (rfceGlobal) {
+    token = rfceGlobal;
+  } else if (company.dgiiSeedUrl?.trim() && company.dgiiValidateSeedUrl?.trim()) {
     token = await dgiiAuthService.getToken(company.id);
   } else if (tenantHasPasswordAuth(company)) {
     token = await authenticateDgii(company);
   } else {
-    const envTok = process.env.DGII_ECF_TOKEN?.trim();
-    token = envTok ?? "";
+    token = "";
   }
 
   appendDgiiLog(`[rfce-send] company=${company.id} endpoint=${endpoint}`);
@@ -379,12 +466,15 @@ export async function submitSignedAcecfWithTenantConfig(
   }
 
   let token: string;
-  if (company.dgiiSeedUrl?.trim() && company.dgiiValidateSeedUrl?.trim()) {
+  const acecfGlobal = readGlobalDgiiBearerToken();
+  if (acecfGlobal) {
+    token = acecfGlobal;
+  } else if (company.dgiiSeedUrl?.trim() && company.dgiiValidateSeedUrl?.trim()) {
     token = await dgiiAuthService.getToken(company.id);
   } else if (tenantHasPasswordAuth(company)) {
     token = await authenticateDgii(company);
   } else {
-    token = process.env.DGII_ECF_TOKEN?.trim() ?? "";
+    token = "";
   }
 
   appendDgiiLog(`[acecf-send] company=${company.id} endpoint=${endpoint}`);
@@ -399,33 +489,53 @@ export type DgiiConsultResult = {
   body: string;
 };
 
-/** Consulta estado por trackId (GET con query; si falla, intenta POST JSON). */
-export async function consultDgiiTrackId(company: Company, trackId: string): Promise<DgiiConsultResult> {
+/** Consulta estado por trackId (GET con query `trackid=`; token Paso 4 si las URLs están solo en simulación). */
+export async function consultDgiiTrackId(
+  company: Company,
+  trackId: string,
+  options?: { certProfile?: DgiiCertProfile },
+): Promise<DgiiConsultResult> {
   const tid = trackId.trim();
   if (!tid) {
     throw new DgiiEcfError("trackId vacío.", "CONSULT_FAILED", 400);
   }
 
-  const consultBase = resolveDgiiConsultUrl(company);
+  const inferredPaso4 =
+    !company.dgiiConsultUrl?.trim() && Boolean(company.dgiiPaso4ConsultUrl?.trim());
+  const effectiveProfile: DgiiCertProfile =
+    options?.certProfile ?? (inferredPaso4 ? "paso4" : "paso2");
+
+  const consultBase = resolveDgiiConsultUrl(company, { certProfile: effectiveProfile });
   const usePasswordAuth = tenantHasPasswordAuth(company);
+  if (readGlobalDgiiBearerToken()) {
+    appendDgiiLog(`[consult] company=${company.id} auth=global-env-token (prioridad sobre semilla)`);
+  }
 
   const authHeader = async (): Promise<Record<string, string>> => {
     const h: Record<string, string> = { Accept: "application/json, text/xml, */*" };
+    const envTok = readGlobalDgiiBearerToken();
+    if (envTok) {
+      h.Authorization = `Bearer ${envTok}`;
+      return h;
+    }
+    if (effectiveProfile === "paso4" && hasPaso4SeedFlow(company)) {
+      const tok = await dgiiAuthService.getToken(company.id, { certProfile: "paso4" });
+      if (tok) h.Authorization = `Bearer ${tok}`;
+      return h;
+    }
     if (company.dgiiSeedUrl?.trim() && company.dgiiValidateSeedUrl?.trim()) {
       h.Authorization = `Bearer ${await dgiiAuthService.getToken(company.id)}`;
     } else if (usePasswordAuth) {
       h.Authorization = `Bearer ${await authenticateDgii(company)}`;
-    } else {
-      const envTok = process.env.DGII_ECF_TOKEN?.trim();
-      if (envTok) h.Authorization = `Bearer ${envTok}`;
     }
     return h;
   };
 
   const getUrl = new URL(consultBase);
-  getUrl.searchParams.set("trackId", tid);
-  getUrl.searchParams.set("TrackId", tid);
-  appendDgiiLog(`[consult] company=${company.id} url=${getUrl.toString()}`);
+  getUrl.searchParams.set("trackid", tid);
+  appendDgiiLog(
+    `[consult] company=${company.id} profile=${effectiveProfile} url=${getUrl.toString()}`,
+  );
 
   let response: Response;
   let body: string;
@@ -448,7 +558,12 @@ export async function consultDgiiTrackId(company: Company, trackId: string): Pro
           ...(await authHeader()),
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ trackId: tid, TrackId: tid, RNC: rncDigits(company.rnc) }),
+        body: JSON.stringify({
+          trackid: tid,
+          trackId: tid,
+          TrackId: tid,
+          RNC: rncDigits(company.rnc),
+        }),
       });
       body = await response.text();
       appendDgiiLog(`[consult-post] company=${company.id} status=${response.status} body=${compactBodyForMessage(body, 300)}`);

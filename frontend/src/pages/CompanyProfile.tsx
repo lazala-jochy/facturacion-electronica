@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { apiFetch, apiUrl, getAuthToken } from "../services/api";
+import { apiFetch, authenticatedFetch, getAuthToken } from "../services/api";
 import type { AuthCompany, AuthSession, AuthUser } from "../types/session";
 import { formatPhoneInput, isValidPhone } from "../utils/phone";
 import { cedulaDigits, formatCedulaInput } from "../utils/cedula";
@@ -210,9 +210,8 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
         if (clearCompanyLogo) fd.append("clear_logo", "true");
         if (clearCertificate) fd.append("clear_certificate", "true");
 
-        const response = await fetch(`${apiUrl}/auth/company`, {
+        const response = await authenticatedFetch("/auth/company", {
           method: "PUT",
-          headers: { Authorization: `Bearer ${token}` },
           body: fd,
         });
         const data = (await response.json()) as ProfileRes & { message?: string };

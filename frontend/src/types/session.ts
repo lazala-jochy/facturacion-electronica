@@ -46,9 +46,11 @@ export type AuthCompany = {
   certificate_keyphrase?: string | null;
 };
 
-/** Sesión persistida: JWT + contexto de usuario y empresa (multi-tenant). */
+/** Sesión persistida: JWT + refresh + contexto de usuario y empresa (multi-tenant). */
 export type AuthSession = {
   token: string;
+  /** Presente tras login/registro o refresh; ausente en sesiones antiguas hasta volver a iniciar sesión. */
+  refresh_token?: string;
   user: AuthUser;
   company: AuthCompany;
 };
@@ -58,6 +60,7 @@ export const AUTH_STORAGE_KEY = "fe_rd_session_v2";
 export type AuthLoginResponse = {
   message: string;
   token: string;
+  refresh_token: string;
   user: AuthUser;
   company: AuthCompany;
 };

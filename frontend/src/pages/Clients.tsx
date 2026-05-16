@@ -5,10 +5,14 @@ import { ApiError, readAuthSessionFromStorage, refreshAuthSessionFromServer } fr
 import {
   deleteCotizacion,
   downloadCotizacionPDF,
+  generateEcfXml,
   getCotizacion,
+  signEcfXmlLocal,
   submitEcf,
   type CotizacionDetail,
 } from "../services/cotizaciones";
+import { ecfTipoLabel } from "../config/ecfTipos";
+import { formatEcfNumberDisplay } from "../utils/ecfNumber";
 
 // Helper para formatear moneda
 const formatCurrency = (value: number) => {
@@ -62,21 +66,29 @@ function CertBrowseIllustration({ className }: { className?: string }) {
 export default function Clients() {
   const session = readAuthSessionFromStorage();
   const company = session?.company;
+  const isDgiiCertification = useMemo(
+    () => !company?.dgiiEnvironment || company.dgiiEnvironment === "CERTIFICACION",
+    [company?.dgiiEnvironment],
+  );
   const [isOnline, setIsOnline] = useState(
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
   const [clients, setClients] = useState<ClientListItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [listLoadError, setListLoadError] = useState("");
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
   const [sendingEcfId, setSendingEcfId] = useState<number | null>(null);
   const [downloadError, setDownloadError] = useState<string>("");
   const [ecfError, setEcfError] = useState<string>("");
   const [ecfSuccess, setEcfSuccess] = useState<string>("");
+  const [ecfWarning, setEcfWarning] = useState<string>("");
   const [ecfNeedCertForId, setEcfNeedCertForId] = useState<number | null>(null);
   const [modalCertFile, setModalCertFile] = useState<File | null>(null);
   const [modalCertPassword, setModalCertPassword] = useState("");
   /** Clave definida al guardar el .p12; obligatoria en cada envío si ya hay certificado. */
   const [ecfEncryptionSecret, setEcfEncryptionSecret] = useState("");
+  /** Certificación: URLs Paso 2 (estándar) vs Paso 4 (simulación e-CF). */
+  const [dgiiCertProfile, setDgiiCertProfile] = useState<"paso2" | "paso4">("paso2");
   const [modalEncryptionSecret, setModalEncryptionSecret] = useState("");
   const [ecfCertModalLoading, setEcfCertModalLoading] = useState(false);
   const [query, setQuery] = useState("");
@@ -90,6 +102,34 @@ export default function Clients() {
   const [detail, setDetail] = useState<CotizacionDetail | null>(null);
   const [crudMessage, setCrudMessage] = useState("");
   const [crudError, setCrudError] = useState("");
+  const [ecfXmlViewer, setEcfXmlViewer] = useState<{
+    open: boolean;
+    loading: boolean;
+    error: string;
+    ecfNumber: string;
+    generatedXml: string;
+    signedXml: string | null;
+    /** Firma en esta sesión (mismo XML que envío DGII). */
+    previewSignedXml: string | null;
+    cotizacionId: number | null;
+    /** Si existe, la pestaña «Copia del envío» muestra lo recibido por DGII. */
+    dgiiTrackId: string | null;
+    tab: "generated" | "preview" | "signed";
+  }>({
+    open: false,
+    loading: false,
+    error: "",
+    ecfNumber: "",
+    generatedXml: "",
+    signedXml: null,
+    previewSignedXml: null,
+    cotizacionId: null,
+    dgiiTrackId: null,
+    tab: "generated",
+  });
+  const [ecfSignLocalLoading, setEcfSignLocalLoading] = useState(false);
+  const [ecfSignLocalError, setEcfSignLocalError] = useState("");
+  const [deletingDetailId, setDeletingDetailId] = useState<number | null>(null);
 
   useEffect(() => {
     const updateOnlineStatus = () => setIsOnline(navigator.onLine);
@@ -115,10 +155,19 @@ export default function Clients() {
 
   useEffect(() => {
     const fetchClients = async () => {
+      setListLoadError("");
       try {
-        const { clients } = await listClients();
-        setClients(clients);
+        const { clients: loaded } = await listClients();
+        setClients(loaded);
       } catch (error) {
+        const msg =
+          error instanceof ApiError
+            ? error.message
+            : error instanceof Error
+              ? error.message
+              : "No se pudo cargar la lista de clientes.";
+        setListLoadError(msg);
+        setClients([]);
         console.error("Error al cargar clientes", error);
       } finally {
         setLoading(false);
@@ -143,6 +192,124 @@ export default function Clients() {
     }
   };
 
+  const closeEcfXmlViewer = () => {
+    setEcfSignLocalError("");
+    setEcfXmlViewer({
+      open: false,
+      loading: false,
+      error: "",
+      ecfNumber: "",
+      generatedXml: "",
+      signedXml: null,
+      previewSignedXml: null,
+      cotizacionId: null,
+      dgiiTrackId: null,
+      tab: "generated",
+    });
+  };
+
+  const openEcfXmlViewer = async (cotizacionId: number) => {
+    setEcfSignLocalError("");
+    setEcfXmlViewer({
+      open: true,
+      loading: true,
+      error: "",
+      ecfNumber: "",
+      generatedXml: "",
+      signedXml: null,
+      previewSignedXml: null,
+      cotizacionId,
+      dgiiTrackId: null,
+      tab: "generated",
+    });
+    try {
+      const [gen, detailRes] = await Promise.all([
+        generateEcfXml(cotizacionId),
+        getCotizacion(cotizacionId),
+      ]);
+      const signed = detailRes.cotizacion.signed_xml?.trim() || null;
+      const track = detailRes.cotizacion.dgii_track_id?.trim() || null;
+      const genSigned = Boolean((gen as { signed?: boolean }).signed);
+
+      const tab: "generated" | "preview" | "signed" =
+        track && signed ? "signed" : signed ? "preview" : "generated";
+
+      setEcfXmlViewer((prev) => ({
+        ...prev,
+        loading: false,
+        ecfNumber: gen.ecf_number,
+        generatedXml: genSigned || signed ? "" : gen.xml,
+        signedXml: signed,
+        previewSignedXml: null,
+        dgiiTrackId: track,
+        tab,
+      }));
+    } catch (e) {
+      setEcfXmlViewer((prev) => ({
+        ...prev,
+        loading: false,
+        error: e instanceof Error ? e.message : "No se pudo cargar el XML.",
+      }));
+    }
+  };
+
+  const handleSignEcfXmlLocal = async () => {
+    const id = ecfXmlViewer.cotizacionId;
+    if (id == null) return;
+    const encForSign =
+      ecfEncryptionSecret.trim() || company?.certificate_keyphrase?.trim() || "";
+    if (company?.certificateConfigured && encForSign.length < 8) {
+      setEcfSignLocalError(
+        "Ingresá la clave de cifrado del certificado (o guardala en Perfil de empresa) para firmar.",
+      );
+      return;
+    }
+    setEcfSignLocalLoading(true);
+    setEcfSignLocalError("");
+    try {
+      const out = await signEcfXmlLocal(id, {
+        certificateEncryptionSecret:
+          company?.certificateConfigured && encForSign.length >= 8 ? encForSign : undefined,
+      });
+      setEcfXmlViewer((s) => ({
+        ...s,
+        previewSignedXml: out.signed_xml,
+        tab: "preview",
+        ecfNumber: out.ecf_number?.trim() ? out.ecf_number : s.ecfNumber,
+      }));
+    } catch (e) {
+      setEcfSignLocalError(e instanceof Error ? e.message : "No se pudo firmar el XML.");
+    } finally {
+      setEcfSignLocalLoading(false);
+    }
+  };
+
+  const downloadCurrentEcfXmlFromViewer = () => {
+    const { tab, generatedXml, signedXml, previewSignedXml, ecfNumber } = ecfXmlViewer;
+    const body =
+      tab === "signed" && signedXml
+        ? signedXml
+        : tab === "preview" && (previewSignedXml || signedXml)
+          ? previewSignedXml || signedXml
+          : generatedXml;
+    if (!body?.trim()) return;
+    const base =
+      tab === "signed"
+        ? `ecf-firmado-${ecfNumber.replace(/\s/g, "") || "enviado"}`
+        : tab === "preview"
+          ? `ecf-dgii-${ecfNumber.replace(/\s/g, "") || "firmado"}`
+          : `ecf-${ecfNumber.replace(/\s/g, "") || "generado"}`;
+    const blob = new Blob([body], { type: "application/xml;charset=utf-8" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${base}.xml`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
   const handleSendEcf = async (cotizacionId: number) => {
     if (!isOnline) {
       setEcfError("Debes conectarte a internet para enviar a DGII.");
@@ -151,6 +318,7 @@ export default function Clients() {
     setSendingEcfId(cotizacionId);
     setEcfError("");
     setEcfSuccess("");
+    setEcfWarning("");
     const encForSend =
       ecfEncryptionSecret.trim() || company?.certificate_keyphrase?.trim() || "";
     if (company?.certificateConfigured && encForSend.length < 8) {
@@ -164,23 +332,46 @@ export default function Clients() {
       const out = await submitEcf(cotizacionId, {
         certificateEncryptionSecret:
           company?.certificateConfigured && encForSend.length >= 8 ? encForSend : undefined,
+        dgiiCertProfile: isDgiiCertification ? dgiiCertProfile : "paso2",
       });
-      setEcfSuccess(`e-CF enviado (Track ID: ${out.track_id}).`);
-      setClients((prev) =>
-        prev.map((client) => ({
-          ...client,
-          cotizaciones: client.cotizaciones.map((row) =>
-            row.id === cotizacionId
-              ? {
-                  ...row,
-                  dgii_status: out.status,
-                  dgii_track_id: out.track_id,
-                  dgii_submitted_at: new Date().toISOString(),
-                }
-              : row,
-          ),
-        })),
-      );
+      const detail =
+        out.dgii_status_summary?.trim() || out.dgii_rejection_summary?.trim() || "";
+
+      if (out.status === "accepted") {
+        setEcfWarning("");
+        setEcfSuccess(
+          `e-CF aceptado por DGII (Track ID: ${out.track_id}).${detail ? ` ${detail}` : ""}`.trim(),
+        );
+      } else if (out.status === "pending") {
+        setEcfSuccess("");
+        setEcfWarning(
+          `DGII recibió el comprobante (Track ID: ${out.track_id}). ${
+            detail || "El estado final aún se está procesando."
+          } Volvé a enviar o consultá el estado en unos segundos si sigue pendiente.`.trim(),
+        );
+      } else if (out.status === "rejected") {
+        setEcfSuccess("");
+        if (out.dgii_resubmit_new_seq === true) {
+          const nextEncf =
+            out.ecf_number?.trim() ||
+            (out.ecf_ncf_seq != null ? `secuencia ${out.ecf_ncf_seq}` : "");
+          setEcfWarning(
+            `DGII rechazó por correlativo/secuencia. Track ID: ${out.track_id}. ${detail}${
+              nextEncf
+                ? ` Próximo envío usará ${nextEncf} (guardado en la cotización).`
+                : ""
+            }`.trim(),
+          );
+        } else {
+          setEcfWarning(
+            `DGII rechazó el comprobante. Track ID: ${out.track_id}. ${detail} El correlativo en la app no cambia (no es un rechazo por secuencia): corregí el XML o los datos y pulsá «Reintentar envío».`.trim(),
+          );
+        }
+      } else {
+        setEcfWarning("");
+        setEcfSuccess(`e-CF enviado (Track ID: ${out.track_id}).`);
+      }
+      await refreshClients();
     } catch (error) {
       if (
         error instanceof ApiError &&
@@ -190,6 +381,12 @@ export default function Clients() {
         setModalCertPassword("");
         setModalEncryptionSecret(ecfEncryptionSecret.trim());
         setEcfNeedCertForId(cotizacionId);
+        return;
+      }
+      if (error instanceof ApiError && error.body?.code === "CONSUMO_MENOR_250K_RFCE") {
+        setEcfError(
+          `${error.message} Usá «DGII · Pruebas → Facturas Excel» (/dgii-pruebas/ecf-excel) para RFCE y e-CF de consumo menor a RD$250.000 en certificación.`,
+        );
         return;
       }
       const errorMsg =
@@ -222,11 +419,13 @@ export default function Clients() {
     setEcfCertModalLoading(true);
     setEcfError("");
     setEcfSuccess("");
+    setEcfWarning("");
     try {
       const out = await submitEcf(id, {
         certificate: modalCertFile,
         certificatePassword: modalCertPassword,
         certificateEncryptionSecret: modalEncryptionSecret.trim(),
+        dgiiCertProfile: isDgiiCertification ? dgiiCertProfile : "paso2",
       });
       if (out.certificate_saved) {
         await refreshAuthSessionFromServer();
@@ -240,23 +439,43 @@ export default function Clients() {
       if (company?.id && enc.length >= 8) {
         sessionStorage.setItem(`fe_cert_enc_${company.id}`, enc);
       }
-      setEcfSuccess(`e-CF enviado (Track ID: ${out.track_id}).`);
-      setClients((prev) =>
-        prev.map((client) => ({
-          ...client,
-          cotizaciones: client.cotizaciones.map((row) =>
-            row.id === id
-              ? {
-                  ...row,
-                  dgii_status: out.status,
-                  dgii_track_id: out.track_id,
-                  dgii_submitted_at: new Date().toISOString(),
-                }
-              : row,
-          ),
-        })),
-      );
+      const detail =
+        out.dgii_status_summary?.trim() || out.dgii_rejection_summary?.trim() || "";
+      if (out.status === "accepted") {
+        setEcfWarning("");
+        setEcfSuccess(
+          `e-CF aceptado por DGII (Track ID: ${out.track_id}).${detail ? ` ${detail}` : ""}`.trim(),
+        );
+      } else if (out.status === "pending") {
+        setEcfSuccess("");
+        setEcfWarning(
+          `DGII recibió el comprobante (Track ID: ${out.track_id}). ${
+            detail || "El estado final aún se está procesando."
+          }`.trim(),
+        );
+      } else if (out.status === "rejected") {
+        setEcfSuccess("");
+        if (out.dgii_resubmit_new_seq === true) {
+          setEcfWarning(
+            `DGII rechazó por correlativo/secuencia. Track ID: ${out.track_id}. ${detail}`.trim(),
+          );
+        } else {
+          setEcfWarning(
+            `DGII rechazó el comprobante. Track ID: ${out.track_id}. ${detail} El correlativo no cambió: corregí el XML o los datos y pulsá «Reintentar envío».`.trim(),
+          );
+        }
+      } else {
+        setEcfWarning("");
+        setEcfSuccess(`e-CF enviado (Track ID: ${out.track_id}).`);
+      }
+      await refreshClients();
     } catch (error) {
+      if (error instanceof ApiError && error.body?.code === "CONSUMO_MENOR_250K_RFCE") {
+        setEcfError(
+          `${error.message} Usá «DGII · Pruebas → Facturas Excel» (/dgii-pruebas/ecf-excel) para RFCE y e-CF de consumo menor a RD$250.000 en certificación.`,
+        );
+        return;
+      }
       setEcfError(error instanceof Error ? error.message : "Error al enviar e-CF");
     } finally {
       setEcfCertModalLoading(false);
@@ -282,8 +501,19 @@ export default function Clients() {
 
 
   const refreshClients = async () => {
-    const { clients: out } = await listClients();
-    setClients(out);
+    setListLoadError("");
+    try {
+      const { clients: out } = await listClients();
+      setClients(out);
+    } catch (error) {
+      setListLoadError(
+        error instanceof ApiError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : "No se pudo actualizar la lista.",
+      );
+    }
   };
 
 
@@ -321,6 +551,30 @@ export default function Clients() {
       const message =
         error instanceof Error ? error.message : "No se pudo eliminar la cotización.";
       setCrudError(message);
+    }
+  };
+
+  const handleDeleteDetailCotizacion = async () => {
+    if (!detail?.id) return;
+    const confirmed = window.confirm(
+      `¿Eliminar la cotización #${detail.number} de ${detail.client.name}? No se puede deshacer.`,
+    );
+    if (!confirmed) return;
+    setCrudError("");
+    setCrudMessage("");
+    setDeletingDetailId(detail.id);
+    try {
+      await deleteCotizacion(detail.id);
+      await refreshClients();
+      setDetailOpen(false);
+      setDetail(null);
+      setCrudMessage("Cotización eliminada correctamente.");
+    } catch (error) {
+      setCrudError(
+        error instanceof Error ? error.message : "No se pudo eliminar la cotización.",
+      );
+    } finally {
+      setDeletingDetailId(null);
     }
   };
 
@@ -433,6 +687,31 @@ export default function Clients() {
           />
         </div>
       ) : null}
+      {company && isDgiiCertification ? (
+        <div className="mb-4 rounded-lg border border-indigo-100 bg-indigo-50/50 p-4 text-sm">
+          <label htmlFor="dgii-cert-paso-clients" className="block font-semibold text-slate-800">
+            Destino del envío a DGII (certificación)
+          </label>
+          <p className="mt-1 text-xs text-slate-600">
+            Usá las URLs del <strong className="font-medium text-slate-800">Paso 2</strong> (recepción estándar / lote Excel)
+            o las del <strong className="font-medium text-slate-800">Paso 4</strong> (simulación e-CF), según las tengas en{" "}
+            <strong className="font-medium text-slate-800">Perfil de empresa</strong> o en{" "}
+            <Link to="/dgii-pruebas/ecf-simulacion" className="font-medium text-[#0b57d0] hover:underline">
+              DGII · Pruebas · Paso 4
+            </Link>
+            .
+          </p>
+          <select
+            id="dgii-cert-paso-clients"
+            value={dgiiCertProfile}
+            onChange={(e) => setDgiiCertProfile(e.target.value as "paso2" | "paso4")}
+            className="mt-2 w-full max-w-md rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-[#2563eb] focus:outline-none focus:ring-2 focus:ring-blue-100"
+          >
+            <option value="paso2">Paso 2 — Recepción e-CF (dgii_seed / recepción estándar)</option>
+            <option value="paso4">Paso 4 — Simulación e-CF (URLs dgii_paso4_*)</option>
+          </select>
+        </div>
+      ) : null}
       <div className="rounded-3xl border border-gray-200 bg-white shadow-lg overflow-hidden">
         <div className="border-b border-gray-100 bg-gray-50/70 p-4 sm:p-5">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
@@ -479,9 +758,40 @@ export default function Clients() {
           <div className="p-6 sm:p-8 text-gray-500 text-center">
             Cargando clientes...
           </div>
+        ) : listLoadError ? (
+          <div className="p-6 sm:p-8 text-center">
+            <p className="text-red-700 font-medium">{listLoadError}</p>
+            <p className="mt-2 text-sm text-gray-500">
+              Verificá que el backend esté en ejecución y que la sesión siga activa.
+            </p>
+            <button
+              type="button"
+              className="mt-4 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-800 hover:bg-indigo-100"
+              onClick={() => {
+                setLoading(true);
+                void listClients()
+                  .then(({ clients: loaded }) => {
+                    setClients(loaded);
+                    setListLoadError("");
+                  })
+                  .catch((error) => {
+                    setListLoadError(
+                      error instanceof Error ? error.message : "Error al cargar clientes.",
+                    );
+                  })
+                  .finally(() => setLoading(false));
+              }}
+            >
+              Reintentar carga
+            </button>
+          </div>
         ) : rows.length === 0 ? (
           <div className="p-6 sm:p-8 text-gray-500 text-center">
-            No hay resultados para ese filtro.
+            {query.trim()
+              ? "No hay resultados para ese filtro."
+              : clients.length === 0
+                ? "No hay clientes registrados. Creá una cotización para agregar el primero."
+                : "No hay resultados para ese filtro."}
           </div>
         ) : (
           <>
@@ -499,14 +809,50 @@ export default function Clients() {
                     <th className="px-4 sm:px-6 py-4 text-center">Detalle</th>
                     <th className="px-4 sm:px-6 py-4 text-center">e-CF</th>
                     <th className="px-4 sm:px-6 py-4 text-center">PDF</th>
+                    <th className="px-4 sm:px-6 py-4 text-center">XML</th>
                     <th className="px-4 sm:px-6 py-4 text-center">Acciones</th>
                   </tr>
                 </thead>
 
                 <tbody className="divide-y divide-gray-100">
                   {pageRows.map(({ client, last }) => {
-                    const alreadySent =
-                      last?.dgii_status === "accepted" || last?.dgii_status === "rejected";
+                    const dgiiStatus = last?.dgii_status;
+                    const dgiiSendLocked =
+                      dgiiStatus === "accepted" || dgiiStatus === "pending";
+
+                    const seqResubmit = last?.dgii_resubmit_new_seq === true;
+                    const sendLabel = !last
+                      ? "-"
+                      : sendingEcfId === last.id
+                        ? "Enviando..."
+                        : dgiiSendLocked
+                          ? dgiiStatus === "accepted"
+                            ? "Enviado"
+                            : "Pendiente"
+                          : dgiiStatus === "rejected"
+                            ? seqResubmit
+                              ? "Reenviar DGII"
+                              : "Reintentar"
+                            : "Enviar DGII";
+                    const sendTitle = !isOnline
+                      ? "Sin internet: no se puede enviar a DGII"
+                      : dgiiSendLocked
+                        ? dgiiStatus === "accepted"
+                          ? "Comprobante aceptado por DGII"
+                          : "Envío pendiente/procesándose"
+                        : dgiiStatus === "rejected"
+                          ? seqResubmit
+                            ? "Rechazo por correlativo/secuencia: esta app ya pasó al siguiente e-NCF. Volvé a enviar."
+                            : "Revisá el texto de rechazo DGII abajo (no es rechazo por secuencia); el correlativo no cambió — corregí y reintentá."
+                          : "Enviar e-CF a DGII";
+
+                    const dgiiSendBtnClass = dgiiSendLocked
+                      ? dgiiStatus === "accepted"
+                        ? "border-emerald-200 text-emerald-700 bg-emerald-50"
+                        : "border-sky-200 text-sky-800 bg-sky-50"
+                      : dgiiStatus === "rejected"
+                        ? "border-amber-300 text-amber-900 bg-amber-50 hover:bg-amber-100"
+                        : "border-indigo-200 text-indigo-700 hover:bg-indigo-50";
 
                     return (
                       <tr key={client.id} className="hover:bg-indigo-50/40 transition">
@@ -565,30 +911,28 @@ export default function Clients() {
                           )}
                         </td>
 
-                        <td className="px-4 sm:px-6 py-4 text-center">
+                        <td className="px-4 sm:px-6 py-4 text-center align-top">
                           {last ? (
-                            <button
-                              onClick={() => handleSendEcf(last.id)}
-                              disabled={sendingEcfId === last.id || alreadySent || !isOnline}
-                              className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${
-                                alreadySent
-                                  ? "border-emerald-200 text-emerald-700 bg-emerald-50"
-                                  : "border-indigo-200 text-indigo-700 hover:bg-indigo-50"
-                              }`}
-                              title={
-                                !isOnline
-                                  ? "Sin internet: no se puede enviar a DGII"
-                                  : alreadySent
-                                    ? "e-CF ya enviado"
-                                    : "Enviar e-CF"
-                              }
-                            >
-                              {sendingEcfId === last.id
-                                ? "Enviando..."
-                                : alreadySent
-                                  ? "Enviado"
-                                  : "Enviar DGII"}
-                            </button>
+                            <div className="flex flex-col items-center gap-1">
+                              <button
+                                onClick={() => handleSendEcf(last.id)}
+                                disabled={sendingEcfId === last.id || dgiiSendLocked || !isOnline}
+                                className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${dgiiSendBtnClass}`}
+                                title={sendTitle}
+                              >
+                                {sendLabel}
+                              </button>
+                              {dgiiStatus === "rejected" &&
+                                typeof last.dgii_rejection_summary === "string" &&
+                                last.dgii_rejection_summary.trim().length > 0 && (
+                                  <p
+                                    className="max-w-[13rem] text-left text-[10px] leading-snug text-amber-950 line-clamp-3"
+                                    title={last.dgii_rejection_summary}
+                                  >
+                                    {last.dgii_rejection_summary}
+                                  </p>
+                                )}
+                            </div>
                           ) : (
                             <span className="text-gray-400">-</span>
                           )}
@@ -646,6 +990,33 @@ export default function Clients() {
                           )}
                         </td>
                         <td className="px-4 sm:px-6 py-4 text-center">
+                          {last ? (
+                            <button
+                              type="button"
+                              onClick={() => void openEcfXmlViewer(last.id)}
+                              className="p-2 rounded-lg hover:bg-violet-50 transition inline-block"
+                              title="Ver XML e-CF guardado (firmado al guardar cotización)"
+                            >
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="w-4 h-4 sm:w-5 sm:h-5 text-violet-700"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"
+                                />
+                              </svg>
+                            </button>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 sm:px-6 py-4 text-center">
                           <div className="flex items-center justify-center gap-2">
                             <Link
                               to={last ? `/cotizaciones/${last.id}/editar` : "#"}
@@ -672,8 +1043,43 @@ export default function Clients() {
             {/* Mobile Cards */}
             <div className="md:hidden divide-y divide-gray-100">
               {pageRows.map(({ client, last }) => {
-                const alreadySent =
-                  last?.dgii_status === "accepted" || last?.dgii_status === "rejected";
+                const dgiiStatus = last?.dgii_status;
+                const dgiiSendLocked =
+                  dgiiStatus === "accepted" || dgiiStatus === "pending";
+
+                const seqResubmit = last?.dgii_resubmit_new_seq === true;
+                const sendLabel = !last
+                  ? "-"
+                  : sendingEcfId === last.id
+                    ? "..."
+                    : dgiiSendLocked
+                      ? dgiiStatus === "accepted"
+                        ? "Enviado"
+                        : "Pendiente"
+                      : dgiiStatus === "rejected"
+                        ? seqResubmit
+                          ? "Reenviar"
+                          : "Reintentar"
+                        : "Enviar";
+                const sendTitle = !isOnline
+                  ? "Sin internet: no se puede enviar a DGII"
+                  : dgiiSendLocked
+                    ? dgiiStatus === "accepted"
+                      ? "Comprobante aceptado por DGII"
+                      : "Envío pendiente/procesándose"
+                    : dgiiStatus === "rejected"
+                      ? seqResubmit
+                        ? "Rechazo por correlativo/secuencia: correlativo ya avanzó en la app."
+                        : "Rechazo distinto a secuencia: revisá el mensaje; mismo correlativo."
+                      : "Enviar e-CF a DGII";
+
+                const dgiiSendBtnClass = dgiiSendLocked
+                  ? dgiiStatus === "accepted"
+                    ? "border-emerald-200 text-emerald-700 bg-emerald-50"
+                    : "border-sky-200 text-sky-800 bg-sky-50"
+                  : dgiiStatus === "rejected"
+                    ? "border-amber-300 text-amber-900 bg-amber-50 hover:bg-amber-100"
+                    : "border-indigo-200 text-indigo-700 hover:bg-indigo-50";
 
                 return (
                   <div key={client.id} className="p-4 hover:bg-indigo-50/40 transition">
@@ -685,7 +1091,8 @@ export default function Clients() {
                         <p className="text-sm text-gray-500">RNC: {client.rnc_cedula}</p>
                       </div>
                       {last ? (
-                        <div className="flex items-center gap-2">
+                        <>
+                          <div className="flex items-center gap-2">
                           <button
                             onClick={() => handleOpenDetail(last.id)}
                             className="rounded-lg border border-slate-200 p-2 text-slate-700 hover:bg-slate-50"
@@ -713,25 +1120,11 @@ export default function Clients() {
                           </button>
                           <button
                             onClick={() => handleSendEcf(last.id)}
-                            disabled={sendingEcfId === last.id || alreadySent || !isOnline}
-                            className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${
-                              alreadySent
-                                ? "border-emerald-200 text-emerald-700 bg-emerald-50"
-                                : "border-indigo-200 text-indigo-700 hover:bg-indigo-50"
-                            }`}
-                            title={
-                              !isOnline
-                                ? "Sin internet: no se puede enviar a DGII"
-                                : alreadySent
-                                  ? "e-CF ya enviado"
-                                  : "Enviar e-CF"
-                            }
+                            disabled={sendingEcfId === last.id || dgiiSendLocked || !isOnline}
+                            className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${dgiiSendBtnClass}`}
+                            title={sendTitle}
                           >
-                            {sendingEcfId === last.id
-                              ? "..."
-                              : alreadySent
-                                ? "Enviado"
-                                : "Enviar DGII"}
+                            {sendLabel}
                           </button>
                           <button
                             onClick={() => handleDownload(last.id, client.name)}
@@ -778,7 +1171,41 @@ export default function Clients() {
                               </svg>
                             )}
                           </button>
+                          {last ? (
+                            <button
+                              type="button"
+                              onClick={() => void openEcfXmlViewer(last.id)}
+                              className="p-2 rounded-lg hover:bg-violet-50 flex-shrink-0"
+                              title="Ver XML e-CF"
+                            >
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="w-4 h-4 text-violet-700"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"
+                                />
+                              </svg>
+                            </button>
+                          ) : null}
                         </div>
+                          {dgiiStatus === "rejected" &&
+                            typeof last.dgii_rejection_summary === "string" &&
+                            last.dgii_rejection_summary.trim().length > 0 && (
+                              <p
+                                className="mt-1 max-w-[min(100%,300px)] text-xs leading-snug text-amber-950"
+                                title={last.dgii_rejection_summary}
+                              >
+                                {last.dgii_rejection_summary}
+                              </p>
+                            )}
+                      </>
                       ) : null}
                     </div>
 
@@ -873,6 +1300,12 @@ export default function Clients() {
           <p className="mt-1">{ecfError}</p>
         </div>
       )}
+      {ecfWarning && (
+        <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950 text-sm">
+          <p className="font-semibold">Respuesta DGII</p>
+          <p className="mt-1 whitespace-pre-wrap">{ecfWarning}</p>
+        </div>
+      )}
       {ecfSuccess && (
         <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-700 text-sm">
           <p className="font-semibold">Flujo e-CF listo</p>
@@ -916,6 +1349,23 @@ export default function Clients() {
                     {detail.client.rnc_cedula}
                   </p>
                   <p>
+                    <span className="font-semibold">Tipo comprobante (e-CF):</span>{" "}
+                    {ecfTipoLabel(detail.ecf_tipo) || detail.ecf_tipo || "—"}
+                  </p>
+                  <p>
+                    <span className="font-semibold">e-NCF (próximo XML):</span>{" "}
+                    {formatEcfNumberDisplay(detail.ecf_tipo, detail.ecf_ncf_seq ?? undefined)}
+                  </p>
+                  <p className="text-xs leading-snug text-slate-500 sm:col-span-2">
+                    Tras un rechazo, el correlativo solo avanza en esta app cuando DGII indica problema de
+                    secuencia/correlativo ya usado (el botón muestra «Reenviar»). En otros rechazos («Reintentar»),
+                    el e-NCF no cambia: leé el mensaje, corregí el XML o datos y volvé a enviar.
+                  </p>
+                  <p>
+                    <span className="font-semibold">Referencia NCF (ND/NC):</span>{" "}
+                    {detail.ecf_reference_ncf?.trim() || "—"}
+                  </p>
+                  <p>
                     <span className="font-semibold">Fecha de cotización:</span>{" "}
                     {formatDate(detail.created_at)}
                   </p>
@@ -935,6 +1385,54 @@ export default function Clients() {
                     <span className="font-semibold">Track ID:</span>{" "}
                     {detail.dgii_track_id ?? "-"}
                   </p>
+                </div>
+                {detail.dgii_status === "rejected" && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50/80 p-3 text-sm">
+                    <p className="font-semibold text-amber-950">Último rechazo DGII</p>
+                    {detail.dgii_rejection_summary?.trim() ? (
+                      <p className="mt-1 text-amber-950">{detail.dgii_rejection_summary}</p>
+                    ) : (
+                      <p className="mt-1 text-amber-900 text-xs">Sin resumen interpretable; revisá el JSON en «Respuesta técnica».</p>
+                    )}
+                    {detail.dgii_resubmit_new_seq === true ? (
+                      <p className="mt-2 text-xs text-amber-900">
+                        Clasificado como rechazo por secuencia/correlativo: en el listado aparece «Reenviar DGII» y el
+                        sistema ya puede haber pasado al siguiente correlativo.
+                      </p>
+                    ) : (
+                      <p className="mt-2 text-xs text-amber-900">
+                        No es un rechazo por secuencia según los mensajes: el correlativo sigue igual; pulsá «Reintentar»
+                        tras corregir.
+                      </p>
+                    )}
+                    {detail.dgii_response?.trim() ? (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-xs font-medium text-slate-700">
+                          Respuesta técnica (JSON)
+                        </summary>
+                        <pre className="mt-2 max-h-40 overflow-auto rounded bg-white p-2 text-[11px] text-slate-800 border border-slate-200">
+                          {detail.dgii_response}
+                        </pre>
+                      </details>
+                    ) : null}
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void openEcfXmlViewer(detail.id)}
+                    className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-900 hover:bg-violet-100"
+                  >
+                    Ver XML e-CF
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteDetailCotizacion()}
+                    disabled={deletingDetailId === detail.id}
+                    className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-800 hover:bg-red-50 disabled:opacity-50"
+                  >
+                    {deletingDetailId === detail.id ? "Eliminando…" : "Eliminar cotización"}
+                  </button>
                 </div>
                 <div className="rounded-lg border border-slate-200 p-3">
                   <p className="text-sm font-semibold text-slate-800">
@@ -995,6 +1493,149 @@ export default function Clients() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {ecfXmlViewer.open && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div className="flex max-h-[90vh] w-full max-w-4xl flex-col rounded-xl bg-white shadow-xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">
+                  XML e-CF
+                  {ecfXmlViewer.tab === "preview" ||
+                  (ecfXmlViewer.tab === "signed" && ecfXmlViewer.dgiiTrackId) ? (
+                    <span className="ml-2 text-sm font-normal text-emerald-700">firmado</span>
+                  ) : null}
+                </h3>
+                {ecfXmlViewer.ecfNumber ? (
+                  <p className="text-xs text-slate-500">e-NCF: {ecfXmlViewer.ecfNumber}</p>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={closeEcfXmlViewer}
+                className="rounded px-2 py-1 text-slate-500 hover:bg-slate-100"
+              >
+                Cerrar
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              {ecfXmlViewer.loading ? (
+                <p className="text-sm text-slate-500">Cargando e-CF…</p>
+              ) : null}
+              {ecfXmlViewer.error ? (
+                <p className="text-sm text-red-600">{ecfXmlViewer.error}</p>
+              ) : null}
+              {!ecfXmlViewer.loading && !ecfXmlViewer.error ? (
+                <>
+                  {company?.certificateConfigured && !ecfXmlViewer.signedXml ? (
+                    <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2">
+                      <p className="flex-1 text-xs text-amber-900">
+                        No hay XML firmado guardado para esta cotización. Guardá otra vez desde Editar con la clave del
+                        certificado, o firmá aquí sin guardar en servidor.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void handleSignEcfXmlLocal()}
+                        disabled={ecfSignLocalLoading || ecfXmlViewer.cotizacionId == null}
+                        className="shrink-0 rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-50 disabled:opacity-50"
+                      >
+                        {ecfSignLocalLoading
+                          ? "Firmando…"
+                          : ecfXmlViewer.previewSignedXml
+                            ? "Actualizar vista (firma local)"
+                            : "Firmar solo en esta pantalla"}
+                      </button>
+                      {ecfSignLocalError ? (
+                        <p className="w-full text-xs text-red-600">{ecfSignLocalError}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {!company?.certificateConfigured && !ecfXmlViewer.signedXml ? (
+                    <p className="mb-3 text-xs text-slate-500">
+                      Cargá el certificado en Perfil de empresa y guardá la cotización para generar el e-CF firmado listo
+                      para DGII.
+                    </p>
+                  ) : null}
+                  <div className="mb-3 flex flex-wrap gap-2 border-b border-slate-100 pb-3">
+                    {ecfXmlViewer.previewSignedXml || ecfXmlViewer.signedXml ? (
+                      <button
+                        type="button"
+                        onClick={() => setEcfXmlViewer((s) => ({ ...s, tab: "preview" }))}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                          ecfXmlViewer.tab === "preview"
+                            ? "bg-emerald-100 text-emerald-900 ring-1 ring-emerald-200"
+                            : "text-slate-600 hover:bg-slate-100"
+                        }`}
+                      >
+                        Listo para DGII (firmado)
+                      </button>
+                    ) : null}
+                    {ecfXmlViewer.generatedXml.trim() ? (
+                    <button
+                      type="button"
+                      onClick={() => setEcfXmlViewer((s) => ({ ...s, tab: "generated" }))}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                        ecfXmlViewer.tab === "generated"
+                          ? "bg-violet-100 text-violet-900"
+                          : "text-slate-600 hover:bg-slate-100"
+                      }`}
+                    >
+                      Borrador (sin firma)
+                    </button>
+                    ) : null}
+                    {ecfXmlViewer.dgiiTrackId && ecfXmlViewer.signedXml ? (
+                      <button
+                        type="button"
+                        onClick={() => setEcfXmlViewer((s) => ({ ...s, tab: "signed" }))}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                          ecfXmlViewer.tab === "signed"
+                            ? "bg-violet-100 text-violet-900"
+                            : "text-slate-600 hover:bg-slate-100"
+                        }`}
+                      >
+                        Copia del envío a DGII
+                      </button>
+                    ) : null}
+                  </div>
+                  <pre className="max-h-[min(60vh,520px)] overflow-auto rounded-lg bg-slate-50 p-3 text-left text-xs text-slate-800 ring-1 ring-slate-200 whitespace-pre">
+                    {ecfXmlViewer.tab === "signed" &&
+                    ecfXmlViewer.signedXml &&
+                    ecfXmlViewer.dgiiTrackId
+                      ? ecfXmlViewer.signedXml
+                      : ecfXmlViewer.tab === "preview"
+                        ? ecfXmlViewer.previewSignedXml || ecfXmlViewer.signedXml || ""
+                        : ecfXmlViewer.generatedXml}
+                  </pre>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={downloadCurrentEcfXmlFromViewer}
+                      disabled={
+                        !(
+                          (ecfXmlViewer.tab === "signed" && ecfXmlViewer.signedXml) ||
+                          (ecfXmlViewer.tab === "preview" &&
+                            (ecfXmlViewer.previewSignedXml || ecfXmlViewer.signedXml)) ||
+                          (ecfXmlViewer.tab === "generated" && ecfXmlViewer.generatedXml.trim())
+                        )
+                      }
+                      className="rounded-lg border border-violet-200 bg-white px-3 py-1.5 text-xs font-semibold text-violet-900 hover:bg-violet-50 disabled:opacity-50"
+                    >
+                      {ecfXmlViewer.tab === "preview" &&
+                      (ecfXmlViewer.previewSignedXml || ecfXmlViewer.signedXml)
+                        ? "Descargar XML firmado (DGII)"
+                        : "Descargar .xml"}
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Al guardar la cotización se genera y firma el XML (misma firma que el envío a DGII). Ver XML solo
+                    muestra lo ya guardado; no vuelve a firmar en este paso.
+                  </p>
+                </>
+              ) : null}
+            </div>
           </div>
         </div>
       )}

@@ -3,8 +3,13 @@ import jwt, { type Secret, type SignOptions } from "jsonwebtoken";
 const SECRET: Secret =
   process.env.JWT_SECRET ?? "dev-only-change-JWT_SECRET-in-production";
 
+const accessExpiresIn =
+  (process.env.JWT_ACCESS_EXPIRES_IN as SignOptions["expiresIn"] | undefined) ??
+  (process.env.JWT_EXPIRES_IN as SignOptions["expiresIn"] | undefined) ??
+  "1h";
+
 const signOptions: SignOptions = {
-  expiresIn: (process.env.JWT_EXPIRES_IN as SignOptions["expiresIn"]) ?? "7d",
+  expiresIn: accessExpiresIn,
 };
 
 export type SessionClaims = {

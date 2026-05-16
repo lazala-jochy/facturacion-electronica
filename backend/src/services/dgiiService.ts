@@ -1,5 +1,10 @@
 import type { DgiiSubmissionResult } from "../types/dgiiEcf";
 import { normalizeDgiiEcfUrl } from "../config/dgiiEcf.constants";
+import { readGlobalDgiiBearerToken } from "../config/dgiiGlobalToken";
+import {
+  isInconclusiveDgiiReceptionBody,
+  mapDgiiRawBodyToCotizacionEstado,
+} from "../utils/dgiiEstadoRecepcion";
 import { DgiiEcfError } from "../types/dgiiEcf";
 
 export type { DgiiSubmissionResult } from "../types/dgiiEcf";
@@ -118,8 +123,34 @@ const bodyConfirmsAcceptance = (raw: string): boolean => {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
-  if (/\b(rechazad[oa]|error|invalida?|fall[oa]|no\s+aceptad[oa])\b/.test(normalized)) return false;
+  if (/\b(rechazad[oa]|invalida?|fall[oa]|no\s+aceptad[oa])\b/.test(normalized)) return false;
   return /\b(aceptad[oa]|recibid[oa]|recepcionad[oa]|procesad[oa]|satisfactori[ao]|exitos[ao])\b/.test(normalized);
+};
+
+/** Texto legible para heurísticas (valores de mensajes/estado, no claves JSON). */
+const dgiiHumanTextForHeuristics = (raw: string): string => {
+  const t = raw.trim();
+  if (!t.startsWith("{")) return raw;
+  try {
+    const j = JSON.parse(t) as Record<string, unknown>;
+    const parts: string[] = [];
+    for (const k of ["estado", "Estado", "mensaje", "Mensaje", "error", "Error"]) {
+      const v = j[k];
+      if (typeof v === "string" && v.trim()) parts.push(v.trim());
+    }
+    const msgs = j.mensajes ?? j.Mensajes;
+    if (Array.isArray(msgs)) {
+      for (const m of msgs) {
+        if (m != null && typeof m === "object" && !Array.isArray(m)) {
+          const val = (m as Record<string, unknown>).valor;
+          if (typeof val === "string" && val.trim()) parts.push(val.trim());
+        }
+      }
+    }
+    return parts.length ? parts.join(" ") : "";
+  } catch {
+    return raw;
+  }
 };
 
 const looksLikeHtml = (contentType: string, raw: string): boolean => {
@@ -145,7 +176,7 @@ export const submitEcfToDgii = async (
   },
 ): Promise<DgiiSubmissionResult> => {
   const endpoint = normalizeDgiiEcfUrl(opts?.endpoint || process.env.DGII_ECF_ENDPOINT);
-  const token = (opts?.bearerToken?.trim() || process.env.DGII_ECF_TOKEN?.trim()) ?? "";
+  const token = (opts?.bearerToken?.trim() || readGlobalDgiiBearerToken() || "") ?? "";
 
   if (!endpoint) {
     return submitMock(signedXml);
@@ -193,8 +224,44 @@ export const submitEcfToDgii = async (
     );
   }
 
-  const accepted = Boolean(trackId) || bodyConfirmsAcceptance(rawResponse);
-  if (!accepted) {
+  const mapped = mapDgiiRawBodyToCotizacionEstado(rawResponse);
+  let status: "accepted" | "rejected" | "prepared" | "pending";
+  if (mapped === "rejected") {
+    status = "rejected";
+  } else if (mapped === "accepted") {
+    status = "accepted";
+  } else if (mapped === "pending") {
+    status = "pending";
+  } else if (mapped === "prepared") {
+    status = "prepared";
+  } else if (isInconclusiveDgiiReceptionBody(rawResponse)) {
+    /** p. ej. {"trackId":"…","error":null,"mensaje":null} — no es rechazo; falta consulta estado. */
+    status = "pending";
+  } else {
+    const textForHeuristics = dgiiHumanTextForHeuristics(rawResponse);
+    const normalized = textForHeuristics
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+    const suggestsRejection = /\b(rechazad[oa]|invalida?|fall[oa]|no\s+aceptad[oa])\b/.test(
+      normalized,
+    );
+    const suggestsErrorPhrase =
+      /\b(error\s+en|error\s+de|error\s+al|hubo\s+un\s+error)\b/.test(normalized);
+    if (suggestsRejection || suggestsErrorPhrase) {
+      status = "rejected";
+    } else if (bodyConfirmsAcceptance(textForHeuristics)) {
+      status = "accepted";
+    } else if (trackId?.trim()) {
+      status = "pending";
+    } else {
+      status = "rejected";
+    }
+  }
+
+  const accepted = status === "accepted";
+
+  if (status === "rejected" && !trackId?.trim()) {
     throw new DgiiEcfError(
       `DGII respondió HTTP ${response.status}, pero no confirmó aceptación ni devolvió trackId real. Respuesta: ${compactBody(rawResponse)}`,
       "RECEPTION_FAILED",
@@ -204,8 +271,8 @@ export const submitEcfToDgii = async (
 
   return {
     accepted,
-    status: accepted ? "accepted" : "rejected",
-    trackId,
+    status,
+    trackId: trackId ?? "",
     rawResponse,
     httpStatus: response.status,
     responseContentType: contentType,

@@ -22,15 +22,11 @@ export default function DgiiEcfSimulacion({
         <p className="mt-2 text-sm leading-relaxed text-slate-600">{PASO4.description}</p>
       </header>
 
-      <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-4 sm:p-5 text-sm text-blue-950 space-y-2">
-        <p className="leading-relaxed">
-          Configurá manualmente los cuatro servicios DGII para la <strong>simulación e-CF</strong>. No se comparten
-          con otras pantallas.
-        </p>
+      <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-4 sm:p-5 text-sm text-blue-950">
         <p className="text-xs text-blue-900/90 leading-relaxed">
-          El lote Excel oficial sigue usando las URLs del{" "}
+          El lote Excel oficial ({PASO2.paso}) usa otras URLs:{" "}
           <Link to={PASO2.path} className="font-medium text-[#0b57d0] hover:underline">
-            {PASO2.paso}
+            abrir Paso 2
           </Link>
           .
         </p>

@@ -10,6 +10,11 @@ import Invoices from "./pages/Invoices";
 import Clients from "./pages/Clients";
 import CotizacionCreate from "./pages/CotizacionCreate";
 import CotizacionEdit from "./pages/CotizacionEdit";
+import {
+  AUTH_SESSION_INVALIDATED,
+  AUTH_SESSION_UPDATED,
+  proactiveRefreshIfNeeded,
+} from "./services/api";
 import { AUTH_STORAGE_KEY, type AuthSession } from "./types/session";
 import CompanyProfile from "./pages/CompanyProfile";
 import EcfExcelBatch from "./pages/EcfExcelBatch";
@@ -39,6 +44,29 @@ function App() {
     if (!session?.company?.name) return;
     document.title = documentTitleWithCompany(session.company.name);
   }, [session?.company?.name]);
+
+  useEffect(() => {
+    if (!session?.refresh_token) return;
+    void proactiveRefreshIfNeeded();
+    const id = window.setInterval(() => {
+      void proactiveRefreshIfNeeded();
+    }, 60_000);
+    return () => window.clearInterval(id);
+  }, [session?.token, session?.refresh_token]);
+
+  useEffect(() => {
+    const onInvalidated = () => setSession(null);
+    const onUpdated = (e: Event) => {
+      const next = (e as CustomEvent<AuthSession>).detail;
+      if (next?.token && next?.user && next?.company) setSession(next);
+    };
+    window.addEventListener(AUTH_SESSION_INVALIDATED, onInvalidated);
+    window.addEventListener(AUTH_SESSION_UPDATED, onUpdated);
+    return () => {
+      window.removeEventListener(AUTH_SESSION_INVALIDATED, onInvalidated);
+      window.removeEventListener(AUTH_SESSION_UPDATED, onUpdated);
+    };
+  }, []);
 
   const handleAuthenticated = (next: AuthSession) => {
     setSession(next);

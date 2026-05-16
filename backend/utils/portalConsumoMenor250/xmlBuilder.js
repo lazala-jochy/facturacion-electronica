@@ -253,12 +253,12 @@ function appendFieldsInOrder(parent, values, order) {
 const IDDOC_FIELDS = [
   "TipoeCF",
   "eNCF",
-  "FechaVencimientoSecuencia",
   "IndicadorNotaCredito",
   "IndicadorEnvioDiferido",
   "IndicadorMontoGravado",
   "IndicadorServicioTodoIncluido",
   "TipoIngresos",
+  "FechaVencimientoSecuencia",
   "TipoPago",
   "FechaLimitePago",
   "TerminoPago",
@@ -269,6 +269,32 @@ const IDDOC_FIELDS = [
   "FechaHasta",
   "TotalPaginas",
 ];
+
+/** e-CF 32 XSD: IdDoc no admite FechaVencimientoSecuencia (debe seguir TipoPago…). */
+function idDocFieldsForTipoEcf(tipoEcf) {
+  const t = String(tipoEcf ?? "").trim();
+  if (t === "32") return IDDOC_FIELDS.filter((f) => f !== "FechaVencimientoSecuencia");
+  return IDDOC_FIELDS;
+}
+
+/** e-CF 32: IndicadorEnvioDiferido=1 (cód. 164); IndicadorServicioTodoIncluido solo si vale 1 (XSD opcional — no enviar 0). */
+function rowForIdDocFields(row, tipoEcf) {
+  const t = String(tipoEcf ?? "").trim();
+  if (t !== "32") return row;
+  const out = { ...row };
+  let servTodoIncl = null;
+  for (const k of Object.keys(out)) {
+    if (normCol(k) === normCol("IndicadorEnvioDiferido")) delete out[k];
+    if (normCol(k) === normCol("IndicadorServicioTodoIncluido")) {
+      const v = String(out[k] ?? "").trim();
+      delete out[k];
+      if (v === "1") servTodoIncl = "1";
+    }
+  }
+  out.IndicadorEnvioDiferido = "1";
+  if (servTodoIncl === "1") out.IndicadorServicioTodoIncluido = "1";
+  return out;
+}
 
 const EMISOR_FIELDS = [
   "RNCEmisor",
@@ -594,7 +620,7 @@ function buildEcfXml(row, opts = {}) {
   enc.ele("Version").txt(String(exactLookup(row, "Version") || "1.0"));
 
   const idDoc = enc.ele("IdDoc");
-  appendFields(idDoc, row, IDDOC_FIELDS);
+  appendFields(idDoc, rowForIdDocFields(row, tipoEcf), idDocFieldsForTipoEcf(tipoEcf));
   appendTablaFormasPago(idDoc, row);
   idDoc.up();
 

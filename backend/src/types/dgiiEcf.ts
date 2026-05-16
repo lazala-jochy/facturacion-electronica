@@ -1,6 +1,7 @@
 export type DgiiSubmissionResult = {
   accepted: boolean;
-  status: "accepted" | "rejected";
+  /** `pending` = recepción OK y trackId pero sin aceptación/rechazo explícito en el cuerpo (no inferir aceptado). */
+  status: "accepted" | "rejected" | "prepared" | "pending";
   trackId: string;
   rawResponse: string;
   httpStatus?: number;

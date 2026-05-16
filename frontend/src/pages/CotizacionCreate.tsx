@@ -10,6 +10,7 @@ import {
   itemLineTotalValue,
 } from "../utils/tax";
 import { formatPhoneInput, isValidPhone } from "../utils/phone";
+import { DEFAULT_ECF_TIPO, ECF_TIPO_OPTIONS, ECF_TIPO_REQUIERE_REFERENCIA } from "../config/ecfTipos";
 
 type ItemRow = CotizacionItemDraft & { key: string };
 
@@ -35,6 +36,19 @@ export default function CotizacionCreate() {
 
   const company = session?.company;
 
+  const [certEncSecret, setCertEncSecret] = useState("");
+  useEffect(() => {
+    const id = company?.id;
+    if (id == null || typeof sessionStorage === "undefined") return;
+    const saved = sessionStorage.getItem(`fe_cert_enc_${id}`);
+    const fromProfile = company?.certificate_keyphrase?.trim() ?? "";
+    if (fromProfile) {
+      setCertEncSecret((prev) => (prev.trim().length > 0 ? prev : fromProfile));
+    } else if (saved) {
+      setCertEncSecret((prev) => (prev.trim().length > 0 ? prev : saved));
+    }
+  }, [company?.id, company?.certificate_keyphrase]);
+
   const [clientName, setClientName] = useState("");
   const [clientAddress, setClientAddress] = useState("");
   const [clientRnc, setClientRnc] = useState("");
@@ -44,6 +58,8 @@ export default function CotizacionCreate() {
   const [paymentMethod, setPaymentMethod] = useState("Efectivo");
   const [accountManager, setAccountManager] = useState("");
   const [comment, setComment] = useState("");
+  const [ecfTipo, setEcfTipo] = useState(DEFAULT_ECF_TIPO);
+  const [ecfReferenceNcf, setEcfReferenceNcf] = useState("");
   const [items, setItems] = useState<ItemRow[]>(() => [newRow(), newRow()]);
   const [calcMode, setCalcMode] = useState<"auto" | "manual">("auto");
   const [manualSubtotal, setManualSubtotal] = useState(0);
@@ -133,6 +149,7 @@ export default function CotizacionCreate() {
 
     setLoading(true);
     try {
+      const enc = certEncSecret.trim() || company?.certificate_keyphrase?.trim() || "";
       const res = await createClientWithCotizacion({
         client: {
           name: clientName.trim(),
@@ -146,12 +163,18 @@ export default function CotizacionCreate() {
           payment_method: paymentMethod,
           account_manager: accountManager.trim(),
           comment: comment.trim() || undefined,
+          ecf_tipo: ecfTipo,
+          ecf_reference_ncf:
+            ECF_TIPO_REQUIERE_REFERENCIA.has(ecfTipo) && ecfReferenceNcf.trim()
+              ? ecfReferenceNcf.trim()
+              : undefined,
           calc_mode: calcMode,
           subtotal: displayTotals.subtotal,
           itbis: displayTotals.itbis,
           total: displayTotals.total,
         },
         items: payloadItems,
+        ...(enc.length >= 8 ? { certificate_encryption_secret: enc } : {}),
       });
       const cot = res.cotizacion as { number?: number };
       setDone({
@@ -164,6 +187,8 @@ export default function CotizacionCreate() {
       setClientPhone("");
       setClientEmail("");
       setPaymentMethod("Efectivo");
+      setEcfTipo(DEFAULT_ECF_TIPO);
+      setEcfReferenceNcf("");
       setComment("");
       setItems([newRow(), newRow()]);
       setCalcMode("auto");
@@ -280,6 +305,16 @@ export default function CotizacionCreate() {
               onChange={(e) => setClientRnc(e.target.value)}
               required
             />
+            {ecfTipo === "31" && (
+              <p className="mt-1 text-[11px] text-slate-500">
+                Tipo 31: debe ser RNC o cédula del comprador (comprobante crédito fiscal DGII).
+              </p>
+            )}
+            {ecfTipo === "32" && (
+              <p className="mt-1 text-[11px] text-slate-500">
+                Tipo 32 (consumo): podés usar cédula de persona física o RNC.
+              </p>
+            )}
             <label className="mt-2 block text-xs font-medium text-slate-600">
               Dirección
             </label>
@@ -317,6 +352,41 @@ export default function CotizacionCreate() {
             </div>
           </div>
           <div className="space-y-3 rounded border border-slate-200 p-3 sm:p-4">
+            <div>
+              <label htmlFor="pxd0yl" className="text-xs font-medium text-slate-600">
+                Tipo de comprobante fiscal
+              </label>
+              <select
+                id="pxd0yl"
+                className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                value={ecfTipo}
+                onChange={(e) => setEcfTipo(e.target.value)}
+              >
+                {ECF_TIPO_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {ECF_TIPO_REQUIERE_REFERENCIA.has(ecfTipo) && (
+              <div>
+                <label className="text-xs font-medium text-slate-600">
+                  Documento referencia (e-NCF asociado)
+                </label>
+                <input
+                  className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-xs sm:text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  value={ecfReferenceNcf}
+                  onChange={(e) => setEcfReferenceNcf(e.target.value)}
+                  placeholder="Ej: E310000000001"
+                  required
+                />
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Obligatorio para notas débito/crédito: e-NCF del comprobante que modificás (XML:
+                  NCFModificado).
+                </p>
+              </div>
+            )}
             <div>
               <label className="text-xs font-medium text-slate-600">
                 Condiciones de pago

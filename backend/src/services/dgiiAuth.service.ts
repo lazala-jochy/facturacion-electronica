@@ -9,6 +9,8 @@ import { describeFetchFailure } from "./dgiiService";
 import { signXmlWithP12Buffer, testCertificateCompatibility, type SignatureMode } from "./dgiiXmlSigner";
 import { assertCertificateEncryptionSecret } from "../utils/companyCertificateCrypto";
 import { loadDecryptedPkcs12ForCompany } from "../utils/companyCertificateStorage";
+import type { DgiiCertProfile } from "../types/dgiiCertProfile";
+import { paso4SeedUrlFromAuthBase, paso4ValidateSeedUrlFromAuthBase } from "../utils/dgiiPaso4Urls";
 
 const LOG_DIR = path.join(process.cwd(), "logs");
 const LOG_FILE = path.join(LOG_DIR, "dgii.log");
@@ -16,6 +18,8 @@ const DGII_AUTH_DUMP_DIR = path.join(LOG_DIR, "dgii-auth");
 const DGII_SIGNATURE_LOG = path.join(LOG_DIR, "dgii-signature.log");
 const DGII_AUTH_LOG = path.join(LOG_DIR, "dgii-auth.log");
 const lastSuccessfulMode = new Map<number, SignatureMode>();
+/** Tokens obtenidos con semilla Paso 4 (no mezclar con token Paso 2 guardado en BD). */
+const tokenCachePaso4 = new Map<number, { token: string; expiration: Date }>();
 
 function appendDgiiLog(message: string): void {
   try {
@@ -124,14 +128,46 @@ function extractExpiration(raw: string): Date {
   return new Date(Date.now() + 25 * 60 * 1000);
 }
 
-function resolveSeedUrl(company: Company): string {
+function resolveSeedUrl(company: Company, profile: DgiiCertProfile = "paso2"): string {
+  if (profile === "paso4") {
+    const direct = company.dgiiPaso4SeedUrl?.trim();
+    if (direct) {
+      return requireUrl(normalizeDgiiEcfUrl(direct), "semilla DGII (Paso 4)");
+    }
+    const auth = company.dgiiPaso4AuthUrl?.trim();
+    const derived = auth ? paso4SeedUrlFromAuthBase(auth) : "";
+    if (derived) {
+      return requireUrl(normalizeDgiiEcfUrl(derived), "semilla DGII (Paso 4)");
+    }
+    throw new DgiiEcfError(
+      "Configurá dgii_paso4_seed_url o dgii_paso4_auth_url en el perfil de empresa para token Paso 4.",
+      "MISSING_CREDENTIALS",
+      400,
+    );
+  }
   return requireUrl(
     normalizeDgiiEcfUrl(company.dgiiSeedUrl || DGII_ECF_SANDBOX_DEFAULTS.seed),
     "semilla DGII",
   );
 }
 
-function resolveValidateSeedUrl(company: Company): string {
+function resolveValidateSeedUrl(company: Company, profile: DgiiCertProfile = "paso2"): string {
+  if (profile === "paso4") {
+    const direct = company.dgiiPaso4ValidateSeedUrl?.trim();
+    if (direct) {
+      return requireUrl(normalizeDgiiEcfUrl(direct), "validación de semilla DGII (Paso 4)");
+    }
+    const auth = company.dgiiPaso4AuthUrl?.trim();
+    const derived = auth ? paso4ValidateSeedUrlFromAuthBase(auth) : "";
+    if (derived) {
+      return requireUrl(normalizeDgiiEcfUrl(derived), "validación de semilla DGII (Paso 4)");
+    }
+    throw new DgiiEcfError(
+      "Configurá dgii_paso4_validate_seed_url o dgii_paso4_auth_url en el perfil de empresa para token Paso 4.",
+      "MISSING_CREDENTIALS",
+      400,
+    );
+  }
   return requireUrl(
     normalizeDgiiEcfUrl(company.dgiiValidateSeedUrl || DGII_ECF_SANDBOX_DEFAULTS.validateSeed),
     "validación de semilla DGII",
@@ -164,8 +200,8 @@ async function signSeedWithCompanyCertificate(
     signXmlWithP12Buffer(seedXml, loaded.p12Buffer, loaded.password, mode);
 }
 
-async function getSeed(company: Company): Promise<string> {
-  const url = resolveSeedUrl(company);
+async function getSeed(company: Company, profile: DgiiCertProfile = "paso2"): Promise<string> {
+  const url = resolveSeedUrl(company, profile);
   appendDgiiLog(`[auth] getSeed company=${company.id} url=${url}`);
   let response: Response;
   try {
@@ -185,8 +221,12 @@ async function getSeed(company: Company): Promise<string> {
   return body;
 }
 
-async function validateSeed(company: Company, signedXml: string): Promise<{ token: string; expiration: Date }> {
-  const url = resolveValidateSeedUrl(company);
+async function validateSeed(
+  company: Company,
+  signedXml: string,
+  profile: DgiiCertProfile = "paso2",
+): Promise<{ token: string; expiration: Date }> {
+  const url = resolveValidateSeedUrl(company, profile);
   const tmpRoot = path.join(os.tmpdir(), "dgii-auth-temp", `company-${company.id}`);
   ensureDir(tmpRoot);
   const tmpFile = path.join(tmpRoot, `signed-seed-${Date.now()}.xml`);
@@ -251,22 +291,33 @@ export const dgiiAuthService = {
     return validateSeed(company, signedXml);
   },
 
-  async getToken(companyId: number): Promise<string> {
+  async getToken(companyId: number, options?: { certProfile?: DgiiCertProfile }): Promise<string> {
+    const profile = options?.certProfile ?? "paso2";
+
     const company = await prisma.company.findUnique({ where: { id: companyId } });
     if (!company) throw new DgiiEcfError("Empresa no encontrada.", "MISSING_CREDENTIALS", 404);
 
-    if (company.tokenCache && company.tokenExpiration && company.tokenExpiration.getTime() > Date.now() + 30_000) {
+    if (profile === "paso4") {
+      const cached = tokenCachePaso4.get(companyId);
+      if (cached && cached.expiration.getTime() > Date.now() + 30_000) {
+        return cached.token;
+      }
+    } else if (
+      company.tokenCache &&
+      company.tokenExpiration &&
+      company.tokenExpiration.getTime() > Date.now() + 30_000
+    ) {
       return company.tokenCache;
     }
 
-    appendDgiiLog(`[auth] token renewal company=${company.id}`);
+    appendDgiiLog(`[auth] token renewal company=${company.id} profile=${profile}`);
     appendAuthLog(`[auth] token_renewal_start company=${company.id}`);
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     const attemptDir = path.join(DGII_AUTH_DUMP_DIR, `company-${company.id}`, stamp);
     ensureDir(attemptDir);
     writeDumpFile(attemptDir, "00-attempt.txt", `company=${company.id}\nstarted_at=${new Date().toISOString()}\n`);
 
-    const seedRaw = await getSeed(company);
+    const seedRaw = await getSeed(company, profile);
     writeDumpFile(attemptDir, "01-seed-raw.txt", seedRaw);
 
     const seedXml = buildSemillaXml(seedRaw);
@@ -288,7 +339,7 @@ export const dgiiAuthService = {
         writeDumpFile(attemptDir, `03-seed-signed-${signatureMode}.xml`, signedSeed);
         writeDumpFile(attemptDir, "03-seed-signed.xml", signedSeed);
         writeDumpFile(attemptDir, `04-validate-payload-${signatureMode}-multipart-note.txt`, "multipart/form-data field=xml filename=signed-seed.xml type=text/xml");
-        const out = await validateSeed(company, signedSeed);
+        const out = await validateSeed(company, signedSeed, profile);
         token = out.token;
         expiration = out.expiration;
         lastSuccessfulMode.set(company.id, signatureMode);
@@ -310,15 +361,25 @@ export const dgiiAuthService = {
       throw new DgiiEcfError(msg, "AUTH_FAILED", 400);
     }
 
-    await prisma.company.update({
-      where: { id: company.id },
-      data: {
-        tokenCache: token,
-        tokenExpiration: expiration,
-      },
-    });
-    appendDgiiLog(`[auth] token refreshed company=${company.id} exp=${expiration.toISOString()}`);
+    if (profile === "paso4") {
+      tokenCachePaso4.set(companyId, { token, expiration });
+      appendDgiiLog(`[auth] token cached memory paso4 company=${company.id} exp=${expiration.toISOString()}`);
+    } else {
+      await prisma.company.update({
+        where: { id: company.id },
+        data: {
+          tokenCache: token,
+          tokenExpiration: expiration,
+        },
+      });
+      appendDgiiLog(`[auth] token refreshed company=${company.id} exp=${expiration.toISOString()}`);
+    }
     return token;
+  },
+
+  clearPaso4TokenCache(companyId?: number): void {
+    if (companyId != null) tokenCachePaso4.delete(companyId);
+    else tokenCachePaso4.clear();
   },
 
   async testConnection(companyId: number): Promise<{

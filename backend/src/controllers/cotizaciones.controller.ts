@@ -8,10 +8,40 @@ import { generateDGIIData } from "../utils/dgii";
 import { buildCotizacionPdfBuffer } from "../utils/cotizacion-pdf";
 import { prisma } from "../prisma";
 import { ecfService } from "../services/ecf.service";
+import { ensureRepresentacionImpresaPdfForCotizacion } from "../services/ecfRepresentacionImpresa.service";
+import { companyHasCertificateRecord } from "../utils/companyCertificateStorage";
+import { parseDgiiCertProfile } from "../types/dgiiCertProfile";
+import { isDgiiSequenceRejection, summarizeDgiiResponse } from "../utils/dgiiRejection";
+import { buildEcfNumber } from "../utils/ecfTipo";
 
 const stripTenantFromBody = (body: Record<string, unknown>) => {
   delete body.company_id;
   delete body.companyId;
+};
+
+const pickStr = (b: Record<string, unknown>, k: string): string | undefined =>
+  typeof b[k] === "string" ? (b[k] as string) : undefined;
+
+/** Tras crear/editar cotización: firma y guarda XML si la empresa tiene certificado. */
+const trySignDraftEcfAfterWrite = async (
+  cotizacionId: number,
+  companyId: number,
+  certificateEncryptionSecret: string | undefined,
+): Promise<
+  { status: "ok" } | { status: "skipped" } | { status: "error"; message: string }
+> => {
+  const companyRow = await prisma.company.findUnique({ where: { id: companyId } });
+  if (!companyRow || !companyHasCertificateRecord(companyRow)) {
+    return { status: "skipped" };
+  }
+  const pathMod = await import("node:path");
+  const uploadsRoot = pathMod.join(process.cwd(), "uploads");
+  const out = await ecfService.signAndStoreDraftForCotizacion(cotizacionId, companyId, {
+    uploadsRoot,
+    certificateEncryptionSecret: certificateEncryptionSecret?.trim() || undefined,
+  });
+  if (!out.ok) return { status: "error", message: out.message };
+  return { status: "ok" };
 };
 
 const serializeCotizacion = (
@@ -27,6 +57,9 @@ const serializeCotizacion = (
   comment: c.comment,
   document_title: c.documentTitle,
   fiscal_legend: c.fiscalLegend,
+  ecf_tipo: c.ecfTipo,
+  ecf_ncf_seq: c.ecfNcfSeq,
+  ecf_reference_ncf: c.ecfReferenceNcf,
   subtotal: c.subtotal,
   itbis: c.itbis,
   total: c.total,
@@ -35,6 +68,17 @@ const serializeCotizacion = (
   dgii_response: c.dgiiResponse,
   signed_xml: c.signedXml,
   dgii_submitted_at: c.dgiiSubmittedAt?.toISOString() ?? null,
+  dgii_rejection_summary:
+    c.dgiiStatus === "rejected" && c.dgiiResponse?.trim()
+      ? summarizeDgiiResponse(c.dgiiResponse)
+      : null,
+  dgii_resubmit_new_seq:
+    c.dgiiStatus === "rejected" && c.dgiiResponse?.trim()
+      ? isDgiiSequenceRejection(c.dgiiResponse)
+      : false,
+  ecf_ri_pdf_path: c.ecfRiPdfPath,
+  ecf_ri_qr_url: c.ecfRiQrUrl,
+  ecf_ri_generated_at: c.ecfRiGeneratedAt?.toISOString() ?? null,
   created_at: c.createdAt.toISOString(),
   client: {
     id: c.client.id,
@@ -96,6 +140,21 @@ export const createClientWithCotizacion: RequestHandler = async (req, res) => {
       })
     : undefined;
 
+  const encFromBody = pickStr(body, "certificate_encryption_secret") ?? "";
+  const companyRow = await prisma.company.findUnique({ where: { id: companyId } });
+  if (companyRow && companyHasCertificateRecord(companyRow)) {
+    const encOk =
+      encFromBody.trim().length >= 8 ||
+      (companyRow.certificateKeyphrase?.trim()?.length ?? 0) >= 8;
+    if (!encOk) {
+      res.status(400).json({
+        message:
+          "La empresa tiene certificado DGII. Indicá certificate_encryption_secret en el cuerpo JSON (clave de cifrado del .p12, mín. 8 caracteres) o guardala en Perfil de empresa para generar el e-CF firmado al crear la cotización.",
+      });
+      return;
+    }
+  }
+
   const out = await cotizacionService.createClientWithCotizacion(companyId, {
     client: {
       name: typeof client.name === "string" ? client.name : "",
@@ -116,6 +175,18 @@ export const createClientWithCotizacion: RequestHandler = async (req, res) => {
         typeof cot.document_title === "string" ? cot.document_title : undefined,
       fiscal_legend:
         typeof cot.fiscal_legend === "string" ? cot.fiscal_legend : undefined,
+      ecf_tipo:
+        typeof cot.ecf_tipo === "string"
+          ? cot.ecf_tipo
+          : typeof cot.ecfTipo === "string"
+            ? cot.ecfTipo
+            : undefined,
+      ecf_reference_ncf:
+        typeof cot.ecf_reference_ncf === "string"
+          ? cot.ecf_reference_ncf
+          : typeof cot.ecfReferenceNcf === "string"
+            ? cot.ecfReferenceNcf
+            : undefined,
       calc_mode:
         cot.calc_mode === "manual" || cot.calc_mode === "auto"
           ? cot.calc_mode
@@ -132,7 +203,14 @@ export const createClientWithCotizacion: RequestHandler = async (req, res) => {
     return;
   }
 
-  const serialized = serializeCotizacion(out.cotizacion);
+  const signResult = await trySignDraftEcfAfterWrite(out.cotizacion.id, companyId, encFromBody);
+  const refreshed = await cotizacionService.getByIdForCompany(out.cotizacion.id, companyId);
+  if (!refreshed) {
+    res.status(500).json({ message: "No se pudo recargar la cotizacion." });
+    return;
+  }
+
+  const serialized = serializeCotizacion(refreshed);
   res.status(201).json({
     message: "Cliente y cotizacion creados.",
     client: {
@@ -145,7 +223,10 @@ export const createClientWithCotizacion: RequestHandler = async (req, res) => {
       company_id: out.client.companyId,
     },
     cotizacion: serialized,
-    dgii_preview: generateDGIIData(out.cotizacion),
+    dgii_preview: generateDGIIData(refreshed),
+    ...(signResult.status === "error"
+      ? { ecf_draft_sign_warning: signResult.message }
+      : {}),
   });
 };
 
@@ -166,6 +247,9 @@ export const listCotizaciones: RequestHandler = async (req, res) => {
       payment_method: c.paymentMethod,
       account_manager: c.accountManager,
       comment: c.comment,
+      ecf_tipo: c.ecfTipo,
+      ecf_ncf_seq: c.ecfNcfSeq,
+      ecf_reference_ncf: c.ecfReferenceNcf,
       subtotal: c.subtotal,
       itbis: c.itbis,
       total: c.total,
@@ -175,6 +259,14 @@ export const listCotizaciones: RequestHandler = async (req, res) => {
       dgii_status: c.dgiiStatus,
       dgii_track_id: c.dgiiTrackId,
       dgii_submitted_at: c.dgiiSubmittedAt?.toISOString() ?? null,
+      dgii_rejection_summary:
+        c.dgiiStatus === "rejected" && c.dgiiResponse?.trim()
+          ? summarizeDgiiResponse(c.dgiiResponse)
+          : null,
+      dgii_resubmit_new_seq:
+        c.dgiiStatus === "rejected" && c.dgiiResponse?.trim()
+          ? isDgiiSequenceRejection(c.dgiiResponse)
+          : false,
       items_count: c.items.length,
     })),
   });
@@ -256,6 +348,18 @@ export const updateCotizacionById: RequestHandler = async (req, res) => {
         typeof cot.document_title === "string" ? cot.document_title : undefined,
       fiscal_legend:
         typeof cot.fiscal_legend === "string" ? cot.fiscal_legend : undefined,
+      ecf_tipo:
+        typeof cot.ecf_tipo === "string"
+          ? cot.ecf_tipo
+          : typeof cot.ecfTipo === "string"
+            ? cot.ecfTipo
+            : undefined,
+      ecf_reference_ncf:
+        typeof cot.ecf_reference_ncf === "string"
+          ? cot.ecf_reference_ncf
+          : typeof cot.ecfReferenceNcf === "string"
+            ? cot.ecfReferenceNcf
+            : undefined,
       calc_mode:
         cot.calc_mode === "manual" || cot.calc_mode === "auto"
           ? cot.calc_mode
@@ -271,10 +375,44 @@ export const updateCotizacionById: RequestHandler = async (req, res) => {
     res.status(out.status).json({ message: out.message });
     return;
   }
+
+  const encFromBody = pickStr(body, "certificate_encryption_secret") ?? "";
+  const afterUpdate = await cotizacionService.getByIdForCompany(id, companyId);
+  const locked =
+    Boolean(afterUpdate?.dgiiTrackId?.trim()) || Boolean(afterUpdate?.dgiiSubmittedAt != null);
+
+  let ecfDraftSignWarning: string | undefined;
+  if (!locked) {
+    const companyRow = await prisma.company.findUnique({ where: { id: companyId } });
+    if (companyRow && companyHasCertificateRecord(companyRow)) {
+      const encOk =
+        encFromBody.trim().length >= 8 ||
+        (companyRow.certificateKeyphrase?.trim()?.length ?? 0) >= 8;
+      if (!encOk) {
+        res.status(400).json({
+          message:
+            "La empresa tiene certificado DGII. Indicá certificate_encryption_secret en el JSON o guardala en Perfil de empresa para actualizar el e-CF firmado.",
+        });
+        return;
+      }
+    }
+    const signResult = await trySignDraftEcfAfterWrite(id, companyId, encFromBody);
+    if (signResult.status === "error") {
+      ecfDraftSignWarning = signResult.message;
+    }
+  }
+
+  const finalRow = await cotizacionService.getByIdForCompany(id, companyId);
+  if (!finalRow) {
+    res.status(404).json({ message: "Cotizacion no encontrada." });
+    return;
+  }
+
   res.json({
     message: "Cotizacion actualizada.",
-    cotizacion: serializeCotizacion(out.cotizacion),
-    dgii_preview: generateDGIIData(out.cotizacion),
+    cotizacion: serializeCotizacion(finalRow),
+    dgii_preview: generateDGIIData(finalRow),
+    ...(ecfDraftSignWarning ? { ecf_draft_sign_warning: ecfDraftSignWarning } : {}),
   });
 };
 
@@ -328,6 +466,32 @@ export const downloadCotizacionPdf: RequestHandler = async (req, res) => {
   res.status(200).send(pdfBuffer);
 };
 
+export const downloadRepresentacionImpresaEcf: RequestHandler = async (req, res) => {
+  const companyId = req.auth?.companyId;
+  if (!companyId) {
+    res.status(401).json({ message: "No autorizado." });
+    return;
+  }
+
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ message: "ID invalido." });
+    return;
+  }
+
+  const pathMod = await import("node:path");
+  const uploadsRoot = pathMod.join(process.cwd(), "uploads");
+  const out = await ensureRepresentacionImpresaPdfForCotizacion(id, companyId, uploadsRoot);
+  if (!out.ok) {
+    res.status(out.status).json({ message: out.message });
+    return;
+  }
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${out.filename}"`);
+  res.status(200).send(out.buffer);
+};
+
 export const generateEcfXmlByCotizacion: RequestHandler = async (req, res) => {
   const companyId = req.auth?.companyId;
   if (!companyId) {
@@ -337,6 +501,23 @@ export const generateEcfXmlByCotizacion: RequestHandler = async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
     res.status(400).json({ message: "ID invalido." });
+    return;
+  }
+
+  const row = await prisma.cotizacion.findFirst({
+    where: { id, companyId },
+    select: { signedXml: true },
+  });
+  const stored = row?.signedXml?.trim();
+  if (stored) {
+    const encf =
+      stored.match(/<eNCF>\s*([^<\s]+)\s*<\/eNCF>/i)?.[1]?.trim() ?? "";
+    res.json({
+      message: "XML e-CF firmado (listo para DGII).",
+      ecf_number: encf,
+      xml: stored,
+      signed: true,
+    });
     return;
   }
 
@@ -353,11 +534,64 @@ export const generateEcfXmlByCotizacion: RequestHandler = async (req, res) => {
     message: "XML e-CF generado.",
     ecf_number: out.payload.ecfNumber,
     xml: out.xml,
+    signed: false,
   });
 };
 
-const pickStr = (b: Record<string, unknown>, k: string): string | undefined =>
-  typeof b[k] === "string" ? (b[k] as string) : undefined;
+export const signEcfXmlByCotizacion: RequestHandler = async (req, res) => {
+  const companyId = req.auth?.companyId;
+  if (!companyId) {
+    res.status(401).json({ message: "No autorizado." });
+    return;
+  }
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ message: "ID invalido." });
+    return;
+  }
+
+  const pathJoin = await import("node:path");
+  const uploadsRoot = pathJoin.join(process.cwd(), "uploads");
+
+  const certificateEncryptionSecret =
+    pickStr((req.body as Record<string, unknown>) ?? {}, "certificate_encryption_secret") ?? "";
+
+  let oneShotCertificate: { buffer: Buffer; password: string } | undefined;
+  const certMulter = req.file;
+  if (certMulter?.buffer?.length) {
+    try {
+      const { validateCertificateMulterFile } = await import("../utils/companyCertificateUpload");
+      validateCertificateMulterFile(certMulter);
+    } catch (e) {
+      res.status(400).json({ message: e instanceof Error ? e.message : "Certificado invalido." });
+      return;
+    }
+    const certPwd =
+      pickStr((req.body as Record<string, unknown>) ?? {}, "certificate_password") ?? "";
+    oneShotCertificate = { buffer: certMulter.buffer, password: certPwd };
+  }
+
+  const out = await ecfService.signEcfXmlForCotizacion(id, companyId, {
+    uploadsRoot,
+    certificateEncryptionSecret,
+    oneShotCertificate,
+  });
+
+  if (!out.ok) {
+    res.status(out.status).json({
+      message: out.message,
+      errors: "errors" in out ? out.errors : undefined,
+      ...(out.code ? { code: out.code } : {}),
+    });
+    return;
+  }
+
+  res.json({
+    message: "e-CF firmado localmente (no enviado a DGII).",
+    ecf_number: out.ecf_number,
+    signed_xml: out.signedXml,
+  });
+};
 
 export const submitEcfByCotizacion: RequestHandler = async (req, res) => {
   const companyId = req.auth?.companyId;
@@ -397,6 +631,7 @@ export const submitEcfByCotizacion: RequestHandler = async (req, res) => {
       uploadsRoot,
       certificateEncryptionSecret,
       oneShotCertificate,
+      certProfile: pickStr((req.body as Record<string, unknown>) ?? {}, "dgii_cert_profile"),
     });
     if (!out.ok) {
       res.status(out.status).json({
@@ -407,13 +642,33 @@ export const submitEcfByCotizacion: RequestHandler = async (req, res) => {
       return;
     }
 
+    const cotAfter = await prisma.cotizacion.findFirst({
+      where: { id, companyId },
+      select: { ecfTipo: true, ecfNcfSeq: true },
+    });
+    const ecfNcfSeq = cotAfter?.ecfNcfSeq;
+    const ecfNumber =
+      cotAfter && ecfNcfSeq && ecfNcfSeq > 0
+        ? buildEcfNumber(cotAfter.ecfTipo, ecfNcfSeq)
+        : undefined;
+
+    const dgiiStatusSummary = summarizeDgiiResponse(out.dgiiResponse.rawResponse);
+
     res.json({
       message: "e-CF enviado a DGII.",
       status: out.dgiiResponse.status,
       track_id: out.dgiiResponse.trackId,
       accepted: out.dgiiResponse.accepted,
       dgii_response: out.dgiiResponse.rawResponse,
+      dgii_status_summary: dgiiStatusSummary,
       certificate_saved: Boolean(oneShotCertificate?.buffer?.length),
+      ...(ecfNcfSeq != null && ecfNcfSeq > 0 ? { ecf_ncf_seq: ecfNcfSeq, ecf_number: ecfNumber } : {}),
+      ...(out.dgiiResponse.status === "rejected"
+        ? {
+            dgii_rejection_summary: dgiiStatusSummary,
+            dgii_resubmit_new_seq: isDgiiSequenceRejection(out.dgiiResponse.rawResponse),
+          }
+        : {}),
     });
   } catch (e) {
     res.status(500).json({
@@ -434,7 +689,13 @@ export const queryDgiiEcfByCotizacion: RequestHandler = async (req, res) => {
     return;
   }
 
-  const out = await ecfService.consultDgiiForCotizacion(id, companyId);
+  const qp = req.query?.dgii_cert_profile;
+  const consultOpts =
+    qp !== undefined && String(qp).trim() !== ""
+      ? { certProfile: parseDgiiCertProfile(qp) }
+      : undefined;
+
+  const out = await ecfService.consultDgiiForCotizacion(id, companyId, consultOpts);
   if (!out.ok) {
     res.status(out.status).json({
       message: out.message,
@@ -447,5 +708,6 @@ export const queryDgiiEcfByCotizacion: RequestHandler = async (req, res) => {
     message: "Consulta DGII actualizada.",
     http_status: out.http_status,
     dgii_response: out.dgii_response,
+    dgii_status: out.dgii_status,
   });
 };

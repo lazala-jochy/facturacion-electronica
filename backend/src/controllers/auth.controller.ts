@@ -114,6 +114,7 @@ export const register: RequestHandler = async (req, res) => {
     res.status(201).json({
       message: "Cuenta creada correctamente.",
       token: result.token,
+      refresh_token: result.refresh_token,
       user: result.user,
       company: result.company,
     });
@@ -132,6 +133,22 @@ export const login: RequestHandler = async (req, res) => {
   res.json({
     message: "Inicio de sesion exitoso.",
     token: result.token,
+    refresh_token: result.refresh_token,
+    user: result.user,
+    company: result.company,
+  });
+};
+
+export const refresh: RequestHandler = async (req, res) => {
+  const result = await authService.refresh(req.body);
+  if (!result.ok) {
+    res.status(result.status).json({ message: result.message });
+    return;
+  }
+  res.json({
+    message: "Sesion renovada.",
+    token: result.token,
+    refresh_token: result.refresh_token,
     user: result.user,
     company: result.company,
   });

@@ -36,7 +36,7 @@ export const DGII_PRUEBA_TYPES: DgiiPruebaTypeConfig[] = [
     shortLabel: "Simulación e-CF",
     paso: "Paso 4",
     description:
-      "Cuatro URLs DGII propias (autenticación, recepción e-CF, consulta, resúmenes consumo &lt; RD$ 250k). Sin compartir con otras vistas.",
+      "Etapa en la que se comprueba la capacidad de su sistema para generar y enviar Comprobantes Fiscales Electrónicos (e-CF) en formato XML a la DGII, a partir de datos de operaciones reales como simulación de su actividad comercial.",
   },
 ];
 
