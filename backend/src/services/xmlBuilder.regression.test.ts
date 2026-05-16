@@ -382,6 +382,57 @@ test("Plantilla 43: alineada a E430000000011 (IdDoc, totales exentos, ítems)", 
   );
 });
 
+test("Plantilla 44: alineada a E440000000010 (IdDoc, totales exentos, ítems fact. 4)", () => {
+  const issueDate = new Date("2024-06-15T12:00:00.000Z");
+  const p: EcfPayload = {
+    ecfNumber: "E440000000010",
+    ecfTipo: "44",
+    issueDate,
+    issuer: {
+      rnc: "131880738",
+      name: "ACME",
+      address: "Calle 1",
+      phone: null,
+      email: null,
+    },
+    buyer: {
+      name: "Cliente RE",
+      rncCedula: "131880681",
+      address: "Calle comprador",
+      contact: "Contacto",
+    },
+    items: [
+      {
+        itemNumber: 1,
+        description: "ZAPATOS",
+        quantity: 40,
+        unit: "6",
+        unitPrice: 350,
+        totalValue: 13500,
+      },
+    ],
+    subtotal: 13500,
+    itbis: 0,
+    total: 13500,
+  };
+  const xml = buildEcfXml(p);
+  assert.match(
+    xml,
+    /<FechaVencimientoSecuencia>[\s\S]*<TipoIngresos>01<\/TipoIngresos>\s*<TipoPago>1<\/TipoPago>\s*<TablaFormasPago>/,
+  );
+  assert.doesNotMatch(xml, /<IndicadorMontoGravado>/);
+  assert.doesNotMatch(xml, /<MontoGravadoTotal>/);
+  assert.match(
+    xml,
+    /<MontoExento>13500\.00<\/MontoExento>\s*<MontoTotal>13500\.00<\/MontoTotal>\s*<MontoPeriodo>13500\.00<\/MontoPeriodo>\s*<ValorPagar>13500\.00<\/ValorPagar>/,
+  );
+  assert.match(
+    xml,
+    /<IndicadorFacturacion>4<\/IndicadorFacturacion>\s*<NombreItem>ZAPATOS<\/NombreItem>/,
+  );
+  assert.match(xml, /<Comprador>/);
+});
+
 test("resolvePlantillaEcfTipo prioriza tipo de comprobante fiscal sobre prefijo e-NCF", () => {
   assert.equal(
     resolvePlantillaEcfTipo({

@@ -212,6 +212,39 @@ export function appendTotalesGastosMenores43(enc: XMLBuilder, payload: EcfPayloa
   tot.up();
 }
 
+/** e-CF 44 — régimen especial: totales exentos (muestra E440000000010). */
+export function appendTotalesRegimenEspecial44(enc: XMLBuilder, payload: EcfPayload): void {
+  const monto =
+    payload.subtotal > 0
+      ? round2(payload.subtotal)
+      : round2(payload.items.reduce((acc, i) => acc + i.totalValue, 0));
+  const tot = enc.ele("Totales");
+  tot.ele("MontoExento").txt(money(monto));
+  tot.ele("MontoTotal").txt(money(monto));
+  tot.ele("MontoPeriodo").txt(money(monto));
+  tot.ele("ValorPagar").txt(money(monto));
+  tot.up();
+}
+
+/** e-CF 44: IndicadorFacturacion 4, bienes (muestra E440000000010). */
+export function appendDetallesItemsRegimenEspecial44(root: XMLBuilder, payload: EcfPayload): void {
+  const detalles = root.ele("DetallesItems");
+  for (const item of payload.items) {
+    const line = detalles.ele("Item");
+    line.ele("NumeroLinea").txt(String(item.itemNumber));
+    line.ele("IndicadorFacturacion").txt("4");
+    line.ele("NombreItem").txt(item.description.trim());
+    line.ele("IndicadorBienoServicio").txt(
+      indicadorBienServicio(item.unit, item.description),
+    );
+    line.ele("CantidadItem").txt(qty(item.quantity));
+    line.ele("UnidadMedida").txt(mapUnidadMedidaDgii(item.unit));
+    line.ele("PrecioUnitarioItem").txt(unitPrice4(item.unitPrice));
+    line.ele("MontoItem").txt(money(item.totalValue));
+  }
+  detalles.up();
+}
+
 /** e-CF 43: IndicadorFacturacion 4, IndicadorBienoServicio 2 (muestra E430000000011). */
 export function appendDetallesItemsGastosMenores43(root: XMLBuilder, payload: EcfPayload): void {
   const detalles = root.ele("DetallesItems");

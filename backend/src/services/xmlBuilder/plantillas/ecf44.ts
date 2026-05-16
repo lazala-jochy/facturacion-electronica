@@ -1,5 +1,6 @@
 /**
- * Plantilla exclusiva **e-CF 44** — Regímenes especiales de tributación.
+ * Plantilla exclusiva **e-CF 44** — Regímenes especiales electrónico.
+ * Alineado a muestra DGII E440000000010: IdDoc sin IndicadorMontoGravado, totales exentos, ítems fact. 4.
  */
 
 import { create } from "xmlbuilder2";
@@ -7,11 +8,11 @@ import type { EcfPayload } from "../../validation";
 import { DEFAULT_FECHA_VENC_SEC } from "../common";
 import {
   appendComprador,
-  appendDetallesItems,
+  appendDetallesItemsRegimenEspecial44,
   appendEmisor,
   appendFechaHoraFirma,
   appendIdDocTipoPagoYFormas,
-  appendTotalesItbis18,
+  appendTotalesRegimenEspecial44,
 } from "../bloques";
 
 export function plantillaEcf44(payload: EcfPayload): string {
@@ -24,17 +25,16 @@ export function plantillaEcf44(payload: EcfPayload): string {
   idDoc.ele("TipoeCF").txt("44");
   idDoc.ele("eNCF").txt(payload.ecfNumber.trim());
   idDoc.ele("FechaVencimientoSecuencia").txt(DEFAULT_FECHA_VENC_SEC);
-  idDoc.ele("IndicadorMontoGravado").txt("0");
   idDoc.ele("TipoIngresos").txt("01");
   appendIdDocTipoPagoYFormas(idDoc, payload);
   idDoc.up();
 
   appendEmisor(enc, payload);
   appendComprador(enc, payload);
-  appendTotalesItbis18(enc, payload);
+  appendTotalesRegimenEspecial44(enc, payload);
   enc.up();
 
-  appendDetallesItems(root, payload);
+  appendDetallesItemsRegimenEspecial44(root, payload);
   appendFechaHoraFirma(root);
 
   return doc.end({ prettyPrint: true });
