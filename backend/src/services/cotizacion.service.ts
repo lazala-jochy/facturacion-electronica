@@ -62,6 +62,52 @@ export const ECF_NCF_SEQ_EXCEEDED_ERROR_NAME = "EcfNcfSeqExceededError";
 
 const allocateEcfNcfSeq = allocateNextEcfNcfSeq;
 
+export type DgiiResubmitGuardResult =
+  | { allowed: true }
+  | { allowed: false; status: number; message: string; code: string };
+
+/**
+ * Solo permite reenvío directo a DGII si el último estado lo permite.
+ * Rechazo distinto de «secuencia ya utilizada» exige editar y guardar la cotización antes.
+ */
+export function validateCotizacionDgiiResubmit(cot: {
+  dgiiStatus: string | null;
+  dgiiResponse: string | null;
+}): DgiiResubmitGuardResult {
+  const status = cot.dgiiStatus?.trim() ?? "";
+
+  if (status === "accepted") {
+    return {
+      allowed: false,
+      status: 409,
+      message: "Este comprobante ya fue aceptado por DGII.",
+      code: "DGII_ALREADY_ACCEPTED",
+    };
+  }
+
+  if (status === "pending") {
+    return {
+      allowed: false,
+      status: 409,
+      message:
+        "El envío está pendiente en DGII. Consultá el estado por Track ID antes de volver a enviar.",
+      code: "DGII_PENDING",
+    };
+  }
+
+  if (status === "rejected" && !isDgiiSequenceRejection(cot.dgiiResponse)) {
+    return {
+      allowed: false,
+      status: 409,
+      message:
+        "DGII rechazó por un error distinto a «secuencia ya utilizada». Editá y guardá la cotización; después usá «Enviar DGII». «Reenviar» solo aplica cuando DGII indica secuencia ya utilizada.",
+      code: "DGII_REJECT_NOT_SEQUENCE",
+    };
+  }
+
+  return { allowed: true };
+}
+
 /**
  * Si el último envío fue rechazado por secuencia ya usada y el correlativo en BD no avanzó,
  * sube a la siguiente secuencia libre antes de generar/firmar de nuevo.
@@ -103,12 +149,9 @@ export async function ensureCotizacionSeqAdvancedAfterSequenceReject(
 
   if (raw && isDgiiSequenceRejection(raw)) {
     const fromEncf = extractEncfFromDgiiResponse(raw);
-    const usedSeq =
-      fromEncf && fromEncf.tipo === tipo
-        ? fromEncf.seq
-        : cot.ecfNcfSeq > 0
-          ? cot.ecfNcfSeq
-          : fromEncf?.seq ?? 0;
+    const encfSeq =
+      fromEncf && fromEncf.tipo === tipo ? fromEncf.seq : fromEncf?.seq ?? 0;
+    const usedSeq = Math.max(cot.ecfNcfSeq > 0 ? cot.ecfNcfSeq : 0, encfSeq);
     if (usedSeq < 1) return { advanced: false };
     if (cot.ecfNcfSeq > usedSeq) return { advanced: false };
     return advanceToNext(usedSeq);
@@ -147,12 +190,10 @@ export async function persistCotizacionAfterDgiiSubmission(
     if (dgiiResponse.status === "rejected") {
       if (sequenceReject) {
         const fromEncf = extractEncfFromDgiiResponse(dgiiResponse.rawResponse);
-        const usedSeq =
-          fromEncf && fromEncf.tipo === tipo
-            ? fromEncf.seq
-            : cotRow?.ecfNcfSeq && cotRow.ecfNcfSeq > 0
-              ? cotRow.ecfNcfSeq
-              : fromEncf?.seq ?? 0;
+        const encfSeq =
+          fromEncf && fromEncf.tipo === tipo ? fromEncf.seq : fromEncf?.seq ?? 0;
+        const cotSeq = cotRow?.ecfNcfSeq && cotRow.ecfNcfSeq > 0 ? cotRow.ecfNcfSeq : 0;
+        const usedSeq = Math.max(cotSeq, encfSeq);
         if (usedSeq > 0) {
           await markEcfNcfSeqUsed(tx, companyId, tipo, usedSeq);
         }

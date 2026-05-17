@@ -32,6 +32,22 @@ const formatDate = (value?: string) => {
   });
 };
 
+type CotDgiiSendRow = {
+  dgii_status?: string | null;
+  dgii_resubmit_new_seq?: boolean;
+};
+
+/** Reenvío a DGII sin editar: solo si DGII indicó «secuencia ya utilizada». */
+const canResubmitToDgiiWithoutEdit = (cot: CotDgiiSendRow | undefined | null): boolean => {
+  const status = cot?.dgii_status?.trim() ?? "";
+  if (status === "accepted" || status === "pending") return false;
+  if (status === "rejected") return cot?.dgii_resubmit_new_seq === true;
+  return true;
+};
+
+const dgiiResubmitBlockedMessage =
+  "DGII rechazó este comprobante por un error distinto a «secuencia ya utilizada». Editá y guardá la cotización; después podrás usar «Enviar DGII». «Reenviar» solo aplica cuando DGII indica secuencia ya utilizada.";
+
 /** Icono carpeta + lupa: intención “buscar archivo en el equipo”. */
 function CertBrowseIllustration({ className }: { className?: string }) {
   return (
@@ -320,12 +336,13 @@ export default function Clients() {
     const cotRow = clients
       .flatMap((c) => c.cotizaciones.map((co) => ({ ...co, clientId: c.id })))
       .find((co) => co.id === cotizacionId);
-    if (
-      cotRow?.dgii_status === "rejected" &&
-      cotRow.dgii_resubmit_new_seq !== true
-    ) {
+    if (!canResubmitToDgiiWithoutEdit(cotRow)) {
       setEcfError(
-        "DGII rechazó este comprobante por un error distinto a «secuencia ya utilizada». Editá y guardá la cotización; después podrás usar «Enviar DGII». «Reenviar» solo aplica cuando DGII indica secuencia ya utilizada.",
+        cotRow?.dgii_status === "pending"
+          ? "El envío está pendiente en DGII. Consultá el estado antes de volver a enviar."
+          : cotRow?.dgii_status === "accepted"
+            ? "Este comprobante ya fue aceptado por DGII."
+            : dgiiResubmitBlockedMessage,
       );
       return;
     }
@@ -428,6 +445,19 @@ export default function Clients() {
     }
     if (!isOnline) {
       setEcfError("Debes conectarte a internet para enviar a DGII.");
+      return;
+    }
+    const cotRow = clients
+      .flatMap((c) => c.cotizaciones.map((co) => ({ ...co, clientId: c.id })))
+      .find((co) => co.id === id);
+    if (!canResubmitToDgiiWithoutEdit(cotRow)) {
+      setEcfError(
+        cotRow?.dgii_status === "pending"
+          ? "El envío está pendiente en DGII. Consultá el estado antes de volver a enviar."
+          : cotRow?.dgii_status === "accepted"
+            ? "Este comprobante ya fue aceptado por DGII."
+            : dgiiResubmitBlockedMessage,
+      );
       return;
     }
     setEcfCertModalLoading(true);
@@ -842,10 +872,7 @@ export default function Clients() {
                   {pageRows.map(({ client, last }) => {
                     const dgiiStatus = last?.dgii_status;
                     const seqResubmit = last?.dgii_resubmit_new_seq === true;
-                    const dgiiSendLocked =
-                      dgiiStatus === "accepted" ||
-                      dgiiStatus === "pending" ||
-                      (dgiiStatus === "rejected" && !seqResubmit);
+                    const dgiiSendLocked = !canResubmitToDgiiWithoutEdit(last);
 
                     const sendLabel = !last
                       ? "-"
@@ -1071,10 +1098,7 @@ export default function Clients() {
               {pageRows.map(({ client, last }) => {
                 const dgiiStatus = last?.dgii_status;
                 const seqResubmit = last?.dgii_resubmit_new_seq === true;
-                const dgiiSendLocked =
-                  dgiiStatus === "accepted" ||
-                  dgiiStatus === "pending" ||
-                  (dgiiStatus === "rejected" && !seqResubmit);
+                const dgiiSendLocked = !canResubmitToDgiiWithoutEdit(last);
 
                 const sendLabel = !last
                   ? "-"

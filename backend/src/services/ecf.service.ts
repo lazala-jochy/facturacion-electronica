@@ -20,9 +20,11 @@ import { normalizeEcfTipo } from "../utils/ecfTipo";
 import { parseDgiiCertProfile, type DgiiCertProfile } from "../types/dgiiCertProfile";
 import { ECF_CONSUMO_RFCE_TOTAL_THRESHOLD_RD } from "../config/dgiiEcf.constants";
 import { mapDgiiRawBodyToCotizacionEstado } from "../utils/dgiiEstadoRecepcion";
+import { isDgiiSequenceRejection } from "../utils/dgiiRejection";
 import {
   ensureCotizacionSeqAdvancedAfterSequenceReject,
   persistCotizacionAfterDgiiSubmission,
+  validateCotizacionDgiiResubmit,
 } from "./cotizacion.service";
 
 const contactFromClient = (phone?: string | null, email?: string | null) => {
@@ -260,9 +262,32 @@ export const ecfService = {
       certProfile?: unknown;
     },
   ): Promise<
-    | { ok: true; xml: string; signedXml: string; dgiiResponse: DgiiSubmissionResult }
+    | {
+        ok: true;
+        xml: string;
+        signedXml: string;
+        dgiiResponse: DgiiSubmissionResult;
+        newEcfNcfSeq?: number;
+      }
     | SubmitEcfErr
   > {
+    const cotGate = await prisma.cotizacion.findFirst({
+      where: { id: cotizacionId, companyId },
+      select: { dgiiStatus: true, dgiiResponse: true },
+    });
+    if (!cotGate) {
+      return { ok: false, status: 404, message: "Cotizacion no encontrada." };
+    }
+    const resubmitGate = validateCotizacionDgiiResubmit(cotGate);
+    if (!resubmitGate.allowed) {
+      return {
+        ok: false,
+        status: resubmitGate.status,
+        message: resubmitGate.message,
+        code: resubmitGate.code,
+      };
+    }
+
     await ensureCotizacionSeqAdvancedAfterSequenceReject(cotizacionId, companyId);
 
     const generation = await this.generateForCotizacion(cotizacionId, companyId);
@@ -345,7 +370,7 @@ export const ecfService = {
       }
 
       const dgiiSubmittedAt = new Date();
-      await persistCotizacionAfterDgiiSubmission(
+      const persistResult = await persistCotizacionAfterDgiiSubmission(
         cotizacionId,
         companyId,
         generation.payload.ecfTipo ?? "31",
@@ -381,6 +406,7 @@ export const ecfService = {
         xml: generation.xml,
         signedXml,
         dgiiResponse,
+        newEcfNcfSeq: persistResult.newSeq,
       };
     } catch (e) {
       return {
@@ -404,6 +430,7 @@ export const ecfService = {
       oneShotCertificate?: { buffer: Buffer; password: string };
     },
   ): Promise<{ ok: true } | SubmitEcfErr> {
+    await ensureCotizacionSeqAdvancedAfterSequenceReject(cotizacionId, companyId);
     const generation = await this.generateForCotizacion(cotizacionId, companyId);
     if (!generation.ok) return generation;
 
@@ -517,19 +544,62 @@ export const ecfService = {
       const out = await consultDgiiTrackId(row.company, trackId, {
         certProfile: options?.certProfile,
       });
-      const nextStatus = mapDgiiRawBodyToCotizacionEstado(out.body);
-      await prisma.cotizacion.update({
-        where: { id: cotizacionId },
-        data: {
-          dgiiResponse: out.body.length > 12000 ? `${out.body.slice(0, 12000)}…` : out.body,
-          ...(nextStatus ? { dgiiStatus: nextStatus } : {}),
-        },
+      const body =
+        out.body.length > 12000 ? `${out.body.slice(0, 12000)}…` : out.body;
+      const nextStatus = mapDgiiRawBodyToCotizacionEstado(body);
+      let newEcfNcfSeq: number | undefined;
+
+      if (nextStatus === "rejected" || nextStatus === "accepted") {
+        const persistResult = await persistCotizacionAfterDgiiSubmission(
+          cotizacionId,
+          companyId,
+          row.ecfTipo,
+          {
+            dgiiResponse: {
+              status: nextStatus,
+              trackId,
+              rawResponse: body,
+              accepted: nextStatus === "accepted",
+            },
+            signedXml: row.signedXml ?? "",
+            dgiiSubmittedAt: row.dgiiSubmittedAt ?? new Date(),
+          },
+        );
+        newEcfNcfSeq = persistResult.newSeq;
+      } else {
+        await prisma.cotizacion.update({
+          where: { id: cotizacionId },
+          data: {
+            dgiiResponse: body,
+            ...(nextStatus ? { dgiiStatus: nextStatus } : {}),
+          },
+        });
+      }
+
+      const cotAfter = await prisma.cotizacion.findFirst({
+        where: { id: cotizacionId, companyId },
+        select: { ecfTipo: true, ecfNcfSeq: true, dgiiStatus: true },
       });
+
       return {
         ok: true as const,
         http_status: out.httpStatus,
-        dgii_response: out.body,
-        dgii_status: nextStatus ?? row.dgiiStatus ?? null,
+        dgii_response: body,
+        dgii_status: cotAfter?.dgiiStatus ?? nextStatus ?? row.dgiiStatus ?? null,
+        ...(newEcfNcfSeq != null && newEcfNcfSeq > 0
+          ? {
+              ecf_ncf_seq: newEcfNcfSeq,
+              ecf_number: buildEcfNumber(cotAfter?.ecfTipo ?? row.ecfTipo, newEcfNcfSeq),
+            }
+          : cotAfter?.ecfNcfSeq && cotAfter.ecfNcfSeq > 0
+            ? {
+                ecf_ncf_seq: cotAfter.ecfNcfSeq,
+                ecf_number: buildEcfNumber(cotAfter.ecfTipo, cotAfter.ecfNcfSeq),
+              }
+            : {}),
+        ...(nextStatus === "rejected" && isDgiiSequenceRejection(body)
+          ? { dgii_resubmit_new_seq: true }
+          : {}),
       };
     } catch (e) {
       if (e instanceof DgiiEcfError) {

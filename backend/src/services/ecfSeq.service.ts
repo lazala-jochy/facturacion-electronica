@@ -74,6 +74,13 @@ const persistCounterLastSeq = async (
   });
 };
 
+/** Siguiente correlativo libre: max(último en BD, secuencia consumida) + 1. */
+export const nextEcfNcfSeqAfterUsed = (lastInDb: number, usedSeq: number): number => {
+  const last = Math.max(0, Math.floor(lastInDb));
+  const used = Math.max(0, Math.floor(usedSeq));
+  return Math.max(last, used) + 1;
+};
+
 /**
  * Primer correlativo libre ≥ max(último en BD, secuencia que DGII marcó usada) + 1.
  * Evita reutilizar el mismo e-NCF tras rechazo 1209.
@@ -88,7 +95,7 @@ export const allocateNextAfterUsedSeq = async (
   const tipo = normalizeEcfTipo(ecfTipo);
   const used = Math.floor(usedSeq);
   const last = await getLastEcfNcfSeq(tx, companyId, tipo);
-  const start = Math.max(last, used > 0 ? used : 0) + 1;
+  const start = nextEcfNcfSeqAfterUsed(last, used);
 
   let candidate = start;
   while (candidate <= ECF_NCF_SEQ_MAX) {

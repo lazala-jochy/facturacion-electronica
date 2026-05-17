@@ -646,10 +646,11 @@ export const submitEcfByCotizacion: RequestHandler = async (req, res) => {
       where: { id, companyId },
       select: { ecfTipo: true, ecfNcfSeq: true },
     });
-    const ecfNcfSeq = cotAfter?.ecfNcfSeq;
+    const ecfNcfSeq = out.newEcfNcfSeq ?? cotAfter?.ecfNcfSeq;
+    const ecfTipoForNumber = cotAfter?.ecfTipo ?? "31";
     const ecfNumber =
-      cotAfter && ecfNcfSeq && ecfNcfSeq > 0
-        ? buildEcfNumber(cotAfter.ecfTipo, ecfNcfSeq)
+      ecfNcfSeq != null && ecfNcfSeq > 0
+        ? buildEcfNumber(ecfTipoForNumber, ecfNcfSeq)
         : undefined;
 
     const dgiiStatusSummary = summarizeDgiiResponse(out.dgiiResponse.rawResponse);
