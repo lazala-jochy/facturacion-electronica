@@ -71,8 +71,7 @@ export const clientService = {
       include: {
         cotizaciones: {
           where: { companyId },
-          orderBy: { id: "desc" },
-          take: 3,
+          orderBy: { number: "desc" },
           select: {
             id: true,
             number: true,

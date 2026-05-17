@@ -48,6 +48,43 @@ const canResubmitToDgiiWithoutEdit = (cot: CotDgiiSendRow | undefined | null): b
 const dgiiResubmitBlockedMessage =
   "DGII rechazó este comprobante por un error distinto a «secuencia ya utilizada». Editá y guardá la cotización; después podrás usar «Enviar DGII». «Reenviar» solo aplica cuando DGII indica secuencia ya utilizada.";
 
+type ClientCotizacion = ClientListItem["cotizaciones"][number];
+
+type ClientCotRow = {
+  client: ClientListItem;
+  cot: ClientCotizacion | null;
+  rowKey: string;
+};
+
+const sortCotizacionesDesc = (cots: ClientCotizacion[]) =>
+  [...cots].sort((a, b) => b.number - a.number);
+
+const primaryCotizacion = (client: ClientListItem): ClientCotizacion | null => {
+  const cots = client.cotizaciones ?? [];
+  if (cots.length === 0) return null;
+  return cots.reduce((best, c) => (c.number > best.number ? c : best), cots[0]);
+};
+
+const clientMatchesQuery = (client: ClientListItem, normalizedQuery: string) => {
+  if (!normalizedQuery) return true;
+  const cots = client.cotizaciones ?? [];
+  const raw = [
+    client.name,
+    client.rnc_cedula,
+    client.phone ?? "",
+    client.email ?? "",
+    ...cots.flatMap((c) => [
+      String(c.number),
+      String(c.total),
+      c.dgii_status ?? "",
+      c.dgii_track_id ?? "",
+    ]),
+  ]
+    .join(" ")
+    .toLowerCase();
+  return raw.includes(normalizedQuery);
+};
+
 /** Icono carpeta + lupa: intención “buscar archivo en el equipo”. */
 function CertBrowseIllustration({ className }: { className?: string }) {
   return (
@@ -113,7 +150,7 @@ export default function Clients() {
   );
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(5);
+  const [pageSize, setPageSize] = useState(10);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
@@ -561,12 +598,14 @@ export default function Clients() {
   };
 
 
-  const handleDeleteClient = async (client: ClientListItem) => {
-    const last = client.cotizaciones?.[0];
+  const handleDeleteCotizacionRow = async (
+    client: ClientListItem,
+    cot: ClientCotizacion | null,
+  ) => {
     setCrudError("");
     setCrudMessage("");
 
-    if (!last) {
+    if (!cot) {
       const confirmed = window.confirm(
         `¿Seguro que deseas eliminar el cliente "${client.name}"? No tiene cotizaciones asociadas.`,
       );
@@ -584,17 +623,17 @@ export default function Clients() {
     }
 
     const confirmed = window.confirm(
-      `¿Seguro que deseas eliminar la cotización #${last.number} de "${client.name}"?`,
+      `¿Seguro que deseas eliminar la cotización #${cot.number} de "${client.name}"?`,
     );
     if (!confirmed) return;
     try {
-      await deleteCotizacion(last.id);
+      await deleteCotizacion(cot.id);
       await refreshClients();
       setCrudMessage("Cotización eliminada correctamente.");
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "No se pudo eliminar la cotización.";
-      setCrudError(message);
+      setCrudError(
+        error instanceof Error ? error.message : "No se pudo eliminar la cotización.",
+      );
     }
   };
 
@@ -624,51 +663,53 @@ export default function Clients() {
 
   const rows = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
-    const withLast = clients
-      .map((client) => {
-        const last = client.cotizaciones?.[0];
-        return { client, last };
-      })
-      .filter(({ client, last }) => {
-        if (!normalizedQuery) return true;
-        const raw = [
-          client.name,
-          client.rnc_cedula,
-          client.phone ?? "",
-          client.email ?? "",
-          last ? String(last.number) : "",
-          last ? String(last.total) : "",
-          last?.dgii_status ?? "",
-          last?.dgii_track_id ?? "",
-        ]
-          .join(" ")
-          .toLowerCase();
-        return raw.includes(normalizedQuery);
+
+    const sortedClients = [...clients]
+      .filter((client) => clientMatchesQuery(client, normalizedQuery))
+      .sort((a, b) => {
+        const aPrimary = primaryCotizacion(a);
+        const bPrimary = primaryCotizacion(b);
+        const aStatus = aPrimary?.dgii_status ?? "";
+        const bStatus = bPrimary?.dgii_status ?? "";
+        const aNumber = aPrimary?.number ?? -1;
+        const bNumber = bPrimary?.number ?? -1;
+        const aTotal = aPrimary?.total ?? -1;
+        const bTotal = bPrimary?.total ?? -1;
+
+        let compare = 0;
+        if (sortBy === "recent") {
+          const aTs =
+            Date.parse(aPrimary?.created_at ?? "") ||
+            Date.parse(a.created_at ?? "") ||
+            a.id;
+          const bTs =
+            Date.parse(bPrimary?.created_at ?? "") ||
+            Date.parse(b.created_at ?? "") ||
+            b.id;
+          compare = aTs - bTs;
+        }
+        if (sortBy === "name") compare = a.name.localeCompare(b.name);
+        if (sortBy === "rnc") compare = a.rnc_cedula.localeCompare(b.rnc_cedula);
+        if (sortBy === "number") compare = aNumber - bNumber;
+        if (sortBy === "total") compare = aTotal - bTotal;
+        if (sortBy === "status") compare = aStatus.localeCompare(bStatus);
+        return sortDir === "asc" ? compare : -compare;
       });
 
-    const sorted = [...withLast].sort((a, b) => {
-      const aStatus = a.last?.dgii_status ?? "";
-      const bStatus = b.last?.dgii_status ?? "";
-      const aNumber = a.last?.number ?? -1;
-      const bNumber = b.last?.number ?? -1;
-      const aTotal = a.last?.total ?? -1;
-      const bTotal = b.last?.total ?? -1;
-
-      let compare = 0;
-      if (sortBy === "recent") {
-        const aTs = Date.parse(a.client.created_at ?? "") || a.client.id;
-        const bTs = Date.parse(b.client.created_at ?? "") || b.client.id;
-        compare = aTs - bTs;
+    return sortedClients.flatMap((client): ClientCotRow[] => {
+      const cots = sortCotizacionesDesc(client.cotizaciones ?? []);
+      if (cots.length === 0) {
+        return [{ client, cot: null, rowKey: `client-${client.id}-empty` }];
       }
-      if (sortBy === "name") compare = a.client.name.localeCompare(b.client.name);
-      if (sortBy === "rnc") compare = a.client.rnc_cedula.localeCompare(b.client.rnc_cedula);
-      if (sortBy === "number") compare = aNumber - bNumber;
-      if (sortBy === "total") compare = aTotal - bTotal;
-      if (sortBy === "status") compare = aStatus.localeCompare(bStatus);
-      return sortDir === "asc" ? compare : -compare;
+      return cots.map((cot) => ({
+        client,
+        cot,
+        rowKey: `client-${client.id}-cot-${cot.id}`,
+      }));
     });
-    return sorted;
   }, [clients, query, sortBy, sortDir]);
+
+  const clientCount = useMemo(() => new Set(rows.map((r) => r.client.id)).size, [rows]);
 
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
   const pageRows = useMemo(() => {
@@ -869,14 +910,16 @@ export default function Clients() {
                 </thead>
 
                 <tbody className="divide-y divide-gray-100">
-                  {pageRows.map(({ client, last }) => {
-                    const dgiiStatus = last?.dgii_status;
-                    const seqResubmit = last?.dgii_resubmit_new_seq === true;
-                    const dgiiSendLocked = !canResubmitToDgiiWithoutEdit(last);
+                  {pageRows.map(({ client, cot, rowKey }, rowIndex) => {
+                    const showClient =
+                      rowIndex === 0 || pageRows[rowIndex - 1].client.id !== client.id;
+                    const dgiiStatus = cot?.dgii_status;
+                    const seqResubmit = cot?.dgii_resubmit_new_seq === true;
+                    const dgiiSendLocked = !canResubmitToDgiiWithoutEdit(cot);
 
-                    const sendLabel = !last
+                    const sendLabel = !cot
                       ? "-"
-                      : sendingEcfId === last.id
+                      : sendingEcfId === cot.id
                         ? "Enviando..."
                         : dgiiSendLocked
                           ? dgiiStatus === "accepted"
@@ -908,34 +951,37 @@ export default function Clients() {
                         : "border-indigo-200 text-indigo-700 hover:bg-indigo-50";
 
                     return (
-                      <tr key={client.id} className="hover:bg-indigo-50/40 transition">
-                        <td className="px-4 sm:px-6 py-4 font-semibold text-gray-900 text-sm">
-                          {client.name}
+                      <tr
+                        key={rowKey}
+                        className={`hover:bg-indigo-50/40 transition ${!showClient ? "bg-slate-50/50" : ""}`}
+                      >
+                        <td className="px-4 sm:px-6 py-3 font-semibold text-gray-900 text-sm">
+                          {showClient ? client.name : ""}
                         </td>
 
-                        <td className="px-4 sm:px-6 py-4 text-gray-600 text-sm">
-                          {client.rnc_cedula}
+                        <td className="px-4 sm:px-6 py-3 text-gray-600 text-sm">
+                          {showClient ? client.rnc_cedula : ""}
                         </td>
 
-                        <td className="hidden lg:table-cell px-4 sm:px-6 py-4 text-gray-600 text-sm">
-                          {client.phone || "-"}
+                        <td className="hidden lg:table-cell px-4 sm:px-6 py-3 text-gray-600 text-sm">
+                          {showClient ? client.phone || "-" : ""}
                         </td>
 
-                        <td className="hidden xl:table-cell px-4 sm:px-6 py-4 text-gray-600 text-sm">
-                          {client.email || "-"}
+                        <td className="hidden xl:table-cell px-4 sm:px-6 py-3 text-gray-600 text-sm">
+                          {showClient ? client.email || "-" : ""}
                         </td>
 
-                        <td className="px-4 sm:px-6 py-4 text-indigo-600 font-medium text-sm">
-                          {last ? `#${last.number}` : "-"}
+                        <td className="px-4 sm:px-6 py-3 text-indigo-600 font-medium text-sm">
+                          {cot ? `#${cot.number}` : "-"}
                         </td>
 
-                        <td className="px-4 sm:px-6 py-4 text-gray-700 font-medium text-sm">
-                          {last ? formatCurrency(last.total) : "-"}
+                        <td className="px-4 sm:px-6 py-3 text-gray-700 font-medium text-sm">
+                          {cot ? formatCurrency(cot.total) : "-"}
                         </td>
-                        <td className="px-4 sm:px-6 py-4 text-center">
-                          {last ? (
+                        <td className="px-4 sm:px-6 py-3 text-center">
+                          {cot ? (
                             <button
-                              onClick={() => handleOpenDetail(last.id)}
+                              onClick={() => handleOpenDetail(cot.id)}
                               className="rounded-lg border border-slate-200 p-2 text-slate-700 hover:bg-slate-50"
                               title="Ver detalle"
                             >
@@ -965,24 +1011,24 @@ export default function Clients() {
                         </td>
 
                         <td className="px-4 sm:px-6 py-4 text-center align-top">
-                          {last ? (
+                          {cot ? (
                             <div className="flex flex-col items-center gap-1">
                               <button
-                                onClick={() => handleSendEcf(last.id)}
-                                disabled={sendingEcfId === last.id || dgiiSendLocked || !isOnline}
+                                onClick={() => handleSendEcf(cot.id)}
+                                disabled={sendingEcfId === cot.id || dgiiSendLocked || !isOnline}
                                 className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${dgiiSendBtnClass}`}
                                 title={sendTitle}
                               >
                                 {sendLabel}
                               </button>
                               {dgiiStatus === "rejected" &&
-                                typeof last.dgii_rejection_summary === "string" &&
-                                last.dgii_rejection_summary.trim().length > 0 && (
+                                typeof cot.dgii_rejection_summary === "string" &&
+                                cot.dgii_rejection_summary.trim().length > 0 && (
                                   <p
                                     className="max-w-[13rem] text-left text-[10px] leading-snug text-amber-950 line-clamp-3"
-                                    title={last.dgii_rejection_summary}
+                                    title={cot.dgii_rejection_summary}
                                   >
-                                    {last.dgii_rejection_summary}
+                                    {cot.dgii_rejection_summary}
                                   </p>
                                 )}
                             </div>
@@ -992,14 +1038,14 @@ export default function Clients() {
                         </td>
 
                         <td className="px-4 sm:px-6 py-4 text-center">
-                          {last ? (
+                          {cot ? (
                             <button
-                              onClick={() => handleDownload(last.id, client.name)}
-                              disabled={downloadingId === last.id}
+                              onClick={() => handleDownload(cot.id, client.name)}
+                              disabled={downloadingId === cot.id}
                               className="p-2 rounded-lg hover:bg-indigo-100 transition inline-block disabled:opacity-50 disabled:cursor-not-allowed"
                               title="Descargar PDF"
                             >
-                              {downloadingId === last.id ? (
+                              {downloadingId === cot.id ? (
                                 <svg
                                   xmlns="http://www.w3.org/2000/svg"
                                   className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600 animate-spin"
@@ -1043,10 +1089,10 @@ export default function Clients() {
                           )}
                         </td>
                         <td className="px-4 sm:px-6 py-4 text-center">
-                          {last ? (
+                          {cot ? (
                             <button
                               type="button"
-                              onClick={() => void openEcfXmlViewer(last.id)}
+                              onClick={() => void openEcfXmlViewer(cot.id)}
                               className="p-2 rounded-lg hover:bg-violet-50 transition inline-block"
                               title="Ver XML e-CF guardado (firmado al guardar cotización)"
                             >
@@ -1072,14 +1118,14 @@ export default function Clients() {
                         <td className="px-4 sm:px-6 py-4 text-center">
                           <div className="flex items-center justify-center gap-2">
                             <Link
-                              to={last ? `/cotizaciones/${last.id}/editar` : "#"}
+                              to={cot ? `/cotizaciones/${cot.id}/editar` : "#"}
                               className="rounded border border-gray-200 px-2.5 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
                             >
                               Editar
                             </Link>
                             <button
                               type="button"
-                              onClick={() => handleDeleteClient(client)}
+                              onClick={() => handleDeleteCotizacionRow(client, cot)}
                               className="rounded border border-red-200 px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
                             >
                               Eliminar
@@ -1095,14 +1141,16 @@ export default function Clients() {
 
             {/* Mobile Cards */}
             <div className="md:hidden divide-y divide-gray-100">
-              {pageRows.map(({ client, last }) => {
-                const dgiiStatus = last?.dgii_status;
-                const seqResubmit = last?.dgii_resubmit_new_seq === true;
-                const dgiiSendLocked = !canResubmitToDgiiWithoutEdit(last);
+              {pageRows.map(({ client, cot, rowKey }, rowIndex) => {
+                const showClient =
+                  rowIndex === 0 || pageRows[rowIndex - 1].client.id !== client.id;
+                const dgiiStatus = cot?.dgii_status;
+                const seqResubmit = cot?.dgii_resubmit_new_seq === true;
+                const dgiiSendLocked = !canResubmitToDgiiWithoutEdit(cot);
 
-                const sendLabel = !last
+                const sendLabel = !cot
                   ? "-"
-                  : sendingEcfId === last.id
+                  : sendingEcfId === cot.id
                     ? "..."
                     : dgiiSendLocked
                       ? dgiiStatus === "accepted"
@@ -1134,19 +1182,28 @@ export default function Clients() {
                     : "border-indigo-200 text-indigo-700 hover:bg-indigo-50";
 
                 return (
-                  <div key={client.id} className="p-4 hover:bg-indigo-50/40 transition">
+                  <div
+                    key={rowKey}
+                    className={`p-4 hover:bg-indigo-50/40 transition ${!showClient ? "bg-slate-50/50" : ""}`}
+                  >
                     <div className="flex items-start justify-between gap-3 mb-3">
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-gray-900 truncate text-sm sm:text-base">
-                          {client.name}
-                        </h3>
-                        <p className="text-sm text-gray-500">RNC: {client.rnc_cedula}</p>
+                        {showClient ? (
+                          <>
+                            <h3 className="font-semibold text-gray-900 truncate text-sm sm:text-base">
+                              {client.name}
+                            </h3>
+                            <p className="text-sm text-gray-500">RNC: {client.rnc_cedula}</p>
+                          </>
+                        ) : (
+                          <p className="text-xs text-gray-400">Otra cotización del mismo cliente</p>
+                        )}
                       </div>
-                      {last ? (
+                      {cot ? (
                         <>
                           <div className="flex items-center gap-2">
                           <button
-                            onClick={() => handleOpenDetail(last.id)}
+                            onClick={() => handleOpenDetail(cot.id)}
                             className="rounded-lg border border-slate-200 p-2 text-slate-700 hover:bg-slate-50"
                             title="Ver detalle de cotización"
                           >
@@ -1171,20 +1228,20 @@ export default function Clients() {
                             </svg>
                           </button>
                           <button
-                            onClick={() => handleSendEcf(last.id)}
-                            disabled={sendingEcfId === last.id || dgiiSendLocked || !isOnline}
+                            onClick={() => handleSendEcf(cot.id)}
+                            disabled={sendingEcfId === cot.id || dgiiSendLocked || !isOnline}
                             className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${dgiiSendBtnClass}`}
                             title={sendTitle}
                           >
                             {sendLabel}
                           </button>
                           <button
-                            onClick={() => handleDownload(last.id, client.name)}
-                            disabled={downloadingId === last.id}
+                            onClick={() => handleDownload(cot.id, client.name)}
+                            disabled={downloadingId === cot.id}
                             className="p-2 rounded-lg hover:bg-indigo-100 transition flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Descargar PDF"
                           >
-                            {downloadingId === last.id ? (
+                            {downloadingId === cot.id ? (
                               <svg
                                 xmlns="http://www.w3.org/2000/svg"
                                 className="w-4 h-4 text-indigo-600 animate-spin"
@@ -1223,10 +1280,10 @@ export default function Clients() {
                               </svg>
                             )}
                           </button>
-                          {last ? (
+                          {cot ? (
                             <button
                               type="button"
-                              onClick={() => void openEcfXmlViewer(last.id)}
+                              onClick={() => void openEcfXmlViewer(cot.id)}
                               className="p-2 rounded-lg hover:bg-violet-50 flex-shrink-0"
                               title="Ver XML e-CF"
                             >
@@ -1248,13 +1305,13 @@ export default function Clients() {
                           ) : null}
                         </div>
                           {dgiiStatus === "rejected" &&
-                            typeof last.dgii_rejection_summary === "string" &&
-                            last.dgii_rejection_summary.trim().length > 0 && (
+                            typeof cot.dgii_rejection_summary === "string" &&
+                            cot.dgii_rejection_summary.trim().length > 0 && (
                               <p
                                 className="mt-1 max-w-[min(100%,300px)] text-xs leading-snug text-amber-950"
-                                title={last.dgii_rejection_summary}
+                                title={cot.dgii_rejection_summary}
                               >
-                                {last.dgii_rejection_summary}
+                                {cot.dgii_rejection_summary}
                               </p>
                             )}
                       </>
@@ -1272,23 +1329,23 @@ export default function Clients() {
                       </div>
                       <div>
                         <p className="text-gray-500 text-xs">N° Cotización</p>
-                        <p className="text-indigo-600 font-medium">{last ? `#${last.number}` : "-"}</p>
+                        <p className="text-indigo-600 font-medium">{cot ? `#${cot.number}` : "-"}</p>
                       </div>
                       <div>
                         <p className="text-gray-500 text-xs">Total</p>
-                        <p className="text-gray-900 font-medium">{last ? formatCurrency(last.total) : "-"}</p>
+                        <p className="text-gray-900 font-medium">{cot ? formatCurrency(cot.total) : "-"}</p>
                       </div>
                     </div>
                     <div className="mt-3 flex items-center gap-2">
                       <Link
-                        to={last ? `/cotizaciones/${last.id}/editar` : "#"}
+                        to={cot ? `/cotizaciones/${cot.id}/editar` : "#"}
                         className="rounded border border-gray-200 px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
                       >
                         Editar
                       </Link>
                       <button
                         type="button"
-                        onClick={() => handleDeleteClient(client)}
+                        onClick={() => handleDeleteCotizacionRow(client, cot)}
                         className="rounded border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50"
                       >
                         Eliminar
@@ -1300,7 +1357,8 @@ export default function Clients() {
             </div>
             <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3 text-sm text-gray-600">
               <span>
-                Mostrando {pageRows.length} de {rows.length} registros
+                Mostrando {pageRows.length} de {rows.length} cotizaciones ({clientCount}{" "}
+                {clientCount === 1 ? "cliente" : "clientes"})
               </span>
               <div className="flex items-center gap-2">
                 <button
