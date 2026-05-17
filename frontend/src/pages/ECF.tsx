@@ -165,7 +165,7 @@ export default function ECF({ company }: { company: AuthCompany }) {
   ) => {
     if (syncDgiiAllProgress != null || deletingId != null) return;
     const ok = window.confirm(
-      `¿Eliminar la cotización #${meta.number} (${meta.clientLabel})? Esta acción no se puede deshacer.`,
+      `¿Eliminar la cotización ${meta.number} (${meta.clientLabel})? Esta acción no se puede deshacer.`,
     );
     if (!ok) return;
     setDeleteError("");
@@ -241,7 +241,7 @@ export default function ECF({ company }: { company: AuthCompany }) {
         } catch (err) {
           const msg = err instanceof Error ? err.message : "Error DGII";
           setDgiiQueryError(
-            `Fila #${r.number} (id ${r.id}): ${msg}. Las filas anteriores se actualizaron.`,
+            `Fila ${r.number} (id ${r.id}): ${msg}. Las filas anteriores se actualizaron.`,
           );
         }
       }
@@ -390,7 +390,7 @@ export default function ECF({ company }: { company: AuthCompany }) {
                         year: "numeric",
                       })}
                     </td>
-                    <td className="p-2 sm:p-3 font-medium tabular-nums">#{row.number}</td>
+                    <td className="p-2 sm:p-3 font-medium tabular-nums">{row.number}</td>
                     <td className="p-2 sm:p-3 text-left">{row.client_name}</td>
                     <td className="p-2 sm:p-3">{row.client_rnc_cedula ?? "-"}</td>
                     <td className="p-2 sm:p-3 text-left text-[11px] sm:text-xs text-slate-700">
@@ -570,7 +570,10 @@ export default function ECF({ company }: { company: AuthCompany }) {
                 <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
                   <p><span className="font-semibold">Cliente:</span> {detailCotizacion.client.name}</p>
                   <p><span className="font-semibold">RNC:</span> {detailCotizacion.client.rnc_cedula}</p>
-                  <p><span className="font-semibold">Cotización:</span> #{detailCotizacion.number}</p>
+                  <p>
+                    <span className="font-semibold">Cotización:</span>{" "}
+                    <span className="tabular-nums">{detailCotizacion.number}</span>
+                  </p>
                   <p><span className="font-semibold">Tipo e-CF:</span> {ecfTipoLabel(detailCotizacion.ecf_tipo) || "—"}</p>
                   <p>
                     <span className="font-semibold">e-NCF:</span>{" "}

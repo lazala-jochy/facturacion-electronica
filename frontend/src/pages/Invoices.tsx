@@ -94,7 +94,7 @@ export default function Invoices() {
         const mapped: Movement[] = rows.map((row) => ({
           id: `ingreso-${row.id}`,
           date: row.created_at,
-          description: `Cotización #${row.number} - ${row.client_name}`,
+          description: `Cotización ${row.number} - ${row.client_name}`,
           type: "ingreso",
           amount: row.total,
           reference: `COT-${row.number}`,

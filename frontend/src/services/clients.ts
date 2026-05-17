@@ -37,7 +37,13 @@ export type ClientListItem = {
 function normalizeClientListItem(raw: ClientListItem): ClientListItem {
   return {
     ...raw,
-    cotizaciones: Array.isArray(raw.cotizaciones) ? raw.cotizaciones : [],
+    cotizaciones: (Array.isArray(raw.cotizaciones) ? raw.cotizaciones : []).map((c) => ({
+      ...c,
+      number: Number(c.number),
+      total: Number(c.total),
+      subtotal: Number(c.subtotal),
+      itbis: Number(c.itbis),
+    })),
   };
 }
 

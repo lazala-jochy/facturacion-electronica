@@ -75,13 +75,47 @@ type ClientCotRow = {
   rowKey: string;
 };
 
-const sortCotizacionesDesc = (cots: ClientCotizacion[]) =>
-  [...cots].sort((a, b) => b.number - a.number);
+const rowCotNumber = (row: ClientCotRow): number | null => {
+  if (row.cot == null) return null;
+  const n = Number(row.cot.number);
+  return Number.isFinite(n) ? n : null;
+};
 
-const primaryCotizacion = (client: ClientListItem): ClientCotizacion | null => {
-  const cots = client.cotizaciones ?? [];
-  if (cots.length === 0) return null;
-  return cots.reduce((best, c) => (c.number > best.number ? c : best), cots[0]);
+const compareClientCotRows = (
+  a: ClientCotRow,
+  b: ClientCotRow,
+  sortBy: "recent" | "name" | "rnc" | "number" | "total" | "status",
+): number => {
+  let compare = 0;
+  if (sortBy === "recent") {
+    const aTs =
+      Date.parse(a.cot?.created_at ?? "") ||
+      Date.parse(a.client.created_at ?? "") ||
+      a.client.id;
+    const bTs =
+      Date.parse(b.cot?.created_at ?? "") ||
+      Date.parse(b.client.created_at ?? "") ||
+      b.client.id;
+    compare = aTs - bTs;
+  } else if (sortBy === "name") {
+    compare = a.client.name.localeCompare(b.client.name, "es");
+  } else if (sortBy === "rnc") {
+    compare = a.client.rnc_cedula.localeCompare(b.client.rnc_cedula, "es");
+  } else if (sortBy === "number") {
+    const aNum = rowCotNumber(a);
+    const bNum = rowCotNumber(b);
+    if (aNum == null && bNum == null) compare = 0;
+    else if (aNum == null) compare = 1;
+    else if (bNum == null) compare = -1;
+    else compare = aNum - bNum;
+  } else if (sortBy === "total") {
+    const aTotal = a.cot?.total ?? -1;
+    const bTotal = b.cot?.total ?? -1;
+    compare = aTotal - bTotal;
+  } else if (sortBy === "status") {
+    compare = (a.cot?.dgii_status ?? "").localeCompare(b.cot?.dgii_status ?? "", "es");
+  }
+  return compare;
 };
 
 const clientMatchesQuery = (client: ClientListItem, normalizedQuery: string) => {
@@ -756,7 +790,7 @@ export default function Clients() {
     }
 
     const confirmed = window.confirm(
-      `¿Seguro que deseas eliminar la cotización #${cot.number} de "${client.name}"?`,
+      `¿Seguro que deseas eliminar la cotización ${cot.number} de "${client.name}"?`,
     );
     if (!confirmed) return;
     try {
@@ -773,7 +807,7 @@ export default function Clients() {
   const handleDeleteDetailCotizacion = async () => {
     if (!detail?.id) return;
     const confirmed = window.confirm(
-      `¿Eliminar la cotización #${detail.number} de ${detail.client.name}? No se puede deshacer.`,
+      `¿Eliminar la cotización ${detail.number} de ${detail.client.name}? No se puede deshacer.`,
     );
     if (!confirmed) return;
     setCrudError("");
@@ -797,48 +831,23 @@ export default function Clients() {
   const rows = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
-    const sortedClients = [...clients]
+    const flatRows = clients
       .filter((client) => clientMatchesQuery(client, normalizedQuery))
-      .sort((a, b) => {
-        const aPrimary = primaryCotizacion(a);
-        const bPrimary = primaryCotizacion(b);
-        const aStatus = aPrimary?.dgii_status ?? "";
-        const bStatus = bPrimary?.dgii_status ?? "";
-        const aNumber = aPrimary?.number ?? -1;
-        const bNumber = bPrimary?.number ?? -1;
-        const aTotal = aPrimary?.total ?? -1;
-        const bTotal = bPrimary?.total ?? -1;
-
-        let compare = 0;
-        if (sortBy === "recent") {
-          const aTs =
-            Date.parse(aPrimary?.created_at ?? "") ||
-            Date.parse(a.created_at ?? "") ||
-            a.id;
-          const bTs =
-            Date.parse(bPrimary?.created_at ?? "") ||
-            Date.parse(b.created_at ?? "") ||
-            b.id;
-          compare = aTs - bTs;
+      .flatMap((client): ClientCotRow[] => {
+        const cots = client.cotizaciones ?? [];
+        if (cots.length === 0) {
+          return [{ client, cot: null, rowKey: `client-${client.id}-empty` }];
         }
-        if (sortBy === "name") compare = a.name.localeCompare(b.name);
-        if (sortBy === "rnc") compare = a.rnc_cedula.localeCompare(b.rnc_cedula);
-        if (sortBy === "number") compare = aNumber - bNumber;
-        if (sortBy === "total") compare = aTotal - bTotal;
-        if (sortBy === "status") compare = aStatus.localeCompare(bStatus);
-        return sortDir === "asc" ? compare : -compare;
+        return cots.map((cot) => ({
+          client,
+          cot,
+          rowKey: `client-${client.id}-cot-${cot.id}`,
+        }));
       });
 
-    return sortedClients.flatMap((client): ClientCotRow[] => {
-      const cots = sortCotizacionesDesc(client.cotizaciones ?? []);
-      if (cots.length === 0) {
-        return [{ client, cot: null, rowKey: `client-${client.id}-empty` }];
-      }
-      return cots.map((cot) => ({
-        client,
-        cot,
-        rowKey: `client-${client.id}-cot-${cot.id}`,
-      }));
+    return [...flatRows].sort((a, b) => {
+      const compare = compareClientCotRows(a, b, sortBy);
+      return sortDir === "asc" ? compare : -compare;
     });
   }, [clients, query, sortBy, sortDir]);
 
@@ -956,7 +965,7 @@ export default function Clients() {
               <option value="recent">Más recientes</option>
               <option value="name">Ordenar por Nombre</option>
               <option value="rnc">Ordenar por RNC/Cedula</option>
-              <option value="number">Ordenar por No. Cotizacion</option>
+              <option value="number">Ordenar por N° cotización</option>
               <option value="total">Ordenar por Total</option>
               <option value="status">Ordenar por Estado e-CF</option>
             </select>
@@ -1032,7 +1041,7 @@ export default function Clients() {
                     <th className="px-3 sm:px-4 py-3 text-left">RNC / Cédula</th>
                     <th className="px-3 sm:px-4 py-3 text-left">Teléfono</th>
                     <th className="hidden lg:table-cell px-3 sm:px-4 py-3 text-left">Correo</th>
-                    <th className="px-3 sm:px-4 py-3 text-left">N° Cot.</th>
+                    <th className="px-3 sm:px-4 py-3 text-right">N° Cot.</th>
                     <th className="px-3 sm:px-4 py-3 text-left">Tipo e-CF</th>
                     <th className="px-3 sm:px-4 py-3 text-left">e-NCF</th>
                     <th className="px-3 sm:px-4 py-3 text-left">Total</th>
@@ -1135,8 +1144,10 @@ export default function Clients() {
                           {client.email || "-"}
                         </td>
 
-                        <td className="px-3 sm:px-4 py-3 text-indigo-600 font-medium text-sm tabular-nums">
-                          {cot ? `#${cot.number}` : "-"}
+                        <td className="px-3 sm:px-4 py-3 text-right text-indigo-600 font-medium text-sm tabular-nums">
+                          {cot != null && Number.isFinite(Number(cot.number))
+                            ? Number(cot.number)
+                            : "—"}
                         </td>
 
                         <td className="px-3 sm:px-4 py-3 text-gray-700 text-xs">
@@ -1524,7 +1535,9 @@ export default function Clients() {
                       </div>
                       <div>
                         <p className="text-gray-500 text-xs">N° Cotización</p>
-                        <p className="text-indigo-600 font-medium">{cot ? `#${cot.number}` : "-"}</p>
+                        <p className="text-indigo-600 font-medium tabular-nums">
+                          {cot ? cot.number : "-"}
+                        </p>
                       </div>
                       <div>
                         <p className="text-gray-500 text-xs">Total</p>
@@ -1665,7 +1678,8 @@ export default function Clients() {
               <div className="space-y-4">
                 <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
                   <p>
-                    <span className="font-semibold">Cotización:</span> #{detail.number}
+                    <span className="font-semibold">Cotización:</span>{" "}
+                    <span className="tabular-nums">{detail.number}</span>
                   </p>
                   <p>
                     <span className="font-semibold">Estado DGII:</span>{" "}
