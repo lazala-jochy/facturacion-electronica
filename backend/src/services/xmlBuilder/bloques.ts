@@ -3,7 +3,7 @@
  * Cada tipo define su propia secuencia IdDoc en su archivo `plantillas/ecf*.ts`.
  */
 
-import type { EcfPayload } from "../validation";
+import type { EcfPayload, RfcePayload } from "../validation";
 import {
   DEFAULT_COMPRADOR_MUNICIPIO,
   DEFAULT_COMPRADOR_PROVINCIA,
@@ -94,6 +94,32 @@ export function appendTotalesItbis18(enc: XMLBuilder, payload: EcfPayload): void
   tot.ele("MontoGravadoTotal").txt(money(payload.subtotal));
   tot.ele("MontoGravadoI1").txt(money(payload.subtotal));
   tot.ele("ITBIS1").txt("18");
+  tot.ele("TotalITBIS").txt(money(payload.itbis));
+  tot.ele("TotalITBIS1").txt(money(payload.itbis));
+  tot.ele("MontoTotal").txt(money(payload.total));
+  tot.up();
+}
+
+export function appendEmisorRfce32(enc: XMLBuilder, payload: RfcePayload): void {
+  const em = enc.ele("Emisor");
+  em.ele("RNCEmisor").txt(payload.issuer.rnc.trim());
+  em.ele("RazonSocialEmisor").txt(payload.issuer.name.trim());
+  em.ele("FechaEmision").txt(fechaEmisionDdMmYyyy(payload.issueDate));
+  em.up();
+}
+
+export function appendCompradorRfce32(enc: XMLBuilder, payload: RfcePayload): void {
+  const comp = enc.ele("Comprador");
+  comp.ele("RNCComprador").txt(payload.buyer.rncCedula.trim());
+  comp.ele("RazonSocialComprador").txt(payload.buyer.name.trim());
+  comp.up();
+}
+
+/** Totales RFCE 32: sin `ITBIS1` (XSD resumen E320000000011 / lote Excel). */
+export function appendTotalesRfce32(enc: XMLBuilder, payload: RfcePayload): void {
+  const tot = enc.ele("Totales");
+  tot.ele("MontoGravadoTotal").txt(money(payload.subtotal));
+  tot.ele("MontoGravadoI1").txt(money(payload.subtotal));
   tot.ele("TotalITBIS").txt(money(payload.itbis));
   tot.ele("TotalITBIS1").txt(money(payload.itbis));
   tot.ele("MontoTotal").txt(money(payload.total));

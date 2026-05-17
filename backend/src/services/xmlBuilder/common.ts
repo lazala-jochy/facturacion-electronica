@@ -2,6 +2,9 @@
  * Utilidades compartidas entre plantillas e-CF (DGII).
  */
 
+/** Namespace oficial e-CF (obligatorio en CerteCF / validación XSD). */
+export const DGII_ECF_NS = "http://www.dgii.gov.do/ecf";
+
 const DEFAULT_MUNICIPIO = process.env.DGII_EMISOR_MUNICIPIO_DEFAULT ?? "010101";
 const DEFAULT_PROVINCIA = process.env.DGII_EMISOR_PROVINCIA_DEFAULT ?? "010000";
 /** Orden XSD de Comprador (alineado a COMPRADOR_FIELDS en utils/xmlBuilder.js). */

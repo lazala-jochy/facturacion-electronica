@@ -10,7 +10,13 @@ import {
   itemLineTotalValue,
 } from "../utils/tax";
 import { formatPhoneInput, isValidPhone } from "../utils/phone";
-import { DEFAULT_ECF_TIPO, ECF_TIPO_OPTIONS, ECF_TIPO_REQUIERE_REFERENCIA } from "../config/ecfTipos";
+import {
+  DEFAULT_ECF_TIPO,
+  ECF_CONSUMO_RFCE_THRESHOLD_RD,
+  ECF_TIPO_OPTIONS,
+  ECF_TIPO_REQUIERE_REFERENCIA,
+  isConsumoMenor250Rfce,
+} from "../config/ecfTipos";
 
 type ItemRow = CotizacionItemDraft & { key: string };
 
@@ -314,6 +320,14 @@ export default function CotizacionCreate() {
               <p className="mt-1 text-[11px] text-slate-500">
                 Tipo 32 (consumo): podés usar cédula de persona física o RNC.
               </p>
+            )}
+            {isConsumoMenor250Rfce(ecfTipo, displayTotals.total) && (
+              <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                <strong>Flujo 32 RFCE:</strong> total menor a RD$
+                {ECF_CONSUMO_RFCE_THRESHOLD_RD.toLocaleString("es-DO")}. En Clientes usá{" "}
+                <strong>Enviar RFCE (32 &lt;250k)</strong>, no «Enviar DGII» directo. Después subí el e-CF íntegro al
+                portal CerteCF.
+              </div>
             )}
             <label className="mt-2 block text-xs font-medium text-slate-600">
               Dirección

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildEcfXml, resolvePlantillaEcfTipo } from "./xmlBuilder";
+import { plantillaEcf32ConsumoIntegra } from "./xmlBuilder/plantillas/ecf32ConsumoIntegra";
+import { plantillaRfce32 } from "./xmlBuilder/plantillas/rfce32";
 import { refinePayloadForEcfTipo } from "./ecfTipoHandlers";
 import { validateEcfPayload } from "./validation";
 import type { EcfPayload } from "./validation";
@@ -138,6 +140,73 @@ test("IdDoc e-CF 32 XSD: sin FechaVencimientoSecuencia ni IndicadorServicioTodoI
   );
   assert.doesNotMatch(xml, /<TipoIngresos>01<\/TipoIngresos>[\s\S]*<FechaVencimientoSecuencia>/);
   assert.doesNotMatch(xml, /<IndicadorServicioTodoIncluido>/);
+});
+
+test("XML e-CF 32 consumo <250k íntegro: formato lote Excel (E320000000011)", () => {
+  const issueDate = new Date("2024-06-15T12:00:00.000Z");
+  const p: EcfPayload = {
+    ecfNumber: "E320000000011",
+    issueDate,
+    ecfTipo: "32",
+    issuer: {
+      rnc: "131880738",
+      name: "ACME",
+      address: "Calle 1",
+      phone: null,
+      email: null,
+    },
+    buyer: {
+      name: "Cliente",
+      rncCedula: "40212345678",
+      address: null,
+      contact: null,
+    },
+    items: [
+      {
+        itemNumber: 1,
+        description: "Item",
+        quantity: 1,
+        unit: "43",
+        unitPrice: 1000,
+        totalValue: 1000,
+      },
+    ],
+    subtotal: 1000,
+    itbis: 180,
+    total: 1180,
+  };
+  const xml = plantillaEcf32ConsumoIntegra(p);
+  assert.match(xml, /<ECF>/);
+  assert.doesNotMatch(xml, /xmlns=/);
+  assert.match(
+    xml,
+    /<eNCF>E320000000011<\/eNCF>\s*<IndicadorMontoGravado>0<\/IndicadorMontoGravado>\s*<TipoIngresos>01<\/TipoIngresos>\s*<TipoPago>/,
+  );
+  assert.doesNotMatch(xml, /<IndicadorEnvioDiferido>/);
+  assert.doesNotMatch(xml, /<TablaFormasPago>/);
+  assert.match(xml, /<ITBIS1>18<\/ITBIS1>/);
+  assert.doesNotMatch(xml, /<\s*RFCE[\s>]/i);
+});
+
+test("XML RFCE 32: Totales sin ITBIS1 (muestra E320000000011)", () => {
+  const issueDate = new Date("2020-04-01T12:00:00.000Z");
+  const xml = plantillaRfce32({
+    ecfNumber: "E320000000011",
+    issueDate,
+    issuer: { rnc: "04900920846", name: "EMISOR", address: "Calle 1" },
+    buyer: { name: "COMPRADOR", rncCedula: "131880681" },
+    subtotal: 34000,
+    itbis: 6120,
+    total: 40120,
+    codigoSeguridadeCF: "E71188",
+  });
+  assert.match(xml, /<RFCE>/);
+  assert.match(
+    xml,
+    /<Totales>[\s\S]*<MontoGravadoTotal>34000.00<\/MontoGravadoTotal>[\s\S]*<MontoTotal>40120.00<\/MontoTotal>[\s\S]*<\/Totales>/,
+  );
+  assert.doesNotMatch(xml, /<ITBIS1>/);
+  assert.match(xml, /<CodigoSeguridadeCF>E71188<\/CodigoSeguridadeCF>/);
 });
 
 test("XML e-CF 33: NCFModificado en InformacionReferencia, no en IdDoc", () => {

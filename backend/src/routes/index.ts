@@ -81,6 +81,23 @@ export const buildRouter = () => {
     asyncHandler(cotizacionesController.signEcfXmlByCotizacion),
   );
   router.post(
+    "/cotizaciones/:id/ecf/consumo-menor-250-pack",
+    requireAuth,
+    ecfCertificateUpload,
+    asyncHandler(cotizacionesController.buildConsumoMenor250PackByCotizacion),
+  );
+  router.get(
+    "/cotizaciones/:id/ecf/consumo-menor-250-integra",
+    requireAuth,
+    asyncHandler(cotizacionesController.downloadConsumoMenor250IntegraByCotizacion),
+  );
+  router.post(
+    "/cotizaciones/:id/ecf/submit-rfce",
+    requireAuth,
+    ecfCertificateUpload,
+    asyncHandler(cotizacionesController.submitRfceByCotizacion),
+  );
+  router.post(
     "/cotizaciones/:id/ecf/submit",
     requireAuth,
     ecfCertificateUpload,

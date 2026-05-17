@@ -8,7 +8,13 @@ import {
 } from "../services/cotizaciones";
 import { calculateTotalsFromItems, itemLineTotalValue } from "../utils/tax";
 import { formatPhoneInput, isValidPhone } from "../utils/phone";
-import { DEFAULT_ECF_TIPO, ECF_TIPO_OPTIONS, ECF_TIPO_REQUIERE_REFERENCIA } from "../config/ecfTipos";
+import {
+  DEFAULT_ECF_TIPO,
+  ECF_CONSUMO_RFCE_THRESHOLD_RD,
+  ECF_TIPO_OPTIONS,
+  ECF_TIPO_REQUIERE_REFERENCIA,
+  isConsumoMenor250Rfce,
+} from "../config/ecfTipos";
 
 type ItemRow = CotizacionItemDraft & { key: string };
 
@@ -264,6 +270,12 @@ export default function CotizacionEdit() {
               )}
               {ecfTipo === "32" && (
                 <p className="mt-1 text-[11px] text-slate-500">Tipo 32: cédula o RNC (consumo).</p>
+              )}
+              {isConsumoMenor250Rfce(ecfTipo, displayTotals.total) && (
+                <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                  <strong>Flujo 32 RFCE:</strong> en Clientes usá <strong>Enviar RFCE (32 &lt;250k)</strong> (total &lt; RD$
+                  {ECF_CONSUMO_RFCE_THRESHOLD_RD.toLocaleString("es-DO")}).
+                </div>
               )}
               <input className="mt-2 w-full rounded border border-slate-300 px-2 py-1.5 text-xs sm:text-sm" value={clientAddress} onChange={(e) => setClientAddress(e.target.value)} />
               <div className="mt-2 grid grid-cols-2 gap-2">

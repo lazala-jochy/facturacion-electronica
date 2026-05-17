@@ -43,6 +43,12 @@ export const parseEcfItemRows = (signedXml: string): EcfItemRow[] => {
   return rows;
 };
 
+/** Primeros 6 caracteres del SignatureValue del e-CF íntegro (CerteCF / RFCE). */
+export const codigoSeguridadRfceDesdeSignedEcf = (signedXml: string): string => {
+  const raw = extractXmlTagValue(signedXml, "SignatureValue").replace(/\s/g, "");
+  return raw.length >= 6 ? raw.substring(0, 6) : raw;
+};
+
 export const codigoSeguridadDesdeSignedXml = (signedXml: string): string => {
   const raw = extractXmlTagValue(signedXml, "SignatureValue").replace(/\s/g, "");
   if (!raw) return "------";

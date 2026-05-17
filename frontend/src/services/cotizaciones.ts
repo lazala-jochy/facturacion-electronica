@@ -140,6 +140,118 @@ export const generateEcfXml = (id: number) =>
   );
 
 /** Firma el XML con el certificado de la empresa sin enviar a DGII (misma autenticación que submit). */
+export type ConsumoMenor250PackResponse = {
+  message: string;
+  ecf_number: string;
+  codigo_seguridade_cf: string;
+  integra_signed_xml: string;
+  rfce_signed_xml: string;
+};
+
+/** Genera y firma RFCE + e-CF íntegro (consumo 32 &lt; RD$250k) para subida manual a CerteCF. */
+export type SubmitConsumoMenor250RfceResult = {
+  message: string;
+  flow: string;
+  document_type: string;
+  ecf_number: string;
+  codigo_seguridade_cf: string;
+  dgii_status: "accepted" | "rejected" | "pending";
+  dgii_response: string;
+};
+
+/** Genera RFCE + e-CF íntegro y envía el RFCE a DGII (tipo 32 &lt; RD$250k). */
+export const submitConsumoMenor250Rfce = async (
+  id: number,
+  opts?: {
+    certificate?: File;
+    certificatePassword?: string;
+    certificateEncryptionSecret?: string;
+  },
+): Promise<SubmitConsumoMenor250RfceResult> => {
+  const session = readAuthSessionFromStorage();
+  if (!session?.token) throw new ApiError("No hay sesión.", 401);
+
+  const fd = new FormData();
+  const fromCompany = session.company?.certificate_keyphrase?.trim() ?? "";
+  const enc = (opts?.certificateEncryptionSecret?.trim() || fromCompany || "").trim();
+  if (enc.length >= 8) fd.append("certificate_encryption_secret", enc);
+  if (opts?.certificate) {
+    fd.append("certificate", opts.certificate);
+    fd.append("certificate_password", opts.certificatePassword ?? "");
+  }
+
+  const response = await authenticatedFetch(`/cotizaciones/${id}/ecf/submit-rfce`, {
+    method: "POST",
+    body: fd,
+  });
+  const data = (await response.json().catch(() => ({}))) as SubmitConsumoMenor250RfceResult & {
+    message?: string;
+    code?: string;
+  };
+  if (!response.ok) {
+    throw new ApiError(data.message ?? "No se pudo enviar el RFCE.", response.status, data as Record<string, unknown>);
+  }
+  return data;
+};
+
+/** Descarga el e-CF íntegro ya firmado (mismo del envío RFCE; no re-firma). */
+export const downloadConsumoMenor250Integra = async (id: number): Promise<string> => {
+  const response = await authenticatedFetch(`/cotizaciones/${id}/ecf/consumo-menor-250-integra`);
+  if (!response.ok) {
+    const data = (await response.json().catch(() => ({}))) as { message?: string };
+    throw new ApiError(
+      data.message ?? "No hay e-CF íntegro guardado. Enviá el RFCE primero.",
+      response.status,
+    );
+  }
+  return response.text();
+};
+
+export const buildConsumoMenor250Pack = async (
+  id: number,
+  opts?: {
+    certificate?: File;
+    certificatePassword?: string;
+    certificateEncryptionSecret?: string;
+    /** Si se indica, la respuesta es el archivo XML (attachment) en lugar de JSON. */
+    downloadPart?: "rfce" | "integra";
+  },
+): Promise<ConsumoMenor250PackResponse | string> => {
+  const session = readAuthSessionFromStorage();
+  if (!session?.token) throw new ApiError("No hay sesión.", 401);
+
+  const fd = new FormData();
+  const fromCompany = session.company?.certificate_keyphrase?.trim() ?? "";
+  const enc = (opts?.certificateEncryptionSecret?.trim() || fromCompany || "").trim();
+  if (enc.length >= 8) fd.append("certificate_encryption_secret", enc);
+  if (opts?.certificate) {
+    fd.append("certificate", opts.certificate);
+    fd.append("certificate_password", opts.certificatePassword ?? "");
+  }
+
+  const q = opts?.downloadPart ? `?part=${encodeURIComponent(opts.downloadPart)}` : "";
+  const response = await authenticatedFetch(`/cotizaciones/${id}/ecf/consumo-menor-250-pack${q}`, {
+    method: "POST",
+    body: fd,
+  });
+
+  if (opts?.downloadPart) {
+    if (!response.ok) {
+      const data = (await response.json().catch(() => ({}))) as { message?: string };
+      throw new ApiError(data.message ?? "No se pudo generar el XML.", response.status);
+    }
+    return response.text();
+  }
+
+  const data = (await response.json().catch(() => ({}))) as ConsumoMenor250PackResponse & {
+    message?: string;
+  };
+  if (!response.ok) {
+    throw new ApiError(data.message ?? "No se pudo generar el paquete RFCE.", response.status, data as Record<string, unknown>);
+  }
+  return data;
+};
+
 export const signEcfXmlLocal = async (
   id: number,
   opts?: {

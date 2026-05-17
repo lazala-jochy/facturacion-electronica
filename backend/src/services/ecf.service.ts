@@ -26,6 +26,7 @@ import {
   persistCotizacionAfterDgiiSubmission,
   validateCotizacionDgiiResubmit,
 } from "./cotizacion.service";
+import { submitConsumoMenor250RfceForCotizacion } from "./ecfConsumoRfce.service";
 
 const contactFromClient = (phone?: string | null, email?: string | null) => {
   if (phone?.trim() && email?.trim()) return `${phone.trim()} | ${email.trim()}`;
@@ -83,7 +84,7 @@ export type SubmitEcfErr = {
 };
 
 /** Certificado .p12 descifrado listo para firmar e-CF (reutilizado en envío DGII y firma local). */
-async function resolveP12ForEcf(
+export async function resolveP12ForEcf(
   companyId: number,
   initialCompany: Company,
   options: {
@@ -311,12 +312,23 @@ export const ecfService = {
         Number.isFinite(totalGen) &&
         totalGen < ECF_CONSUMO_RFCE_TOTAL_THRESHOLD_RD
       ) {
+        const rfceOut = await submitConsumoMenor250RfceForCotizacion(cotizacionId, companyId, {
+          uploadsRoot: options.uploadsRoot,
+          certificateEncryptionSecret: options.certificateEncryptionSecret,
+          oneShotCertificate: options.oneShotCertificate,
+        });
+        if (!rfceOut.ok) return rfceOut;
         return {
-          ok: false,
-          status: 422,
-          code: "CONSUMO_MENOR_250K_RFCE",
-          message:
-            "En certificación DGII, la Factura de Consumo (32) con total menor a RD$250.000 debe presentarse primero como RFCE (Resumen de Factura de Consumo) al servicio de recepción de resúmenes. Con los resúmenes aceptados, cargá los e-CF completos por la interfaz de pruebas. Usá el flujo por lote Excel (RFCE firmados + e-CF), no el envío directo desde esta cotización. Opcional en desarrollo: DGII_ALLOW_DIRECT_ECF32_UNDER_250K=1.",
+          ok: true,
+          xml: generation.xml,
+          signedXml: "",
+          dgiiResponse: {
+            accepted: rfceOut.dgii_status === "accepted",
+            status: rfceOut.dgii_status,
+            trackId: rfceOut.ecf_number,
+            rawResponse: rfceOut.dgii_response,
+            httpStatus: 200,
+          },
         };
       }
 

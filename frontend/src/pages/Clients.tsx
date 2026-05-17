@@ -4,14 +4,16 @@ import { deleteClient, listClients, type ClientListItem } from "../services/clie
 import { ApiError, readAuthSessionFromStorage, refreshAuthSessionFromServer } from "../services/api";
 import {
   deleteCotizacion,
+  downloadConsumoMenor250Integra,
   downloadCotizacionPDF,
   generateEcfXml,
   getCotizacion,
   signEcfXmlLocal,
+  submitConsumoMenor250Rfce,
   submitEcf,
   type CotizacionDetail,
 } from "../services/cotizaciones";
-import { ecfTipoLabel } from "../config/ecfTipos";
+import { ecfTipoDisplayLabel, isConsumoMenor250Rfce } from "../config/ecfTipos";
 import { formatEcfNumberDisplay } from "../utils/ecfNumber";
 
 // Helper para formatear moneda
@@ -174,11 +176,16 @@ export default function Clients() {
   const [detail, setDetail] = useState<CotizacionDetail | null>(null);
   const [crudMessage, setCrudMessage] = useState("");
   const [crudError, setCrudError] = useState("");
+  const [downloadingIntegraId, setDownloadingIntegraId] = useState<number | null>(null);
+  const [consumoIntegraDownloading, setConsumoIntegraDownloading] = useState(false);
+  const [consumoPackError, setConsumoPackError] = useState("");
   const [ecfXmlViewer, setEcfXmlViewer] = useState<{
     open: boolean;
     loading: boolean;
     error: string;
     ecfNumber: string;
+    ecfTipo: string;
+    total: number;
     generatedXml: string;
     signedXml: string | null;
     /** Firma en esta sesión (mismo XML que envío DGII). */
@@ -192,6 +199,8 @@ export default function Clients() {
     loading: false,
     error: "",
     ecfNumber: "",
+    ecfTipo: "",
+    total: 0,
     generatedXml: "",
     signedXml: null,
     previewSignedXml: null,
@@ -266,11 +275,15 @@ export default function Clients() {
 
   const closeEcfXmlViewer = () => {
     setEcfSignLocalError("");
+    setConsumoPackError("");
+    setConsumoIntegraDownloading(false);
     setEcfXmlViewer({
       open: false,
       loading: false,
       error: "",
       ecfNumber: "",
+      ecfTipo: "",
+      total: 0,
       generatedXml: "",
       signedXml: null,
       previewSignedXml: null,
@@ -280,13 +293,28 @@ export default function Clients() {
     });
   };
 
+  const downloadXmlBlob = (xml: string, filename: string) => {
+    const blob = new Blob([xml], { type: "application/xml;charset=utf-8" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
   const openEcfXmlViewer = async (cotizacionId: number) => {
     setEcfSignLocalError("");
+    setConsumoPackError("");
     setEcfXmlViewer({
       open: true,
       loading: true,
       error: "",
       ecfNumber: "",
+      ecfTipo: "",
+      total: 0,
       generatedXml: "",
       signedXml: null,
       previewSignedXml: null,
@@ -310,6 +338,8 @@ export default function Clients() {
         ...prev,
         loading: false,
         ecfNumber: gen.ecf_number,
+        ecfTipo: detailRes.cotizacion.ecf_tipo ?? "",
+        total: detailRes.cotizacion.total ?? 0,
         generatedXml: genSigned || signed ? "" : gen.xml,
         signedXml: signed,
         previewSignedXml: null,
@@ -371,15 +401,63 @@ export default function Clients() {
         : tab === "preview"
           ? `ecf-dgii-${ecfNumber.replace(/\s/g, "") || "firmado"}`
           : `ecf-${ecfNumber.replace(/\s/g, "") || "generado"}`;
-    const blob = new Blob([body], { type: "application/xml;charset=utf-8" });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${base}.xml`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.URL.revokeObjectURL(url);
+    downloadXmlBlob(body, `${base}.xml`);
+  };
+
+  const downloadConsumoIntegraPortalXml = async (
+    cotizacionId: number,
+    ecfNumberHint?: string,
+  ): Promise<boolean> => {
+    setConsumoPackError("");
+    try {
+      const xml = await downloadConsumoMenor250Integra(cotizacionId);
+      if (!xml.trim()) throw new Error("XML vacío.");
+      const encfSafe = (ecfNumberHint || "consumo").replace(/[^\w.-]/g, "");
+      downloadXmlBlob(xml, `ECF-${encfSafe}.xml`);
+      return true;
+    } catch (e) {
+      setConsumoPackError(e instanceof Error ? e.message : "No se pudo descargar el e-CF íntegro.");
+      return false;
+    }
+  };
+
+  const handleDownloadConsumoIntegraFromViewer = async () => {
+    const id = ecfXmlViewer.cotizacionId;
+    if (id == null) return;
+    setConsumoIntegraDownloading(true);
+    try {
+      await downloadConsumoIntegraPortalXml(id, ecfXmlViewer.ecfNumber);
+    } finally {
+      setConsumoIntegraDownloading(false);
+    }
+  };
+
+  const handleRfcePrimaryAction = async (cotizacionId: number) => {
+    const cotRow = clients
+      .flatMap((c) => c.cotizaciones.map((co) => ({ ...co, clientId: c.id })))
+      .find((co) => co.id === cotizacionId);
+    const isRfce =
+      cotRow != null && isConsumoMenor250Rfce(cotRow.ecf_tipo, cotRow.total);
+    if (isRfce && cotRow.dgii_status === "accepted") {
+      setDownloadingIntegraId(cotizacionId);
+      setEcfError("");
+      try {
+        const encf =
+          cotRow.ecf_ncf_seq != null
+            ? formatEcfNumberDisplay("32", cotRow.ecf_ncf_seq)
+            : "consumo";
+        const ok = await downloadConsumoIntegraPortalXml(cotizacionId, encf);
+        if (ok) {
+          setEcfSuccess(
+            "e-CF íntegro descargado (misma firma del RFCE). Subilo a CerteCF «Facturas de consumo <250Mil».",
+          );
+        }
+      } finally {
+        setDownloadingIntegraId(null);
+      }
+      return;
+    }
+    await handleSendEcf(cotizacionId);
   };
 
   const handleSendEcf = async (cotizacionId: number) => {
@@ -414,47 +492,69 @@ export default function Clients() {
       return;
     }
     try {
-      const out = await submitEcf(cotizacionId, {
-        certificateEncryptionSecret:
-          company?.certificateConfigured && encForSend.length >= 8 ? encForSend : undefined,
-        dgiiCertProfile: isDgiiCertification ? dgiiCertProfile : "paso2",
-      });
-      const detail =
-        out.dgii_status_summary?.trim() || out.dgii_rejection_summary?.trim() || "";
+      const isRfceFlow =
+        cotRow != null && isConsumoMenor250Rfce(cotRow.ecf_tipo, cotRow.total);
 
-      if (out.status === "accepted") {
-        setEcfWarning("");
-        setEcfSuccess(
-          `e-CF aceptado por DGII (Track ID: ${out.track_id}).${detail ? ` ${detail}` : ""}`.trim(),
-        );
-      } else if (out.status === "pending") {
-        setEcfSuccess("");
-        setEcfWarning(
-          `DGII recibió el comprobante (Track ID: ${out.track_id}). ${
-            detail || "El estado final aún se está procesando."
-          } Volvé a enviar o consultá el estado en unos segundos si sigue pendiente.`.trim(),
-        );
-      } else if (out.status === "rejected") {
-        setEcfSuccess("");
-        if (out.dgii_resubmit_new_seq === true) {
-          const nextEncf =
-            out.ecf_number?.trim() ||
-            (out.ecf_ncf_seq != null ? `secuencia ${out.ecf_ncf_seq}` : "");
-          setEcfWarning(
-            `DGII rechazó por correlativo/secuencia. Track ID: ${out.track_id}. ${detail}${
-              nextEncf
-                ? ` Próximo envío usará ${nextEncf} (guardado en la cotización).`
-                : ""
-            }`.trim(),
-          );
+      if (isRfceFlow) {
+        const out = await submitConsumoMenor250Rfce(cotizacionId, {
+          certificateEncryptionSecret:
+            company?.certificateConfigured && encForSend.length >= 8 ? encForSend : undefined,
+        });
+        if (out.dgii_status === "accepted") {
+          setEcfWarning("");
+          setEcfSuccess(out.message);
+        } else if (out.dgii_status === "pending") {
+          setEcfSuccess("");
+          setEcfWarning(`RFCE ${out.ecf_number} recibido por DGII; estado pendiente.`);
         } else {
+          setEcfSuccess("");
           setEcfWarning(
-            `DGII rechazó el comprobante. Track ID: ${out.track_id}. ${detail} No es rechazo por secuencia: el mismo e-NCF se conserva. Corregí la cotización y usá «Enviar DGII» (no «Reenviar», que solo aplica cuando DGII indica secuencia ya utilizada).`.trim(),
+            `RFCE ${out.ecf_number} rechazado. Revisá el detalle, corregí si hace falta y volvé a enviar (uno por cotización).`,
           );
         }
       } else {
-        setEcfWarning("");
-        setEcfSuccess(`e-CF enviado (Track ID: ${out.track_id}).`);
+        const out = await submitEcf(cotizacionId, {
+          certificateEncryptionSecret:
+            company?.certificateConfigured && encForSend.length >= 8 ? encForSend : undefined,
+          dgiiCertProfile: isDgiiCertification ? dgiiCertProfile : "paso2",
+        });
+        const detail =
+          out.dgii_status_summary?.trim() || out.dgii_rejection_summary?.trim() || "";
+
+        if (out.status === "accepted") {
+          setEcfWarning("");
+          setEcfSuccess(
+            `e-CF aceptado por DGII (Track ID: ${out.track_id}).${detail ? ` ${detail}` : ""}`.trim(),
+          );
+        } else if (out.status === "pending") {
+          setEcfSuccess("");
+          setEcfWarning(
+            `DGII recibió el comprobante (Track ID: ${out.track_id}). ${
+              detail || "El estado final aún se está procesando."
+            } Volvé a enviar o consultá el estado en unos segundos si sigue pendiente.`.trim(),
+          );
+        } else if (out.status === "rejected") {
+          setEcfSuccess("");
+          if (out.dgii_resubmit_new_seq === true) {
+            const nextEncf =
+              out.ecf_number?.trim() ||
+              (out.ecf_ncf_seq != null ? `secuencia ${out.ecf_ncf_seq}` : "");
+            setEcfWarning(
+              `DGII rechazó por correlativo/secuencia. Track ID: ${out.track_id}. ${detail}${
+                nextEncf
+                  ? ` Próximo envío usará ${nextEncf} (guardado en la cotización).`
+                  : ""
+              }`.trim(),
+            );
+          } else {
+            setEcfWarning(
+              `DGII rechazó el comprobante. Track ID: ${out.track_id}. ${detail} No es rechazo por secuencia: el mismo e-NCF se conserva. Corregí la cotización y usá «Enviar DGII» (no «Reenviar», que solo aplica cuando DGII indica secuencia ya utilizada).`.trim(),
+            );
+          }
+        } else {
+          setEcfWarning("");
+          setEcfSuccess(`e-CF enviado (Track ID: ${out.track_id}).`);
+        }
       }
       await refreshClients();
     } catch (error) {
@@ -468,16 +568,9 @@ export default function Clients() {
         setEcfNeedCertForId(cotizacionId);
         return;
       }
-      if (error instanceof ApiError && error.body?.code === "CONSUMO_MENOR_250K_RFCE") {
-        setEcfError(
-          `${error.message} Usá «DGII · Pruebas → Facturas Excel» (/dgii-pruebas/ecf-excel) para RFCE y e-CF de consumo menor a RD$250.000 en certificación.`,
-        );
-        return;
-      }
-      const errorMsg =
-        error instanceof Error ? error.message : "Error al enviar e-CF";
+      const errorMsg = error instanceof Error ? error.message : "Error al enviar a DGII";
       setEcfError(errorMsg);
-      console.error("Error al enviar e-CF:", error);
+      console.error("Error al enviar a DGII:", error);
     } finally {
       setSendingEcfId(null);
     }
@@ -519,62 +612,85 @@ export default function Clients() {
     setEcfSuccess("");
     setEcfWarning("");
     try {
-      const out = await submitEcf(id, {
-        certificate: modalCertFile,
-        certificatePassword: modalCertPassword,
-        certificateEncryptionSecret: modalEncryptionSecret.trim(),
-        dgiiCertProfile: isDgiiCertification ? dgiiCertProfile : "paso2",
-      });
-      if (out.certificate_saved) {
-        await refreshAuthSessionFromServer();
-      }
-      setEcfNeedCertForId(null);
-      setModalCertFile(null);
-      setModalCertPassword("");
+      const isRfceFlow =
+        cotRow != null && isConsumoMenor250Rfce(cotRow.ecf_tipo, cotRow.total);
       const enc = modalEncryptionSecret.trim();
-      setModalEncryptionSecret("");
-      setEcfEncryptionSecret(enc);
-      if (company?.id && enc.length >= 8) {
-        sessionStorage.setItem(`fe_cert_enc_${company.id}`, enc);
-      }
-      const detail =
-        out.dgii_status_summary?.trim() || out.dgii_rejection_summary?.trim() || "";
-      if (out.status === "accepted") {
-        setEcfWarning("");
-        setEcfSuccess(
-          `e-CF aceptado por DGII (Track ID: ${out.track_id}).${detail ? ` ${detail}` : ""}`.trim(),
-        );
-      } else if (out.status === "pending") {
-        setEcfSuccess("");
-        setEcfWarning(
-          `DGII recibió el comprobante (Track ID: ${out.track_id}). ${
-            detail || "El estado final aún se está procesando."
-          }`.trim(),
-        );
-      } else if (out.status === "rejected") {
-        setEcfSuccess("");
-        if (out.dgii_resubmit_new_seq === true) {
-          setEcfWarning(
-            `DGII rechazó por correlativo/secuencia. Track ID: ${out.track_id}. ${detail}`.trim(),
-          );
+
+      if (isRfceFlow) {
+        const out = await submitConsumoMenor250Rfce(id, {
+          certificate: modalCertFile,
+          certificatePassword: modalCertPassword,
+          certificateEncryptionSecret: enc,
+        });
+        setEcfNeedCertForId(null);
+        setModalCertFile(null);
+        setModalCertPassword("");
+        setModalEncryptionSecret("");
+        setEcfEncryptionSecret(enc);
+        if (company?.id && enc.length >= 8) {
+          sessionStorage.setItem(`fe_cert_enc_${company.id}`, enc);
+        }
+        if (out.dgii_status === "accepted") {
+          setEcfWarning("");
+          setEcfSuccess(out.message);
+        } else if (out.dgii_status === "pending") {
+          setEcfSuccess("");
+          setEcfWarning(`RFCE ${out.ecf_number} recibido; estado pendiente.`);
         } else {
-          setEcfWarning(
-            `DGII rechazó el comprobante. Track ID: ${out.track_id}. ${detail} Corregí la cotización y usá «Enviar DGII» (el correlativo no cambia).`.trim(),
-          );
+          setEcfSuccess("");
+          setEcfWarning(`RFCE ${out.ecf_number} rechazado. Revisá y reenviá esta cotización.`);
         }
       } else {
-        setEcfWarning("");
-        setEcfSuccess(`e-CF enviado (Track ID: ${out.track_id}).`);
+        const out = await submitEcf(id, {
+          certificate: modalCertFile,
+          certificatePassword: modalCertPassword,
+          certificateEncryptionSecret: enc,
+          dgiiCertProfile: isDgiiCertification ? dgiiCertProfile : "paso2",
+        });
+        if (out.certificate_saved) {
+          await refreshAuthSessionFromServer();
+        }
+        setEcfNeedCertForId(null);
+        setModalCertFile(null);
+        setModalCertPassword("");
+        setModalEncryptionSecret("");
+        setEcfEncryptionSecret(enc);
+        if (company?.id && enc.length >= 8) {
+          sessionStorage.setItem(`fe_cert_enc_${company.id}`, enc);
+        }
+        const detail =
+          out.dgii_status_summary?.trim() || out.dgii_rejection_summary?.trim() || "";
+        if (out.status === "accepted") {
+          setEcfWarning("");
+          setEcfSuccess(
+            `e-CF aceptado por DGII (Track ID: ${out.track_id}).${detail ? ` ${detail}` : ""}`.trim(),
+          );
+        } else if (out.status === "pending") {
+          setEcfSuccess("");
+          setEcfWarning(
+            `DGII recibió el comprobante (Track ID: ${out.track_id}). ${
+              detail || "El estado final aún se está procesando."
+            }`.trim(),
+          );
+        } else if (out.status === "rejected") {
+          setEcfSuccess("");
+          if (out.dgii_resubmit_new_seq === true) {
+            setEcfWarning(
+              `DGII rechazó por correlativo/secuencia. Track ID: ${out.track_id}. ${detail}`.trim(),
+            );
+          } else {
+            setEcfWarning(
+              `DGII rechazó el comprobante. Track ID: ${out.track_id}. ${detail} Corregí la cotización y usá «Enviar DGII» (el correlativo no cambia).`.trim(),
+            );
+          }
+        } else {
+          setEcfWarning("");
+          setEcfSuccess(`e-CF enviado (Track ID: ${out.track_id}).`);
+        }
       }
       await refreshClients();
     } catch (error) {
-      if (error instanceof ApiError && error.body?.code === "CONSUMO_MENOR_250K_RFCE") {
-        setEcfError(
-          `${error.message} Usá «DGII · Pruebas → Facturas Excel» (/dgii-pruebas/ecf-excel) para RFCE y e-CF de consumo menor a RD$250.000 en certificación.`,
-        );
-        return;
-      }
-      setEcfError(error instanceof Error ? error.message : "Error al enviar e-CF");
+      setEcfError(error instanceof Error ? error.message : "Error al enviar a DGII");
     } finally {
       setEcfCertModalLoading(false);
     }
@@ -936,39 +1052,67 @@ export default function Clients() {
                     const dgiiStatus = cot?.dgii_status;
                     const seqResubmit = cot?.dgii_resubmit_new_seq === true;
                     const dgiiSendLocked = !canResubmitToDgiiWithoutEdit(cot);
+                    const isRfceRow =
+                      cot != null && isConsumoMenor250Rfce(cot.ecf_tipo, cot.total);
 
+                    const rfceIntegraReady =
+                      isRfceRow && dgiiStatus === "accepted";
                     const sendLabel = !cot
                       ? "-"
-                      : sendingEcfId === cot.id
-                        ? "Enviando..."
-                        : dgiiSendLocked
-                          ? dgiiStatus === "accepted"
-                            ? "Enviado"
-                            : dgiiStatus === "pending"
-                              ? "Pendiente"
-                              : "Rechazado"
-                          : dgiiStatus === "rejected" && seqResubmit
-                            ? "Reenviar DGII"
-                            : "Enviar DGII";
+                      : downloadingIntegraId === cot.id
+                        ? "Descargando…"
+                        : sendingEcfId === cot.id
+                          ? isRfceRow
+                            ? "Enviando RFCE…"
+                            : "Enviando..."
+                          : rfceIntegraReady
+                            ? "Descargar íntegro"
+                            : dgiiSendLocked
+                              ? dgiiStatus === "accepted"
+                                ? "Enviado"
+                                : dgiiStatus === "pending"
+                                  ? "Pendiente"
+                                  : "Rechazado"
+                              : isRfceRow
+                                ? dgiiStatus === "rejected"
+                                  ? "Reenviar RFCE"
+                                  : "Enviar RFCE"
+                                : dgiiStatus === "rejected" && seqResubmit
+                                  ? "Reenviar DGII"
+                                  : "Enviar DGII";
                     const sendTitle = !isOnline
                       ? "Sin internet: no se puede enviar a DGII"
-                      : dgiiSendLocked
-                        ? dgiiStatus === "accepted"
-                          ? "Comprobante aceptado por DGII"
-                          : dgiiStatus === "pending"
-                            ? "Envío pendiente/procesándose"
-                            : "Rechazado por DGII (no es secuencia ya utilizada): editá y guardá la cotización antes de volver a enviar."
-                        : dgiiStatus === "rejected" && seqResubmit
-                          ? "DGII indicó secuencia ya utilizada: la app asignó el siguiente e-NCF. Pulsá para reenviar."
-                          : "Enviar e-CF a DGII";
+                      : isRfceRow
+                        ? rfceIntegraReady
+                          ? "Descargá el e-CF íntegro firmado (mismo del RFCE) para subirlo a CerteCF «Facturas de consumo <250Mil»."
+                          : dgiiSendLocked
+                            ? dgiiStatus === "pending"
+                              ? "RFCE pendiente en DGII"
+                              : "Estado RFCE en DGII"
+                            : "Genera el par RFCE+e-CF íntegro, envía el RFCE a DGII y guarda el XML para el portal <250Mil."
+                        : dgiiSendLocked
+                          ? dgiiStatus === "accepted"
+                            ? "Comprobante aceptado por DGII"
+                            : dgiiStatus === "pending"
+                              ? "Envío pendiente/procesándose"
+                              : "Rechazado por DGII (no es secuencia ya utilizada): editá y guardá la cotización antes de volver a enviar."
+                          : dgiiStatus === "rejected" && seqResubmit
+                            ? "DGII indicó secuencia ya utilizada: la app asignó el siguiente e-NCF. Pulsá para reenviar."
+                            : "Enviar e-CF a DGII";
 
-                    const dgiiSendBtnClass = dgiiSendLocked
+                    const dgiiSendBtnClass = rfceIntegraReady
+                      ? "border-emerald-500 bg-emerald-600 text-white hover:bg-emerald-700"
+                      : dgiiSendLocked
                       ? dgiiStatus === "accepted"
                         ? "border-emerald-200 text-emerald-700 bg-emerald-50"
                         : "border-sky-200 text-sky-800 bg-sky-50"
-                      : dgiiStatus === "rejected"
-                        ? "border-amber-300 text-amber-900 bg-amber-50 hover:bg-amber-100"
-                        : "border-indigo-200 text-indigo-700 hover:bg-indigo-50";
+                      : isRfceRow
+                        ? dgiiStatus === "rejected"
+                          ? "border-amber-400 text-amber-950 bg-amber-50 hover:bg-amber-100"
+                          : "border-amber-500 bg-amber-500 text-white hover:bg-amber-600"
+                        : dgiiStatus === "rejected"
+                          ? "border-amber-300 text-amber-900 bg-amber-50 hover:bg-amber-100"
+                          : "border-indigo-200 text-indigo-700 hover:bg-indigo-50";
 
                     return (
                       <tr
@@ -996,7 +1140,7 @@ export default function Clients() {
                         </td>
 
                         <td className="px-3 sm:px-4 py-3 text-gray-700 text-xs">
-                          {cot?.ecf_tipo ? ecfTipoLabel(cot.ecf_tipo) : "—"}
+                          {cot?.ecf_tipo ? ecfTipoDisplayLabel(cot.ecf_tipo, cot.total) : "—"}
                         </td>
 
                         <td className="px-3 sm:px-4 py-3 font-mono text-xs text-slate-800 whitespace-nowrap">
@@ -1057,13 +1201,28 @@ export default function Clients() {
                           {cot ? (
                             <div className="flex flex-col items-center gap-1">
                               <button
-                                onClick={() => handleSendEcf(cot.id)}
-                                disabled={sendingEcfId === cot.id || dgiiSendLocked || !isOnline}
+                                onClick={() => void handleRfcePrimaryAction(cot.id)}
+                                disabled={
+                                  sendingEcfId === cot.id ||
+                                  downloadingIntegraId === cot.id ||
+                                  (!rfceIntegraReady && dgiiSendLocked) ||
+                                  !isOnline
+                                }
                                 className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${dgiiSendBtnClass}`}
                                 title={sendTitle}
                               >
                                 {sendLabel}
                               </button>
+                              {isRfceRow && !rfceIntegraReady && !dgiiSendLocked ? (
+                                <p className="max-w-[13rem] text-center text-[10px] leading-snug text-amber-900">
+                                  Paso 1: enviar RFCE. Paso 2: descargar íntegro y subir al portal &lt;250Mil.
+                                </p>
+                              ) : null}
+                              {rfceIntegraReady ? (
+                                <p className="max-w-[13rem] text-center text-[10px] leading-snug text-emerald-800">
+                                  RFCE aceptado. Descargá el íntegro y subilo a CerteCF.
+                                </p>
+                              ) : null}
                               {dgiiStatus === "rejected" &&
                                 typeof cot.dgii_rejection_summary === "string" &&
                                 cot.dgii_rejection_summary.trim().length > 0 && (
@@ -1354,8 +1513,7 @@ export default function Clients() {
                       </>
                       ) : null}
                     </div>
-
-                    <div className="grid grid-cols-2 gap-3 text-sm">
+<div className="grid grid-cols-2 gap-3 text-sm">
                       <div>
                         <p className="text-gray-500 text-xs">Teléfono</p>
                         <p className="text-gray-900 font-medium">{client.phone || "-"}</p>
@@ -1374,7 +1532,7 @@ export default function Clients() {
                       </div>
                       <div className="col-span-2 sm:col-span-1">
                         <p className="text-gray-500 text-xs">Tipo e-CF</p>
-                        <p className="text-gray-900 text-xs">{cot?.ecf_tipo ? ecfTipoLabel(cot.ecf_tipo) : "—"}</p>
+                        <p className="text-gray-900 text-xs">{cot?.ecf_tipo ? ecfTipoDisplayLabel(cot.ecf_tipo, cot.total) : "—"}</p>
                       </div>
                       <div className="col-span-2">
                         <p className="text-gray-500 text-xs">e-NCF</p>
@@ -1522,7 +1680,7 @@ export default function Clients() {
                   </p>
                   <p>
                     <span className="font-semibold">Tipo comprobante (e-CF):</span>{" "}
-                    {ecfTipoLabel(detail.ecf_tipo) || detail.ecf_tipo || "—"}
+                    {ecfTipoDisplayLabel(detail.ecf_tipo, detail.total) || detail.ecf_tipo || "—"}
                   </p>
                   <p>
                     <span className="font-semibold">e-NCF (próximo XML):</span>{" "}
@@ -1780,6 +1938,20 @@ export default function Clients() {
                         : ecfXmlViewer.generatedXml}
                   </pre>
                   <div className="mt-3 flex flex-wrap gap-2">
+                    {isConsumoMenor250Rfce(ecfXmlViewer.ecfTipo, ecfXmlViewer.total) ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleDownloadConsumoIntegraFromViewer()}
+                        disabled={
+                          consumoIntegraDownloading || ecfXmlViewer.cotizacionId == null
+                        }
+                        className="rounded-lg border border-emerald-500 bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                      >
+                        {consumoIntegraDownloading
+                          ? "Descargando…"
+                          : "Descargar e-CF íntegro (portal <250Mil)"}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       onClick={downloadCurrentEcfXmlFromViewer}
@@ -1799,10 +1971,22 @@ export default function Clients() {
                         : "Descargar .xml"}
                     </button>
                   </div>
-                  <p className="mt-2 text-xs text-slate-500">
-                    Al guardar la cotización se genera y firma el XML (misma firma que el envío a DGII). Ver XML solo
-                    muestra lo ya guardado; no vuelve a firmar en este paso.
-                  </p>
+                  {consumoPackError ? (
+                    <p className="mt-2 text-xs text-red-600">{consumoPackError}</p>
+                  ) : null}
+                  {isConsumoMenor250Rfce(ecfXmlViewer.ecfTipo, ecfXmlViewer.total) ? (
+                    <p className="mt-2 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                      Consumo &lt; RD$250k: usá <strong>Enviar RFCE</strong> en la tabla (genera y envía el resumen).
+                      Cuando DGII acepte el RFCE, descargá aquí el <strong>e-CF íntegro</strong> (mismo XML firmado; no se
+                      vuelve a firmar). Subilo a CerteCF «Facturas de consumo &lt;250Mil». Si regenerás o descargás de
+                      nuevo con otro certificado, el código de seguridad no coincidirá con el RFCE.
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-xs text-slate-500">
+                      Al guardar la cotización se genera y firma el XML (misma firma que el envío a DGII). Ver XML solo
+                      muestra lo ya guardado; no vuelve a firmar en este paso.
+                    </p>
+                  )}
                 </>
               ) : null}
             </div>

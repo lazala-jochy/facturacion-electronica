@@ -15,6 +15,29 @@ export const ECF_TIPO_OPTIONS: Array<{ value: string; label: string }> = [
 
 export const DEFAULT_ECF_TIPO = "31";
 
+/** Umbral DGII: consumo 32 &lt; este monto exige RFCE antes del e-CF íntegro en certificación. */
+export const ECF_CONSUMO_RFCE_THRESHOLD_RD = 250_000;
+
+export const isConsumoMenor250Rfce = (
+  ecfTipo: string | undefined | null,
+  total: number | undefined | null,
+): boolean =>
+  String(ecfTipo ?? "").trim() === "32" &&
+  typeof total === "number" &&
+  Number.isFinite(total) &&
+  total < ECF_CONSUMO_RFCE_THRESHOLD_RD;
+
+/** Etiqueta explícita en UI para tipo 32 &lt; 250k (flujo RFCE). */
+export const ECF_TIPO_32_RFCE_LABEL = "32 — Consumo RFCE (<250k)";
+
+export const ecfTipoDisplayLabel = (
+  ecfTipo: string | undefined | null,
+  total?: number | null,
+): string => {
+  if (isConsumoMenor250Rfce(ecfTipo, total ?? null)) return ECF_TIPO_32_RFCE_LABEL;
+  return ecfTipoLabel(ecfTipo);
+};
+
 /** Tipos que requieren documento de referencia (NCFModificado) en envío. */
 export const ECF_TIPO_REQUIERE_REFERENCIA = new Set(["33", "34"]);
 

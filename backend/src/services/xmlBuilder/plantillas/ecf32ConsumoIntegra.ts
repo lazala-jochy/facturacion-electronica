@@ -1,6 +1,7 @@
 /**
- * e-CF 32 **íntegro** para flujo consumo &lt; 250k (firmar antes del RFCE).
- * Alineado a consumo-integras E320000000011: sin IndicadorEnvioDiferido ni TablaFormasPago.
+ * e-CF 32 **íntegro** para flujo consumo &lt; 250k (RFCE + CerteCF).
+ * Alineado a `consumo-integras-firmados/E320000000011` del lote Excel DGII:
+ * sin xmlns, sin `IndicadorEnvioDiferido`, sin `TablaFormasPago`; con `ITBIS1` en Totales.
  */
 
 import { create } from "xmlbuilder2";

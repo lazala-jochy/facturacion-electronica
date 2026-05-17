@@ -8,6 +8,12 @@ import { generateDGIIData } from "../utils/dgii";
 import { buildCotizacionPdfBuffer } from "../utils/cotizacion-pdf";
 import { prisma } from "../prisma";
 import { ecfService } from "../services/ecf.service";
+import {
+  buildConsumoMenor250SignedPack,
+  cotizacionRequiereFlujoRfce32,
+  getStoredConsumoMenor250IntegraForDownload,
+  submitConsumoMenor250RfceForCotizacion,
+} from "../services/ecfConsumoRfce.service";
 import { ensureRepresentacionImpresaPdfForCotizacion } from "../services/ecfRepresentacionImpresa.service";
 import { companyHasCertificateRecord } from "../utils/companyCertificateStorage";
 import { parseDgiiCertProfile } from "../types/dgiiCertProfile";
@@ -590,6 +596,194 @@ export const signEcfXmlByCotizacion: RequestHandler = async (req, res) => {
     message: "e-CF firmado localmente (no enviado a DGII).",
     ecf_number: out.ecf_number,
     signed_xml: out.signedXml,
+  });
+};
+
+/** RFCE + e-CF íntegro firmados para consumo 32 &lt; RD$250k (subida manual CerteCF). */
+export const buildConsumoMenor250PackByCotizacion: RequestHandler = async (req, res) => {
+  const companyId = req.auth?.companyId;
+  if (!companyId) {
+    res.status(401).json({ message: "No autorizado." });
+    return;
+  }
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ message: "ID invalido." });
+    return;
+  }
+
+  const pathJoin = await import("node:path");
+  const uploadsRoot = pathJoin.join(process.cwd(), "uploads");
+
+  const certificateEncryptionSecret =
+    pickStr((req.body as Record<string, unknown>) ?? {}, "certificate_encryption_secret") ?? "";
+
+  let oneShotCertificate: { buffer: Buffer; password: string } | undefined;
+  const certMulter = req.file;
+  if (certMulter?.buffer?.length) {
+    try {
+      const { validateCertificateMulterFile } = await import("../utils/companyCertificateUpload");
+      validateCertificateMulterFile(certMulter);
+    } catch (e) {
+      res.status(400).json({ message: e instanceof Error ? e.message : "Certificado invalido." });
+      return;
+    }
+    const certPwd =
+      pickStr((req.body as Record<string, unknown>) ?? {}, "certificate_password") ?? "";
+    oneShotCertificate = { buffer: certMulter.buffer, password: certPwd };
+  }
+
+  const forceRegenerate =
+    typeof req.query.force === "string" &&
+    ["1", "true", "yes"].includes(req.query.force.trim().toLowerCase());
+
+  const out = await buildConsumoMenor250SignedPack(id, companyId, {
+    uploadsRoot,
+    certificateEncryptionSecret,
+    oneShotCertificate,
+    forceRegenerate,
+    persist: !forceRegenerate,
+  });
+
+  if (!out.ok) {
+    res.status(out.status).json({
+      message: out.message,
+      errors: "errors" in out ? out.errors : undefined,
+      ...(out.code ? { code: out.code } : {}),
+    });
+    return;
+  }
+
+  const part = (typeof req.query.part === "string" ? req.query.part.trim().toLowerCase() : "") || "";
+  const encf = out.pack.ecf_number.replace(/[^\w.-]/g, "") || "consumo";
+
+  if (part === "rfce") {
+    res.setHeader("Content-Type", "application/xml; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="RFCE-${encf}.xml"`);
+    res.status(200).send(out.pack.rfce_signed_xml);
+    return;
+  }
+  if (part === "integra") {
+    res.setHeader("Content-Type", "application/xml; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="ECF-${encf}.xml"`);
+    res.status(200).send(out.pack.integra_signed_xml);
+    return;
+  }
+
+  res.json({
+    message:
+      "RFCE y e-CF íntegro generados y firmados. Subí primero el RFCE a CerteCF; cuando esté aceptado, el e-CF íntegro.",
+    flow: "consumo_menor_250_rfce",
+    document_type_rfce: true,
+    ...out.pack,
+  });
+};
+
+/** GET — e-CF íntegro firmado guardado (sin re-firmar; portal CerteCF &lt;250Mil). */
+export const downloadConsumoMenor250IntegraByCotizacion: RequestHandler = async (req, res) => {
+  const companyId = req.auth?.companyId;
+  if (!companyId) {
+    res.status(401).json({ message: "No autorizado." });
+    return;
+  }
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ message: "ID invalido." });
+    return;
+  }
+
+  const stored = await getStoredConsumoMenor250IntegraForDownload(id, companyId);
+  if (!stored) {
+    res.status(404).json({
+      code: "INTEGRA_NOT_STORED",
+      message:
+        "No hay e-CF íntegro guardado. Usá «Enviar RFCE» primero; después descargá el mismo XML firmado para subirlo al portal.",
+    });
+    return;
+  }
+
+  const encf = stored.ecf_number.replace(/[^\w.-]/g, "") || "consumo";
+  res.setHeader("Content-Type", "application/xml; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="ECF-${encf}.xml"`);
+  res.status(200).send(stored.integra_signed_xml);
+};
+
+/** POST — Genera RFCE + e-CF íntegro y envía el **RFCE** a recepción DGII (tipo 32 &lt; RD$250k). */
+export const submitRfceByCotizacion: RequestHandler = async (req, res) => {
+  const companyId = req.auth?.companyId;
+  if (!companyId) {
+    res.status(401).json({ message: "No autorizado." });
+    return;
+  }
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ message: "ID invalido." });
+    return;
+  }
+
+  const cotRow = await prisma.cotizacion.findFirst({
+    where: { id, companyId },
+    select: { ecfTipo: true, total: true },
+  });
+  if (!cotRow) {
+    res.status(404).json({ message: "Cotizacion no encontrada." });
+    return;
+  }
+  if (!cotizacionRequiereFlujoRfce32(cotRow.ecfTipo, cotRow.total)) {
+    res.status(400).json({
+      code: "NOT_RFCE_FLOW",
+      message:
+        "El envío RFCE solo aplica a Factura de Consumo (32) con total menor a RD$250.000. Para otros tipos usá «Enviar e-CF».",
+    });
+    return;
+  }
+
+  const pathJoin = await import("node:path");
+  const uploadsRoot = pathJoin.join(process.cwd(), "uploads");
+  const certificateEncryptionSecret =
+    pickStr((req.body as Record<string, unknown>) ?? {}, "certificate_encryption_secret") ?? "";
+
+  let oneShotCertificate: { buffer: Buffer; password: string } | undefined;
+  const certMulter = req.file;
+  if (certMulter?.buffer?.length) {
+    try {
+      const { validateCertificateMulterFile } = await import("../utils/companyCertificateUpload");
+      validateCertificateMulterFile(certMulter);
+    } catch (e) {
+      res.status(400).json({ message: e instanceof Error ? e.message : "Certificado invalido." });
+      return;
+    }
+    const certPwd =
+      pickStr((req.body as Record<string, unknown>) ?? {}, "certificate_password") ?? "";
+    oneShotCertificate = { buffer: certMulter.buffer, password: certPwd };
+  }
+
+  const out = await submitConsumoMenor250RfceForCotizacion(id, companyId, {
+    uploadsRoot,
+    certificateEncryptionSecret,
+    oneShotCertificate,
+  });
+
+  if (!out.ok) {
+    res.status(out.status).json({
+      message: out.message,
+      errors: "errors" in out ? out.errors : undefined,
+      ...(out.code ? { code: out.code } : {}),
+    });
+    return;
+  }
+
+  res.json({
+    message:
+      out.dgii_status === "accepted"
+        ? `RFCE ${out.ecf_number} aceptado por DGII. Descargá el e-CF íntegro y subilo a «Facturas de consumo <250Mil».`
+        : `RFCE ${out.ecf_number} enviado (estado: ${out.dgii_status}).`,
+    flow: "consumo_menor_250_rfce",
+    document_type: "RFCE",
+    ecf_number: out.ecf_number,
+    codigo_seguridade_cf: out.codigo_seguridade_cf,
+    dgii_status: out.dgii_status,
+    dgii_response: out.dgii_response,
   });
 };
 

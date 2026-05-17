@@ -157,3 +157,16 @@ export const validateEcfPayload = (payload: EcfPayload) => {
     errors,
   };
 };
+
+/** Payload para RFCE 32 (resumen consumo &lt; RD$250.000). */
+export type RfcePayload = {
+  ecfNumber: string;
+  issueDate: Date;
+  issuer: EcfIssuer;
+  buyer: EcfBuyer;
+  subtotal: number;
+  itbis: number;
+  total: number;
+  tipoPago?: "1" | "2";
+  codigoSeguridadeCF: string;
+};
