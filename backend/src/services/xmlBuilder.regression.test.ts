@@ -231,8 +231,78 @@ test("XML e-CF 34 gravado: IndicadorMontoGravado + TipoIngresos, sin TablaFormas
   assert.match(xml, /<MontoGravadoTotal>/);
   assert.match(
     xml,
+    /<InformacionReferencia>[\s\S]*<CodigoModificacion>3<\/CodigoModificacion>/,
+    "NC con montos: código 3 (corrige montos del NCF referenciado)",
+  );
+});
+
+test("XML e-CF 34 total cero: CodigoModificacion 2 (corrige texto)", () => {
+  const issueDate = new Date("2024-06-15T12:00:00.000Z");
+  const p: EcfPayload = {
+    ecfNumber: "E340000000002",
+    issueDate,
+    issuer: {
+      rnc: "131880738",
+      name: "ACME",
+      address: "Calle 1",
+      phone: null,
+      email: null,
+    },
+    buyer: {
+      name: "Cliente",
+      rncCedula: "40212345678",
+      address: null,
+      contact: null,
+    },
+    items: [
+      {
+        itemNumber: 1,
+        description: "Ajuste texto",
+        quantity: 1,
+        unit: "43",
+        unitPrice: 0,
+        totalValue: 0,
+      },
+    ],
+    subtotal: 0,
+    itbis: 0,
+    total: 0,
+    ecfTipo: "34",
+    referenceEncf: "E310000000999",
+  };
+  const xml = buildEcfXml(p);
+  assert.match(
+    xml,
     /<InformacionReferencia>[\s\S]*<CodigoModificacion>2<\/CodigoModificacion>/,
   );
+});
+
+test("validación E34: rechaza código 2 con total distinto de cero", () => {
+  const issueDate = new Date("2024-06-15T12:00:00.000Z");
+  const r = validateEcfPayload({
+    ecfNumber: "E340000000003",
+    issueDate,
+    issuer: { rnc: "131880738", name: "ACME", address: "Calle 1", phone: null, email: null },
+    buyer: { name: "C", rncCedula: "40212345678", address: null, contact: null },
+    items: [
+      {
+        itemNumber: 1,
+        description: "Ajuste",
+        quantity: 1,
+        unit: "43",
+        unitPrice: 100,
+        totalValue: 100,
+      },
+    ],
+    subtotal: 100,
+    itbis: 18,
+    total: 118,
+    ecfTipo: "34",
+    referenceEncf: "E310000000001",
+    codigoModificacion: "2",
+  });
+  assert.equal(r.valid, false);
+  assert.ok(r.errors.some((e) => e.includes("código de modificación 2")));
 });
 
 test("XML e-CF 34 sin ITBIS: perfil E340000000016 (IndicadorNotaCredito 1, MontoNoFacturable)", () => {

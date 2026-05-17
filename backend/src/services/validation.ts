@@ -1,4 +1,5 @@
 import { normalizeEcfTipo, resolvePlantillaEcfTipo } from "../utils/ecfTipo";
+import { resolveCodigoModificacionNotaCredito } from "./xmlBuilder/common";
 
 type EcfIssuer = {
   rnc: string;
@@ -48,6 +49,8 @@ export type EcfPayload = {
   ecfTipo?: string;
   /** e-NCF documento modificado / referencia (p. ej. notas crédito/débito). */
   referenceEncf?: string | null;
+  /** e-CF 34: 2 = corrige texto (total 0), 3 = corrige montos. Si se omite, se infiere del total. */
+  codigoModificacion?: string | null;
   /** e-CF 41: totales de retención en encabezado (opcional). */
   totalItbisRetenido?: number;
   totalIsrRetencion?: number;
@@ -123,6 +126,18 @@ export const validateEcfPayload = (payload: EcfPayload) => {
 
   if ((t === "33" || t === "34") && !String(payload.referenceEncf ?? "").trim()) {
     errors.push("Tipo 33/34: debe incluirse NCFModificado (documento de referencia).");
+  }
+
+  if (t === "34") {
+    const codMod = resolveCodigoModificacionNotaCredito(
+      payload.total,
+      payload.codigoModificacion,
+    );
+    if (codMod === "2" && round2(payload.total) > 0.001) {
+      errors.push(
+        "Tipo 34: el código de modificación 2 (Corrige texto) exige monto total en cero. Para reducir montos del e-CF referenciado dejá montos en la cotización (se usará código 3 automáticamente) o indicá codigo_modificacion 3.",
+      );
+    }
   }
 
   const tipoDeclarado = String(payload.ecfTipo ?? "").trim();

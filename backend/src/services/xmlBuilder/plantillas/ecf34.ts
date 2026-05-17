@@ -16,9 +16,7 @@ import {
   appendTotalesItbis18,
   appendTotalesMontoNoFacturable,
 } from "../bloques";
-
-/** Código modificación nota de crédito (muestras DGII tipo 34). */
-const CODIGO_MODIFICACION_NOTA_CREDITO = "2";
+import { resolveCodigoModificacionNotaCredito } from "../common";
 
 const usesGravadoItbis = (payload: EcfPayload) => payload.itbis > 0.001;
 
@@ -54,7 +52,11 @@ export function plantillaEcf34(payload: EcfPayload): string {
   enc.up();
 
   appendDetallesItems(root, payload, gravado ? "1" : "0");
-  appendInformacionReferencia(root, payload, CODIGO_MODIFICACION_NOTA_CREDITO);
+  appendInformacionReferencia(
+    root,
+    payload,
+    resolveCodigoModificacionNotaCredito(payload.total, payload.codigoModificacion),
+  );
   appendFechaHoraFirma(root);
 
   return doc.end({ prettyPrint: true });

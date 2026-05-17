@@ -85,3 +85,19 @@ export function indicadorBienServicio(unit: string, description: string): "1" | 
 
 export const EMISOR_DEFAULT_MUNICIPIO = DEFAULT_MUNICIPIO;
 export const EMISOR_DEFAULT_PROVINCIA = DEFAULT_PROVINCIA;
+
+const round2 = (value: number) => Number(value.toFixed(2));
+
+/**
+ * Código modificación DGII para nota de crédito (e-CF 34):
+ * - `2` Corrige texto → MontoTotal debe ser 0.
+ * - `3` Corrige montos del NCF modificado (p. ej. reducir total de un e-CF ya enviado).
+ */
+export function resolveCodigoModificacionNotaCredito(
+  total: number,
+  explicit?: string | null,
+): string {
+  const raw = String(explicit ?? "").trim();
+  if (["1", "2", "3", "4"].includes(raw)) return raw;
+  return round2(total) <= 0.001 ? "2" : "3";
+}

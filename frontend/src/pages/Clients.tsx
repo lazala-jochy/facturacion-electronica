@@ -32,6 +32,23 @@ const formatDate = (value?: string) => {
   });
 };
 
+const dgiiStatusLabel = (status?: string | null) => {
+  if (status == null || status === "") return "Sin enviar";
+  if (status === "prepared") return "Preparado";
+  if (status === "accepted") return "Aceptado";
+  if (status === "rejected") return "Rechazado";
+  if (status === "pending") return "Pendiente";
+  return status;
+};
+
+const dgiiStatusClass = (status?: string | null) => {
+  if (status === "accepted") return "bg-emerald-100 text-emerald-800";
+  if (status === "rejected") return "bg-red-100 text-red-800";
+  if (status === "prepared") return "bg-amber-100 text-amber-900";
+  if (status === "pending") return "bg-sky-100 text-sky-900";
+  return "bg-slate-100 text-slate-700";
+};
+
 type CotDgiiSendRow = {
   dgii_status?: string | null;
   dgii_resubmit_new_seq?: boolean;
@@ -892,16 +909,19 @@ export default function Clients() {
           <>
             {/* Desktop Table */}
             <div className="hidden md:block overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[1100px] text-sm">
                 <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
                   <tr>
-                    <th className="px-4 sm:px-6 py-4 text-left">Nombre</th>
-                    <th className="px-4 sm:px-6 py-4 text-left">RNC / Cédula</th>
-                    <th className="hidden lg:table-cell px-4 sm:px-6 py-4 text-left">Teléfono</th>
-                    <th className="hidden xl:table-cell px-4 sm:px-6 py-4 text-left">Correo</th>
-                    <th className="px-4 sm:px-6 py-4 text-left">N° Cotización</th>
-                    <th className="px-4 sm:px-6 py-4 text-left">Total</th>
-                    <th className="px-4 sm:px-6 py-4 text-center">Detalle</th>
+                    <th className="px-3 sm:px-4 py-3 text-left">Nombre</th>
+                    <th className="px-3 sm:px-4 py-3 text-left">RNC / Cédula</th>
+                    <th className="px-3 sm:px-4 py-3 text-left">Teléfono</th>
+                    <th className="hidden lg:table-cell px-3 sm:px-4 py-3 text-left">Correo</th>
+                    <th className="px-3 sm:px-4 py-3 text-left">N° Cot.</th>
+                    <th className="px-3 sm:px-4 py-3 text-left">Tipo e-CF</th>
+                    <th className="px-3 sm:px-4 py-3 text-left">e-NCF</th>
+                    <th className="px-3 sm:px-4 py-3 text-left">Total</th>
+                    <th className="px-3 sm:px-4 py-3 text-left">Estado DGII</th>
+                    <th className="px-3 sm:px-4 py-3 text-center">Detalle</th>
                     <th className="px-4 sm:px-6 py-4 text-center">e-CF</th>
                     <th className="px-4 sm:px-6 py-4 text-center">PDF</th>
                     <th className="px-4 sm:px-6 py-4 text-center">XML</th>
@@ -911,8 +931,8 @@ export default function Clients() {
 
                 <tbody className="divide-y divide-gray-100">
                   {pageRows.map(({ client, cot, rowKey }, rowIndex) => {
-                    const showClient =
-                      rowIndex === 0 || pageRows[rowIndex - 1].client.id !== client.id;
+                    const sameClientAsPrev =
+                      rowIndex > 0 && pageRows[rowIndex - 1].client.id === client.id;
                     const dgiiStatus = cot?.dgii_status;
                     const seqResubmit = cot?.dgii_resubmit_new_seq === true;
                     const dgiiSendLocked = !canResubmitToDgiiWithoutEdit(cot);
@@ -953,30 +973,53 @@ export default function Clients() {
                     return (
                       <tr
                         key={rowKey}
-                        className={`hover:bg-indigo-50/40 transition ${!showClient ? "bg-slate-50/50" : ""}`}
+                        className={`hover:bg-indigo-50/40 transition ${sameClientAsPrev ? "bg-slate-50/40" : ""}`}
                       >
-                        <td className="px-4 sm:px-6 py-3 font-semibold text-gray-900 text-sm">
-                          {showClient ? client.name : ""}
+                        <td className="px-3 sm:px-4 py-3 font-semibold text-gray-900 text-sm">
+                          {client.name}
                         </td>
 
-                        <td className="px-4 sm:px-6 py-3 text-gray-600 text-sm">
-                          {showClient ? client.rnc_cedula : ""}
+                        <td className="px-3 sm:px-4 py-3 text-gray-600 text-sm whitespace-nowrap">
+                          {client.rnc_cedula}
                         </td>
 
-                        <td className="hidden lg:table-cell px-4 sm:px-6 py-3 text-gray-600 text-sm">
-                          {showClient ? client.phone || "-" : ""}
+                        <td className="px-3 sm:px-4 py-3 text-gray-600 text-sm whitespace-nowrap">
+                          {client.phone || "-"}
                         </td>
 
-                        <td className="hidden xl:table-cell px-4 sm:px-6 py-3 text-gray-600 text-sm">
-                          {showClient ? client.email || "-" : ""}
+                        <td className="hidden lg:table-cell px-3 sm:px-4 py-3 text-gray-600 text-sm max-w-[12rem] truncate">
+                          {client.email || "-"}
                         </td>
 
-                        <td className="px-4 sm:px-6 py-3 text-indigo-600 font-medium text-sm">
+                        <td className="px-3 sm:px-4 py-3 text-indigo-600 font-medium text-sm tabular-nums">
                           {cot ? `#${cot.number}` : "-"}
                         </td>
 
-                        <td className="px-4 sm:px-6 py-3 text-gray-700 font-medium text-sm">
+                        <td className="px-3 sm:px-4 py-3 text-gray-700 text-xs">
+                          {cot?.ecf_tipo ? ecfTipoLabel(cot.ecf_tipo) : "—"}
+                        </td>
+
+                        <td className="px-3 sm:px-4 py-3 font-mono text-xs text-slate-800 whitespace-nowrap">
+                          {cot
+                            ? cot.ecf_number?.trim() ||
+                              formatEcfNumberDisplay(cot.ecf_tipo, cot.ecf_ncf_seq)
+                            : "—"}
+                        </td>
+
+                        <td className="px-3 sm:px-4 py-3 text-gray-700 font-medium text-sm tabular-nums">
                           {cot ? formatCurrency(cot.total) : "-"}
+                        </td>
+
+                        <td className="px-3 sm:px-4 py-3">
+                          {cot ? (
+                            <span
+                              className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap ${dgiiStatusClass(dgiiStatus)}`}
+                            >
+                              {dgiiStatusLabel(dgiiStatus)}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
                         </td>
                         <td className="px-4 sm:px-6 py-3 text-center">
                           {cot ? (
@@ -1142,8 +1185,8 @@ export default function Clients() {
             {/* Mobile Cards */}
             <div className="md:hidden divide-y divide-gray-100">
               {pageRows.map(({ client, cot, rowKey }, rowIndex) => {
-                const showClient =
-                  rowIndex === 0 || pageRows[rowIndex - 1].client.id !== client.id;
+                const sameClientAsPrev =
+                  rowIndex > 0 && pageRows[rowIndex - 1].client.id === client.id;
                 const dgiiStatus = cot?.dgii_status;
                 const seqResubmit = cot?.dgii_resubmit_new_seq === true;
                 const dgiiSendLocked = !canResubmitToDgiiWithoutEdit(cot);
@@ -1184,20 +1227,14 @@ export default function Clients() {
                 return (
                   <div
                     key={rowKey}
-                    className={`p-4 hover:bg-indigo-50/40 transition ${!showClient ? "bg-slate-50/50" : ""}`}
+                    className={`p-4 hover:bg-indigo-50/40 transition ${sameClientAsPrev ? "bg-slate-50/40" : ""}`}
                   >
                     <div className="flex items-start justify-between gap-3 mb-3">
                       <div className="flex-1 min-w-0">
-                        {showClient ? (
-                          <>
-                            <h3 className="font-semibold text-gray-900 truncate text-sm sm:text-base">
-                              {client.name}
-                            </h3>
-                            <p className="text-sm text-gray-500">RNC: {client.rnc_cedula}</p>
-                          </>
-                        ) : (
-                          <p className="text-xs text-gray-400">Otra cotización del mismo cliente</p>
-                        )}
+                        <h3 className="font-semibold text-gray-900 truncate text-sm sm:text-base">
+                          {client.name}
+                        </h3>
+                        <p className="text-sm text-gray-500">RNC: {client.rnc_cedula}</p>
                       </div>
                       {cot ? (
                         <>
@@ -1334,6 +1371,31 @@ export default function Clients() {
                       <div>
                         <p className="text-gray-500 text-xs">Total</p>
                         <p className="text-gray-900 font-medium">{cot ? formatCurrency(cot.total) : "-"}</p>
+                      </div>
+                      <div className="col-span-2 sm:col-span-1">
+                        <p className="text-gray-500 text-xs">Tipo e-CF</p>
+                        <p className="text-gray-900 text-xs">{cot?.ecf_tipo ? ecfTipoLabel(cot.ecf_tipo) : "—"}</p>
+                      </div>
+                      <div className="col-span-2">
+                        <p className="text-gray-500 text-xs">e-NCF</p>
+                        <p className="font-mono text-xs text-slate-800 break-all">
+                          {cot
+                            ? cot.ecf_number?.trim() ||
+                              formatEcfNumberDisplay(cot.ecf_tipo, cot.ecf_ncf_seq)
+                            : "—"}
+                        </p>
+                      </div>
+                      <div className="col-span-2 sm:col-span-1">
+                        <p className="text-gray-500 text-xs">Estado DGII</p>
+                        {cot ? (
+                          <span
+                            className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${dgiiStatusClass(dgiiStatus)}`}
+                          >
+                            {dgiiStatusLabel(dgiiStatus)}
+                          </span>
+                        ) : (
+                          <p className="text-gray-400">—</p>
+                        )}
                       </div>
                     </div>
                     <div className="mt-3 flex items-center gap-2">
