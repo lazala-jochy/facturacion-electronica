@@ -66,7 +66,7 @@ export default function CotizacionEdit() {
   const [comment, setComment] = useState("");
   const [ecfTipo, setEcfTipo] = useState(DEFAULT_ECF_TIPO);
   const [ecfReferenceNcf, setEcfReferenceNcf] = useState("");
-  const [items, setItems] = useState<ItemRow[]>(() => [newRow(), newRow()]);
+  const [items, setItems] = useState<ItemRow[]>(() => [newRow()]);
   const [calcMode, setCalcMode] = useState<"auto" | "manual">("auto");
   const [manualSubtotal, setManualSubtotal] = useState(0);
   const [manualItbis, setManualItbis] = useState(0);

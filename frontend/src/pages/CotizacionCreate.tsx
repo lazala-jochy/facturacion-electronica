@@ -66,7 +66,7 @@ export default function CotizacionCreate() {
   const [comment, setComment] = useState("");
   const [ecfTipo, setEcfTipo] = useState(DEFAULT_ECF_TIPO);
   const [ecfReferenceNcf, setEcfReferenceNcf] = useState("");
-  const [items, setItems] = useState<ItemRow[]>(() => [newRow(), newRow()]);
+  const [items, setItems] = useState<ItemRow[]>(() => [newRow()]);
   const [calcMode, setCalcMode] = useState<"auto" | "manual">("auto");
   const [manualSubtotal, setManualSubtotal] = useState(0);
   const [manualItbis, setManualItbis] = useState(0);
@@ -196,7 +196,7 @@ export default function CotizacionCreate() {
       setEcfTipo(DEFAULT_ECF_TIPO);
       setEcfReferenceNcf("");
       setComment("");
-      setItems([newRow(), newRow()]);
+      setItems([newRow()]);
       setCalcMode("auto");
       setManualSubtotal(0);
       setManualItbis(0);
