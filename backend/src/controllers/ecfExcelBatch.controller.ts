@@ -19,6 +19,7 @@ type EcfBatchRunner = (opts: {
   certPassword?: string;
   signingFromPkcs12Buffer?: { p12Buffer: Buffer; passphrase: string };
   defaultRncEmisor?: string;
+  excelPath?: string;
 }) => Promise<{
   excelPath: string;
   rowCount: number;
@@ -92,6 +93,58 @@ function isAllowedOutputParentDir(resolvedParent: string): boolean {
   } catch {
     return false;
   }
+}
+
+const pickStr = (b: Record<string, unknown>, k: string): string | undefined =>
+  typeof b[k] === "string" ? (b[k] as string).trim() || undefined : undefined;
+
+function sanitizeExcelUploadName(name: string): string {
+  const base = path.basename(name || "pruebas-ecf.xlsx");
+  const cleaned = base.replace(/[^\w.\-() ]+/g, "_");
+  return cleaned.toLowerCase().endsWith(".xlsx") || cleaned.toLowerCase().endsWith(".xls")
+    ? cleaned
+    : `${cleaned}.xlsx`;
+}
+
+/** Ruta absoluta al Excel: subida, ruta del cliente o primer .xlsx en assets. */
+function resolveExcelPathForBatch(input: {
+  uploadsRoot: string;
+  companyId: number;
+  excelPathFromBody?: string;
+  uploaded?: { buffer: Buffer; originalname?: string };
+  assetsDir: string;
+}): string {
+  if (input.uploaded?.buffer?.length) {
+    const dir = path.join(input.uploadsRoot, "ecf-excel-batch", String(input.companyId));
+    fs.mkdirSync(dir, { recursive: true });
+    const dest = path.join(dir, `${Date.now()}-${sanitizeExcelUploadName(input.uploaded.originalname ?? "")}`);
+    fs.writeFileSync(dest, input.uploaded.buffer);
+    return dest;
+  }
+
+  const fromBody = input.excelPathFromBody?.trim();
+  if (fromBody) {
+    const resolved = path.resolve(fromBody);
+    if (!fs.existsSync(resolved)) {
+      throw new Error(`Excel no encontrado: ${resolved}`);
+    }
+    if (!/\.xlsx?$/i.test(resolved)) {
+      throw new Error("El archivo debe ser Excel (.xlsx o .xls).");
+    }
+    return resolved;
+  }
+
+  const entries = fs.readdirSync(input.assetsDir, { withFileTypes: true });
+  const xlsx = entries
+    .filter((d) => d.isFile())
+    .map((d) => d.name)
+    .find((name) => name.toLowerCase().endsWith(".xlsx"));
+  if (!xlsx) {
+    throw new Error(
+      "Elegí el Excel de pruebas arriba o colocá un .xlsx en la carpeta assets del servidor.",
+    );
+  }
+  return path.join(input.assetsDir, xlsx);
 }
 
 function defaultDesktopDir(): string | null {
@@ -431,12 +484,33 @@ export const runExcelBatchToDesktopHandler: RequestHandler = async (req, res, ne
     const outXmlDir = path.join(outputRoot, "xml");
     const outSignedDir = path.join(outputRoot, "firmados");
 
+    const b = (req.body as Record<string, unknown>) ?? {};
+    const uploaded = req.file;
+    let excelPath: string;
+    try {
+      excelPath = resolveExcelPathForBatch({
+        uploadsRoot,
+        companyId: auth.companyId,
+        excelPathFromBody: pickStr(b, "excel_path"),
+        uploaded: uploaded?.buffer
+          ? { buffer: uploaded.buffer, originalname: uploaded.originalname }
+          : undefined,
+        assetsDir,
+      });
+    } catch (e) {
+      res.status(400).json({
+        message: e instanceof Error ? e.message : "No se pudo usar el Excel indicado.",
+      });
+      return;
+    }
+
     const result = await runEcfExcelBatch({
       assetsDir,
       outXmlDir,
       outSignedDir,
       signingFromPkcs12Buffer,
       defaultRncEmisor: companyRow.rnc.trim(),
+      excelPath,
     });
 
     /** 207 si hubo parcial; 200 si todo OK o si falló todo (el cuerpo trae ok/fail/logs; 500 confundía al cliente). */

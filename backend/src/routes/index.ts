@@ -11,6 +11,7 @@ import {
   acecfExcelUpload,
   authFormUpload,
   ecfCertificateUpload,
+  ecfExcelUpload,
 } from "../middleware/registerUpload.middleware";
 
 export const buildRouter = () => {
@@ -112,6 +113,7 @@ export const buildRouter = () => {
   router.post(
     "/ecf-excel-batch/run",
     requireAuth,
+    ecfExcelUpload,
     asyncHandler(ecfExcelBatchController.runExcelBatchToDesktopHandler),
   );
   router.post(

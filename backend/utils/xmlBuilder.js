@@ -249,15 +249,7 @@ function appendFieldsInOrder(parent, values, order) {
   }
 }
 
-const IDDOC_FIELDS = [
-  "TipoeCF",
-  "eNCF",
-  "IndicadorNotaCredito",
-  "IndicadorEnvioDiferido",
-  "IndicadorMontoGravado",
-  "IndicadorServicioTodoIncluido",
-  "TipoIngresos",
-  "FechaVencimientoSecuencia",
+const IDDOC_TAIL = [
   "TipoPago",
   "FechaLimitePago",
   "TerminoPago",
@@ -269,11 +261,65 @@ const IDDOC_FIELDS = [
   "TotalPaginas",
 ];
 
-/** e-CF 32 XSD: IdDoc no admite FechaVencimientoSecuencia (debe seguir TipoPago…). */
+/** Orden XSD IdDoc por tipo (desde fila Excel; solo se emiten campos con valor). */
+const IDDOC_FIELDS_BY_TIPO = {
+  "31": [
+    "TipoeCF",
+    "eNCF",
+    "FechaVencimientoSecuencia",
+    "IndicadorMontoGravado",
+    "TipoIngresos",
+    ...IDDOC_TAIL,
+  ],
+  "32": [
+    "TipoeCF",
+    "eNCF",
+    "IndicadorEnvioDiferido",
+    "IndicadorMontoGravado",
+    "IndicadorServicioTodoIncluido",
+    "TipoIngresos",
+    ...IDDOC_TAIL,
+  ],
+  "33": [
+    "TipoeCF",
+    "eNCF",
+    "FechaVencimientoSecuencia",
+    "IndicadorMontoGravado",
+    "TipoIngresos",
+    ...IDDOC_TAIL,
+  ],
+  "34": ["TipoeCF", "eNCF", "IndicadorNotaCredito", "IndicadorMontoGravado", "TipoIngresos", ...IDDOC_TAIL],
+  "41": [
+    "TipoeCF",
+    "eNCF",
+    "FechaVencimientoSecuencia",
+    "IndicadorMontoGravado",
+    ...IDDOC_TAIL,
+  ],
+  "43": ["TipoeCF", "eNCF", "FechaVencimientoSecuencia"],
+  "44": ["TipoeCF", "eNCF", "FechaVencimientoSecuencia", "TipoIngresos", ...IDDOC_TAIL],
+  "45": [
+    "TipoeCF",
+    "eNCF",
+    "FechaVencimientoSecuencia",
+    "IndicadorMontoGravado",
+    "TipoIngresos",
+    ...IDDOC_TAIL,
+  ],
+  "46": [
+    "TipoeCF",
+    "eNCF",
+    "FechaVencimientoSecuencia",
+    "IndicadorMontoGravado",
+    "TipoIngresos",
+    ...IDDOC_TAIL,
+  ],
+  "47": ["TipoeCF", "eNCF", "FechaVencimientoSecuencia", ...IDDOC_TAIL],
+};
+
 function idDocFieldsForTipoEcf(tipoEcf) {
   const t = String(tipoEcf ?? "").trim();
-  if (t === "32") return IDDOC_FIELDS.filter((f) => f !== "FechaVencimientoSecuencia");
-  return IDDOC_FIELDS;
+  return IDDOC_FIELDS_BY_TIPO[t] ?? IDDOC_FIELDS_BY_TIPO["31"];
 }
 
 /** e-CF 32: IndicadorEnvioDiferido=1 (cód. 164); IndicadorServicioTodoIncluido solo si vale 1 (XSD opcional — no enviar 0). */
@@ -472,6 +518,19 @@ const INFORMACION_REFERENCIA_FIELDS = [
   "RazonModificacion",
 ];
 
+/** Campos indexados [n] de DescuentosORecargos (Excel lote DGII). */
+const DESCUENTO_RECARGO_FIELD_BASES = [
+  "TIPOAJUSTE",
+  "INDICADORNORMA1007",
+  "DESCRIPCIONDESCUENTOORECARGO",
+  "TIPOVALOR",
+  "VALORDESCUENTOORECARGO",
+  "MONTODESCUENTOORECARGO",
+  "MONTODESCUENTOORECARGOOTRAMONEDA",
+  "INDICADORFACTURACIONDESCUENTOORECARGO",
+  "NUMEROLINEADOR",
+].map(normCol);
+
 function exactLookup(row, wanted) {
   const wantedNorm = normCol(wanted);
   for (const [key, value] of Object.entries(row)) {
@@ -598,6 +657,49 @@ function itemHasAnyValue(row, lineIndex) {
     if (!match) return false;
     return Number(match[2]) === lineIndex && ITEM_FIELD_BASES.includes(normCol(match[1]));
   });
+}
+
+function descuentoRecargoHasAnyValue(row, index) {
+  return Object.entries(row).some(([key, value]) => {
+    const text = String(value ?? "").trim();
+    if (!text || text === "#e") return false;
+    const match = String(key).match(/^(.+?)\[(\d+)\]/);
+    if (!match) return false;
+    return Number(match[2]) === index && DESCUENTO_RECARGO_FIELD_BASES.includes(normCol(match[1]));
+  });
+}
+
+/** ECF > DescuentosORecargos (después de DetallesItems, antes de InformacionReferencia). */
+function appendDescuentosORecargos(root, row) {
+  const group = root.ele("DescuentosORecargos");
+  let wrote = false;
+  for (let i = 1; i <= 20; i++) {
+    if (!descuentoRecargoHasAnyValue(row, i)) continue;
+    const tipoAjuste = exactLookup(row, `TipoAjuste[${i}]`);
+    if (!tipoAjuste) continue;
+
+    const item = group.ele("DescuentoORecargo");
+    const numeroLinea = exactLookup(row, `NumeroLineaDoR[${i}]`) || String(i);
+    item.ele("NumeroLinea").txt(numeroLinea);
+    item.ele("TipoAjuste").txt(tipoAjuste);
+    appendIfPresent(item, row, `IndicadorNorma1007[${i}]`, { xmlName: "IndicadorNorma1007" });
+    appendIfPresent(item, row, `DescripcionDescuentooRecargo[${i}]`, {
+      xmlName: "DescripcionDescuentooRecargo",
+    });
+    appendIfPresent(item, row, `TipoValor[${i}]`, { xmlName: "TipoValor" });
+    appendIfPresent(item, row, `ValorDescuentooRecargo[${i}]`, { xmlName: "ValorDescuentooRecargo" });
+    appendIfPresent(item, row, `MontoDescuentooRecargo[${i}]`, { xmlName: "MontoDescuentooRecargo" });
+    appendIfPresent(item, row, `MontoDescuentooRecargoOtraMoneda[${i}]`, {
+      xmlName: "MontoDescuentooRecargoOtraMoneda",
+    });
+    appendIfPresent(item, row, `IndicadorFacturacionDescuentooRecargo[${i}]`, {
+      xmlName: "IndicadorFacturacionDescuentooRecargo",
+    });
+    item.up();
+    wrote = true;
+  }
+  if (!wrote) group.remove();
+  return wrote;
 }
 
 /**
@@ -734,6 +836,8 @@ function buildEcfXml(row, opts = {}) {
     throw new Error(`Fila ${enf} sin DetallesItems.`);
   }
   detalles.up();
+
+  appendDescuentosORecargos(root, row);
 
   appendOptionalGroup(root, "InformacionReferencia", row, INFORMACION_REFERENCIA_FIELDS);
   root.ele("FechaHoraFirma").txt(fechaHoraFirmaDgii());

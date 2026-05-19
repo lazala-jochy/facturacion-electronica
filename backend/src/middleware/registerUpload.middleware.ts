@@ -21,3 +21,9 @@ export const acecfExcelUpload = multer({
   limits: { fileSize: 8 * 1024 * 1024 },
 }).single("excel");
 
+/** Excel de pruebas e-CF (hojas eCF / rFCE, hasta 8 MB). */
+export const ecfExcelUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+}).single("excel");
+

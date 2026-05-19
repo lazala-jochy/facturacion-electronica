@@ -12,7 +12,8 @@
     "ecf-excel-batch": "node script/run.js",
     "test:signer": "npm run build && node --test dist/services/dgiiXmlSigner.test.js",
     "test:acecf": "npm run build && node --test dist/commercial-approvals/acecfSheet.test.js dist/commercial-approvals/acecfXmlBuilder.test.js dist/commercial-approvals/acecfDgiiResponse.test.js",
-    "test:xml": "npm run build && node --test dist/services/xmlBuilder.regression.test.js"
+    "test:xml": "npm run build && node --test dist/services/xmlBuilder.regression.test.js",
+    "test:ri": "npm run build && node --test dist/utils/ecfRepresentacionImpresaData.test.js"
   },
   "keywords": [],
   "author": "",

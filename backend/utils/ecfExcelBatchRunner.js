@@ -61,6 +61,7 @@ function useSystemCert(opts) {
  *   certPassword?: string;
  *   signingFromPkcs12Buffer?: { p12Buffer: Buffer; passphrase: string };
  *   defaultRncEmisor?: string;
+ *   excelPath?: string;
  * }} EcfExcelBatchOpts
  */
 
@@ -88,7 +89,13 @@ async function runEcfExcelBatch(opts) {
   ensureDir(outXmlDir);
   ensureDir(outSignedDir);
 
-  const xlsxPath = findFirstXlsxPath(assetsDir);
+  const xlsxPath = opts.excelPath?.trim()
+    ? (() => {
+        const p = path.resolve(opts.excelPath.trim());
+        if (!fs.existsSync(p)) throw new Error(`Excel no encontrado: ${p}`);
+        return p;
+      })()
+    : findFirstXlsxPath(assetsDir);
   logs.push(`Excel: ${xlsxPath}`);
 
   const rows = loadInvoiceRowsFromExcel(xlsxPath);

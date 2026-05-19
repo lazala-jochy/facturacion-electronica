@@ -101,8 +101,7 @@ function getRowValue(row, wanted) {
  * @param {string} filePath
  * @returns {Array<Record<string, string>>}
  */
-function loadInvoiceRowsFromExcel(filePath) {
-  const wb = XLSX.readFile(filePath);
+function loadInvoiceRowsFromWorkbook(wb) {
   const ecfName = findSheetName(wb.SheetNames, "eCF");
   if (!ecfName) {
     throw new Error('No se encontró la hoja "eCF". Agregue una hoja con ese nombre.');
@@ -119,11 +118,24 @@ function loadInvoiceRowsFromExcel(filePath) {
     const row = ecfRows[i];
     if (rowIsEffectivelyEmpty(row)) continue;
     const encf = getRowValue(row, "ENCF");
-    // Las filas presentes en RFCE son resúmenes de consumo < 250k; no se envían como e-CF individual.
     if (encf && rfceEncfs.has(encf)) continue;
     result.push(row);
   }
   return result;
+}
+
+function loadInvoiceRowsFromExcel(filePath) {
+  const wb = XLSX.readFile(filePath);
+  return loadInvoiceRowsFromWorkbook(wb);
+}
+
+/**
+ * @param {Buffer} buffer
+ * @returns {Array<Record<string, string>>}
+ */
+function loadInvoiceRowsFromExcelBuffer(buffer) {
+  const wb = XLSX.read(buffer, { type: "buffer" });
+  return loadInvoiceRowsFromWorkbook(wb);
 }
 
 /** @deprecated Usar loadInvoiceRowsFromExcel; mantiene compatibilidad (solo primera hoja). */
@@ -184,6 +196,7 @@ module.exports = {
   loadInvoiceRowsFromExcel,
   loadRfceRowsFromExcel,
   loadFullEcfRowsForRfce,
+  loadInvoiceRowsFromExcelBuffer,
   loadRowsFromExcel,
   getRowValue,
 };

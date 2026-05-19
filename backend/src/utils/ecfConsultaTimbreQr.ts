@@ -4,6 +4,7 @@ import {
   fechaEmisionUrl,
   formatFechaFirmaQr,
   onlyDigits,
+  parseFechaHoraFirmaDesdeXml,
 } from "./ecfXmlExtract";
 
 /** Bases oficiales DGII (consulta timbre / RI). */
@@ -47,7 +48,10 @@ export const buildConsultaTimbreQrUrl = (input: ConsultaTimbreQrInput): string =
   const encf = extractXmlTagValue(input.signedXml, "eNCF").replace(/\s/g, "");
   const montoStr = montoDosDec(monto);
   const codigo = codigoSeguridadDesdeSignedXml(input.signedXml);
-  const firmaQr = formatFechaFirmaQr(input.fechaFirma);
+  const firmaXml = parseFechaHoraFirmaDesdeXml(
+    extractXmlTagValue(input.signedXml, "FechaHoraFirma"),
+  );
+  const firmaQr = formatFechaFirmaQr(firmaXml ?? input.fechaFirma);
 
   if (useFc) {
     const base = URL_CONSULTA_TIMBRE_FC[env] ?? URL_CONSULTA_TIMBRE_FC.CERTIFICACION;

@@ -82,6 +82,18 @@ export const fechaEmisionUrl = (fechaEmisionRaw: string): string => {
   return `${p.dd}-${p.mm}-${p.yyyy}`;
 };
 
+/** Parsea `FechaHoraFirma` del XML (dd-MM-yyyy HH:mm:ss, hora RD). */
+export const parseFechaHoraFirmaDesdeXml = (raw: string): Date | null => {
+  const m = raw
+    .trim()
+    .match(/^(\d{2})-(\d{2})-(\d{4}) (\d{2}):(\d{2}):(\d{2})$/);
+  if (!m) return null;
+  const [, dd, mm, yyyy, hh, mi, ss] = m;
+  const iso = `${yyyy}-${mm}-${dd}T${hh}:${mi}:${ss}-04:00`;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
 export const formatFechaFirmaQr = (d: Date): string => {
   const fmt = new Intl.DateTimeFormat("en-GB", {
     timeZone: "America/Santo_Domingo",
