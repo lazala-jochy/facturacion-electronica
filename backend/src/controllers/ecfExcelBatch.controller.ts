@@ -11,6 +11,7 @@ import {
   companyHasCertificateRecord,
   loadDecryptedPkcs12ForCompany,
 } from "../utils/companyCertificateStorage";
+import { generateRiPdfsForBatchOutput } from "../services/ecfRepresentacionImpresa.service";
 
 type EcfBatchRunner = (opts: {
   assetsDir: string;
@@ -406,6 +407,8 @@ export const runExcelBatchToDesktopHandler: RequestHandler = async (req, res, ne
       select: {
         id: true,
         rnc: true,
+        dgiiEnvironment: true,
+        logoUrl: true,
         certificateSalt: true,
         certificateEncPath: true,
         certificatePasswordEnc: true,
@@ -513,6 +516,26 @@ export const runExcelBatchToDesktopHandler: RequestHandler = async (req, res, ne
       excelPath,
     });
 
+    let representacionImpresa: Awaited<ReturnType<typeof generateRiPdfsForBatchOutput>> | undefined;
+    if (result.ok > 0 || (result.rfce?.ok ?? 0) > 0) {
+      try {
+        representacionImpresa = await generateRiPdfsForBatchOutput({
+          ecfSignedDir: result.outSignedDir,
+          consumoIntegrasSignedDir: result.rfce?.consumoIntegrasSignedDir,
+          dgiiEnvironment: companyRow.dgiiEnvironment,
+          uploadsRoot,
+          company: { id: companyRow.id, logoUrl: companyRow.logoUrl },
+        });
+        result.logs.push(
+          `RI PDF: ${representacionImpresa.ok} OK, ${representacionImpresa.fail} error(es) en ${representacionImpresa.outRiDir}`,
+        );
+      } catch (riErr) {
+        result.logs.push(
+          `RI PDF: error al generar — ${riErr instanceof Error ? riErr.message : String(riErr)}`,
+        );
+      }
+    }
+
     /** 207 si hubo parcial; 200 si todo OK o si falló todo (el cuerpo trae ok/fail/logs; 500 confundía al cliente). */
     const status = result.fail > 0 && result.ok > 0 ? 207 : 200;
 
@@ -526,6 +549,7 @@ export const runExcelBatchToDesktopHandler: RequestHandler = async (req, res, ne
       outSignedDir: result.outSignedDir,
       failures: result.failures,
       rfce: result.rfce,
+      representacion_impresa: representacionImpresa,
       logs: result.logs,
       ...(result.ok === 0 && result.fail > 0
         ? {

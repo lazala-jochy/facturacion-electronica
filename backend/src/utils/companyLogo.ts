@@ -27,6 +27,35 @@ export async function saveCompanyLogoFile(
 
 const KNOWN_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp"];
 
+/** Ruta absoluta del logo en disco, o null si no hay archivo. */
+export async function resolveCompanyLogoAbsolutePath(
+  uploadsRoot: string,
+  companyId: number,
+  logoUrl?: string | null,
+): Promise<string | null> {
+  if (logoUrl?.trim()) {
+    const rel = logoUrl.replace(/^\/+/, "").replace(/^uploads\//, "");
+    const abs = path.join(uploadsRoot, rel);
+    try {
+      await fs.access(abs);
+      return abs;
+    } catch {
+      /* intentar por companyId */
+    }
+  }
+  const companiesDir = path.join(uploadsRoot, "companies");
+  for (const ext of KNOWN_EXTENSIONS) {
+    const abs = path.join(companiesDir, `${companyId}.${ext}`);
+    try {
+      await fs.access(abs);
+      return abs;
+    } catch {
+      /* siguiente extensión */
+    }
+  }
+  return null;
+}
+
 export async function removeUploadedCompanyLogoFiles(
   uploadsRoot: string,
   companyId: number,

@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import { DOMParser } from "@xmldom/xmldom";
 
 export const extractXmlTagValue = (xml: string, tagName: string): string => {
@@ -49,24 +48,12 @@ export const codigoSeguridadRfceDesdeSignedEcf = (signedXml: string): string => 
   return raw.length >= 6 ? raw.substring(0, 6) : raw;
 };
 
-export const codigoSeguridadDesdeSignedXml = (signedXml: string): string => {
-  const raw = extractXmlTagValue(signedXml, "SignatureValue").replace(/\s/g, "");
-  if (!raw) return "------";
-  let buf: Buffer;
-  try {
-    buf = Buffer.from(raw, "base64");
-  } catch {
-    return "------";
-  }
-  if (!buf.length) return "------";
-  const digest = crypto.createHash("sha256").update(buf).digest();
-  const alphabet = "0123456789abcdefghijklmnopqrstuvwxyz";
-  let out = "";
-  for (let i = 0; i < 6; i++) {
-    out += alphabet[digest[i]! % alphabet.length];
-  }
-  return out;
-};
+/**
+ * Código para consulta timbre / QR: primeros 6 caracteres del `SignatureValue` (ej. `BTDDYV`).
+ * Mismo criterio que `CodigoSeguridadeCF` en RFCE.
+ */
+export const codigoSeguridadParaConsultaTimbre = (signedXml: string): string =>
+  codigoSeguridadRfceDesdeSignedEcf(signedXml);
 
 const parseYyyymmdd = (raw: string): { dd: string; mm: string; yyyy: string } | null => {
   const t = raw.replace(/\D/g, "");
@@ -76,10 +63,20 @@ const parseYyyymmdd = (raw: string): { dd: string; mm: string; yyyy: string } | 
   return null;
 };
 
+/** Parámetro `fechaemision` del QR: siempre `dd-mm-aaaa`. */
 export const fechaEmisionUrl = (fechaEmisionRaw: string): string => {
-  const p = parseYyyymmdd(fechaEmisionRaw);
-  if (!p) return fechaEmisionRaw.trim();
-  return `${p.dd}-${p.mm}-${p.yyyy}`;
+  const raw = fechaEmisionRaw.trim();
+  if (/^\d{2}-\d{2}-\d{4}$/.test(raw)) return raw;
+  const p = parseYyyymmdd(raw);
+  if (p) return `${p.dd}-${p.mm}-${p.yyyy}`;
+  return raw;
+};
+
+/** `fechafirma` del QR: usar `FechaHoraFirma` del XML tal cual (dd-mm-aaaa HH:mm:ss). */
+export const fechaFirmaParaConsultaTimbre = (signedXml: string, fallback: Date): string => {
+  const raw = extractXmlTagValue(signedXml, "FechaHoraFirma").trim();
+  if (raw) return raw;
+  return formatFechaFirmaQr(fallback);
 };
 
 /** Parsea `FechaHoraFirma` del XML (dd-MM-yyyy HH:mm:ss, hora RD). */

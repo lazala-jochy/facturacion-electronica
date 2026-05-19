@@ -34,16 +34,21 @@ export const fechaLimitePagoDesdeEmision = (issueDate: Date, days = 35) => {
   return fechaEmisionDdMmYyyy(d);
 };
 
-/** FechaHoraFirma (antes de Signature): DD-MM-YYYY HH:mm:ss */
+/** FechaHoraFirma (antes de Signature): DD-MM-YYYY HH:mm:ss (hora República Dominicana). */
 export const fechaHoraFirmaDgii = () => {
-  const d = new Date();
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const y = d.getFullYear();
-  const h = String(d.getHours()).padStart(2, "0");
-  const mi = String(d.getMinutes()).padStart(2, "0");
-  const s = String(d.getSeconds()).padStart(2, "0");
-  return `${dd}-${mm}-${y} ${h}:${mi}:${s}`;
+  const fmt = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "America/Santo_Domingo",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+  const parts = fmt.formatToParts(new Date());
+  const get = (type: string) => parts.find((x) => x.type === type)?.value ?? "";
+  return `${get("day")}-${get("month")}-${get("year")} ${get("hour")}:${get("minute")}:${get("second")}`;
 };
 
 /**

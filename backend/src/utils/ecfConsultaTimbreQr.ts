@@ -1,11 +1,11 @@
 import {
-  codigoSeguridadDesdeSignedXml,
+  codigoSeguridadParaConsultaTimbre,
   extractXmlTagValue,
   fechaEmisionUrl,
-  formatFechaFirmaQr,
+  fechaFirmaParaConsultaTimbre,
   onlyDigits,
-  parseFechaHoraFirmaDesdeXml,
 } from "./ecfXmlExtract";
+import { ECF_CONSUMO_RFCE_TOTAL_THRESHOLD_RD } from "../config/dgiiEcf.constants";
 
 /** Bases oficiales DGII (consulta timbre / RI). */
 const URL_CONSULTA_TIMBRE_ECF: Record<string, string> = {
@@ -33,6 +33,13 @@ const montoDosDec = (n: number) => {
   return n.toFixed(2);
 };
 
+/** Query string DGII: nombres PascalCase y espacios como %20 (no +). */
+const buildTimbreQuery = (params: Record<string, string>): string =>
+  Object.entries(params)
+    .filter(([, v]) => v.length > 0)
+    .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+    .join("&");
+
 /**
  * URL del QR de consulta timbre DGII (parámetros según ambiente).
  * Tipo 32 y monto &lt; 250.000 RD$: RFCE (host fc.dgii.gov.do).
@@ -42,40 +49,36 @@ export const buildConsultaTimbreQrUrl = (input: ConsultaTimbreQrInput): string =
   const tipoRaw = (input.ecfTipo || "31").replace(/\D/g, "");
   const tipo = tipoRaw.length >= 2 ? tipoRaw.slice(0, 2) : tipoRaw.padStart(2, "0");
   const monto = Number.parseFloat(extractXmlTagValue(input.signedXml, "MontoTotal") || "0");
-  const useFc = tipo === "32" && Number.isFinite(monto) && monto < 250000;
+  const useFc =
+    tipo === "32" && Number.isFinite(monto) && monto < ECF_CONSUMO_RFCE_TOTAL_THRESHOLD_RD;
 
   const rncE = onlyDigits(extractXmlTagValue(input.signedXml, "RNCEmisor"));
-  const encf = extractXmlTagValue(input.signedXml, "eNCF").replace(/\s/g, "");
+  const encf = extractXmlTagValue(input.signedXml, "eNCF").replace(/\s/g, "").toUpperCase();
   const montoStr = montoDosDec(monto);
-  const codigo = codigoSeguridadDesdeSignedXml(input.signedXml);
-  const firmaXml = parseFechaHoraFirmaDesdeXml(
-    extractXmlTagValue(input.signedXml, "FechaHoraFirma"),
-  );
-  const firmaQr = formatFechaFirmaQr(firmaXml ?? input.fechaFirma);
+  const codigo = codigoSeguridadParaConsultaTimbre(input.signedXml);
+  const firmaQr = fechaFirmaParaConsultaTimbre(input.signedXml, input.fechaFirma);
 
   if (useFc) {
     const base = URL_CONSULTA_TIMBRE_FC[env] ?? URL_CONSULTA_TIMBRE_FC.CERTIFICACION;
-    const q = new URLSearchParams({
-      rncemisor: rncE,
-      encf,
-      montototal: montoStr,
-      codigoseguridad: codigo,
-    });
-    return `${base}?${q.toString()}`;
+    return `${base}?${buildTimbreQuery({
+      RncEmisor: rncE,
+      ENCF: encf,
+      MontoTotal: montoStr,
+      CodigoSeguridad: codigo,
+    })}`;
   }
 
   const base = URL_CONSULTA_TIMBRE_ECF[env] ?? URL_CONSULTA_TIMBRE_ECF.CERTIFICACION;
   const rncC = onlyDigits(extractXmlTagValue(input.signedXml, "RNCComprador"));
   const fechaEm = fechaEmisionUrl(extractXmlTagValue(input.signedXml, "FechaEmision"));
 
-  const q = new URLSearchParams({
-    rncemisor: rncE,
-    rnccomprador: rncC,
-    encf,
-    fechaemision: fechaEm,
-    montototal: montoStr,
-    fechafirma: firmaQr,
-    codigoseguridad: codigo,
-  });
-  return `${base}?${q.toString()}`;
+  return `${base}?${buildTimbreQuery({
+    RncEmisor: rncE,
+    RncComprador: rncC,
+    ENCF: encf,
+    FechaEmision: fechaEm,
+    MontoTotal: montoStr,
+    FechaFirma: firmaQr,
+    CodigoSeguridad: codigo,
+  })}`;
 };

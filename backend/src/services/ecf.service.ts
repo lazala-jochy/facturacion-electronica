@@ -402,6 +402,7 @@ export const ecfService = {
               id: companyRow.id,
               dgiiEnvironment: companyRow.dgiiEnvironment,
               name: companyRow.name,
+              logoUrl: companyRow.logoUrl,
             },
             signedXml,
             ecfTipo: normalizeEcfTipo(generation.payload.ecfTipo),

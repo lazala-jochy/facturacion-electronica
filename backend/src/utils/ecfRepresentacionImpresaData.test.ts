@@ -43,11 +43,38 @@ test("parseRepresentacionImpresaData: encabezado tipo 31 y totales", () => {
   assert.equal(data.encf, "E310000000001");
   assert.ok(data.fechaVencimientoSecuencia.length > 0);
   assert.equal(data.emisor.rnc, "131880738");
+  assert.match(data.emisor.fechaEmision, /^\d{2}-\d{2}-\d{4}$/);
   assert.equal(data.comprador.rncCedula, "40212345678");
   assert.equal(data.items.length, 1);
   assert.equal(data.items[0]?.unidadLabel, "Unidad");
   assert.equal(data.totales.total, "236.00");
   assert.equal(data.totales.totalItbis, "36.00");
+  assert.equal(data.items[0]?.itbisLinea, "36.00");
+});
+
+test("parseRepresentacionImpresaData: ITBIS por línea si no viene ITBISItem en XML", () => {
+  const xml = `<?xml version="1.0"?><ECF>
+  <Encabezado>
+    <IdDoc><TipoeCF>31</TipoeCF><eNCF>E310000000101</eNCF></IdDoc>
+    <Totales>
+      <MontoGravadoTotal>10.00</MontoGravadoTotal>
+      <ITBIS1>18</ITBIS1>
+      <TotalITBIS>1.80</TotalITBIS>
+      <MontoTotal>11.80</MontoTotal>
+    </Totales>
+  </Encabezado>
+  <DetallesItems>
+    <Item>
+      <IndicadorFacturacion>1</IndicadorFacturacion>
+      <NombreItem>camillas</NombreItem>
+      <CantidadItem>1.00</CantidadItem>
+      <PrecioUnitarioItem>10.00</PrecioUnitarioItem>
+      <MontoItem>10.00</MontoItem>
+    </Item>
+  </DetallesItems>
+</ECF>`;
+  const data = parseRepresentacionImpresaData(xml, "31");
+  assert.equal(data.items[0]?.itbisLinea, "1.80");
 });
 
 test("parseRepresentacionImpresaData: tipo 32 sin fecha vencimiento secuencia", () => {
