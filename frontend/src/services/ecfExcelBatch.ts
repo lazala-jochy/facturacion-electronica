@@ -1,5 +1,4 @@
-import { apiFetch } from "./api";
-
+import { ApiError, apiFetch, authenticatedFetch, readAuthSessionFromStorage } from "./api";
 export type EcfExcelBatchRunResponse = {
   outputRoot: string;
   excelPath: string;
@@ -48,14 +47,62 @@ export type EcfExcelBatchSendResponse = {
   logs: string[];
 };
 
-/** Lee el primer `.xlsx` en `backend/assets`, genera XML y firmados en el Escritorio. */
+/** Genera XML y firmados desde el Excel de pruebas e-CF. */
 export const runEcfExcelBatchFromApp = async (body: {
   desktop_parent_dir?: string;
-}): Promise<EcfExcelBatchRunResponse> =>
-  apiFetch<EcfExcelBatchRunResponse>("/ecf-excel-batch/run", {
+  excel_path?: string;
+  excel_file?: File;
+}): Promise<EcfExcelBatchRunResponse> => {
+  if (body.excel_file) {
+    const session = readAuthSessionFromStorage();
+    if (!session?.token) throw new ApiError("No hay sesión.", 401);
+
+    const fd = new FormData();
+    fd.append("excel", body.excel_file);
+    if (body.desktop_parent_dir?.trim()) {
+      fd.append("desktop_parent_dir", body.desktop_parent_dir.trim());
+    }
+
+    let response: Response;
+    try {
+      response = await authenticatedFetch("/ecf-excel-batch/run", {
+        method: "POST",
+        body: fd,
+      });
+    } catch {
+      throw new ApiError("No se pudo contactar el servidor.", 0);
+    }
+
+    const raw = await response.text();
+    let data: Record<string, unknown> = {};
+    if (raw.trim()) {
+      try {
+        data = JSON.parse(raw) as Record<string, unknown>;
+      } catch {
+        data = { message: raw.trim().slice(0, 500) };
+      }
+    }
+    if (!response.ok) {
+      const msg =
+        (typeof data.message === "string" && data.message.trim()) ||
+        `Solicitud rechazada (${response.status}).`;
+      throw new ApiError(msg, response.status, data);
+    }
+    return data as EcfExcelBatchRunResponse;
+  }
+
+  if (!body.excel_path?.trim()) {
+    throw new ApiError("Elegí el Excel de pruebas (archivo o ruta).", 400);
+  }
+
+  return apiFetch<EcfExcelBatchRunResponse>("/ecf-excel-batch/run", {
     method: "POST",
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      excel_path: body.excel_path.trim(),
+      desktop_parent_dir: body.desktop_parent_dir,
+    }),
   });
+};
 
 export const sendEcfExcelBatchToDgiiFromApp = async (body: {
   out_signed_dir: string;

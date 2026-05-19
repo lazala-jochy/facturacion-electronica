@@ -20,6 +20,8 @@ const FOOTER_BLOCK_H_PT = QR_SIZE_MM_PT + 44;
 const COLOR_ACCENT = "#1e4a8a";
 const COLOR_TABLE_HEAD = "#d9dce3";
 const LOGO_MAX_PT = 56;
+const TABLE_HEADER_H_PT = 18;
+const TABLE_ROW_PAD_PT = 4;
 
 export type RepresentacionImpresaInput = {
   signedXml: string;
@@ -264,10 +266,10 @@ const drawItemsTable = (
 
   const drawTableHeader = () => {
     const y0 = doc.y;
-    const h = 16;
+    const h = TABLE_HEADER_H_PT;
     doc.rect(left, y0, tableW, h).fill(COLOR_TABLE_HEAD);
     doc.fillColor("#000000").font("Helvetica-Bold").fontSize(7);
-    const ty = y0 + 4;
+    const ty = y0 + 5;
     cellText(doc, "Cantidad", x.cant, ty, w.cant, "right");
     cellText(doc, "Descripción", x.desc, ty, w.desc);
     cellText(doc, "U. medida", x.unidad, ty, w.unidad);
@@ -283,14 +285,14 @@ const drawItemsTable = (
   for (const row of data.items) {
     if (doc.y > footerReserveTop()) {
       doc.addPage();
-      drawHeaderBlock(doc, data, logoPath);
+      doc.y = doc.page.margins.top;
       drawTableHeader();
       doc.font("Helvetica").fontSize(7.5);
     }
 
     const desc =
       (row.prefijoExento ? `${row.prefijoExento} ` : "") + (row.nombreItem || "—");
-    const y = doc.y;
+    const y = doc.y + TABLE_ROW_PAD_PT;
     const itbisTxt = row.itbisLinea.trim() ? formatMontoRi(row.itbisLinea) : "—";
     cellText(doc, formatCantidadRi(row.cantidad), x.cant, y, w.cant, "right");
     cellText(doc, desc, x.desc, y, w.desc);
@@ -305,7 +307,7 @@ const drawItemsTable = (
     );
     cellText(doc, itbisTxt, x.itbis, y, w.itbis, "right");
     cellText(doc, row.montoItem ? formatMontoRi(row.montoItem) : "—", x.valor, y, w.valor, "right");
-    doc.moveDown(0.28);
+    doc.y = y + 12;
   }
 
   if (!data.items.length) {
@@ -431,7 +433,7 @@ export const buildRepresentacionImpresaPdfBuffer = async (
     const doc = new PDFDocument({
       size: "A4",
       margins: {
-        top: 40,
+        top: MARGEN_HOJA_CM_PT,
         left: MARGEN_HOJA_CM_PT,
         right: MARGEN_HOJA_CM_PT,
         bottom: MARGEN_HOJA_CM_PT,
@@ -443,6 +445,7 @@ export const buildRepresentacionImpresaPdfBuffer = async (
     doc.on("error", reject);
 
     drawHeaderBlock(doc, data, logoPath);
+    doc.moveDown(0.4);
     drawItemsTable(doc, data, logoPath);
     drawDescuentosRecargosGlobales(doc, data);
 

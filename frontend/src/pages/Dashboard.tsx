@@ -86,9 +86,9 @@ export default function Dashboard({
       .sort((a, b) => b.total - a.total)
       .slice(0, 5);
 
-    const topCotizaciones = [...cotizaciones]
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 5);
+    const latestComprobantes = [...cotizaciones]
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 3);
 
     const byDayMap = new Map<string, number>();
     for (const c of inCurrentMonth) {
@@ -117,7 +117,7 @@ export default function Dashboard({
       ticketPromedio,
       emitidasMes: inCurrentMonth.length,
       topClients,
-      topCotizaciones,
+      latestComprobantes,
       salesSeries,
       maxSeries,
       docTypes,
@@ -156,16 +156,23 @@ export default function Dashboard({
             <MetricCard title="ITBIS del mes" value={money(analytics.itbisMes)} tone="blue" />
           </div>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-            <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-              <h3 className="text-base font-semibold text-slate-900 sm:text-lg">Resumen de ventas</h3>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-stretch">
+            <div className="flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+              <div className="mb-3 flex min-h-[1.75rem] items-start justify-between gap-3">
+                <h3 className="text-base font-semibold text-slate-900 sm:text-lg">Resumen de ventas</h3>
+                <span className="invisible shrink-0 text-sm" aria-hidden>
+                  Ver todos
+                </span>
+              </div>
               {analytics.salesSeries.length === 0 ? (
-                <p className="mt-4 text-sm text-slate-500">Sin ventas del mes para graficar.</p>
+                <p className="flex min-h-[13.5rem] flex-1 items-center text-sm text-slate-500 sm:min-h-[15.5rem]">
+                  Sin ventas del mes para graficar.
+                </p>
               ) : (
-                <div className="mt-4 min-w-0">
-                  <div className="overflow-x-auto overscroll-x-contain rounded-lg pb-1 [-webkit-overflow-scrolling:touch]">
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <div className="min-h-0 flex-1 overflow-x-auto overscroll-x-contain rounded-lg pb-1 [-webkit-overflow-scrolling:touch]">
                     <div
-                      className="flex h-44 sm:h-56 items-stretch gap-1.5 rounded-lg bg-gradient-to-t from-[#e9f9ef] to-white p-2 sm:gap-2 sm:p-3"
+                      className="flex h-full min-h-[13.5rem] items-stretch gap-1.5 rounded-lg bg-gradient-to-t from-[#e9f9ef] to-white p-2 sm:min-h-[15.5rem] sm:gap-2 sm:p-3"
                       style={{
                         minWidth: `min(100%, ${Math.max(analytics.salesSeries.length * 40, 220)}px)`,
                       }}
@@ -196,17 +203,17 @@ export default function Dashboard({
               )}
             </div>
 
-            <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-              <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+            <div className="flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+              <div className="mb-3 flex min-h-[1.75rem] items-start justify-between gap-3">
                 <h3 className="min-w-0 text-base font-semibold text-slate-900 sm:text-lg">
                   Últimos comprobantes
                 </h3>
-                <Link to="/ecf" className="shrink-0 text-sm font-semibold text-[#0b57d0] hover:underline sm:pt-0.5">
+                <Link to="/ecf" className="shrink-0 text-sm font-semibold text-[#0b57d0] hover:underline">
                   Ver todos
                 </Link>
               </div>
-              <div className="space-y-3">
-                {analytics.topCotizaciones.slice(0, 5).map((row) => (
+              <div className="flex min-h-[13.5rem] flex-1 flex-col space-y-3 sm:min-h-[15.5rem]">
+                {analytics.latestComprobantes.map((row) => (
                   <div key={row.id} className="min-w-0 rounded-lg border border-slate-100 p-2.5 sm:p-3">
                     <p className="font-semibold tabular-nums text-[#0b57d0]">
                       F{String(row.number).padStart(8, "0")}
@@ -219,8 +226,8 @@ export default function Dashboard({
                     </p>
                   </div>
                 ))}
-                {analytics.topCotizaciones.length === 0 && (
-                  <p className="text-sm text-slate-500">Sin comprobantes.</p>
+                {analytics.latestComprobantes.length === 0 && (
+                  <p className="flex flex-1 items-center text-sm text-slate-500">Sin comprobantes.</p>
                 )}
               </div>
             </div>

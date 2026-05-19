@@ -12,6 +12,8 @@ import {
   type CotizacionDetail,
   type CotizacionListItem,
 } from "../services/cotizaciones";
+import PageHeaderCard from "../components/PageHeaderCard";
+import PageShell from "../components/PageShell";
 
 export default function ECF({ company }: { company: AuthCompany }) {
   const location = useLocation();
@@ -268,54 +270,56 @@ export default function ECF({ company }: { company: AuthCompany }) {
   };
 
   return (
-    <div className="w-full space-y-4 sm:space-y-6 px-4 sm:px-0 pt-4 sm:pt-5">
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="text-3xl font-extrabold text-[#0b57d0]">e-CF</h2>
-        <p className="text-slate-600">
-          Cotizaciones de esta empresa con flujo digital: estado DGII, e-NCF asignado y seguimiento.
-        </p>
-        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
-          <span>
-            <span className="font-semibold text-slate-800">{summary.total}</span> cotización
-            {summary.total !== 1 ? "es" : ""}
-          </span>
-          <span className="text-emerald-700">{summary.accepted} aceptada(s)</span>
-          <span className="text-red-700">{summary.rejected} rechazada(s)</span>
-          <span className="text-sky-800">{summary.pending} pendiente(s)</span>
-          <span className="text-amber-800">{summary.prepared} preparada(s)</span>
-          <span>{summary.sinEnviar} sin enviar</span>
-        </div>
-        <p className="text-xs text-slate-500 mt-1">{company.name} · RNC {company.rnc}</p>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void handleQueryDgiiTodos()}
-            disabled={
-              loading ||
-              syncDgiiAllProgress != null ||
-              withTrackIds.length === 0
-            }
-            className="rounded-lg border border-indigo-300 bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {syncDgiiAllProgress ? (
-              <>
-                Sincronizando estados DGII{" "}
-                {syncDgiiAllProgress.cur}/{syncDgiiAllProgress.total}…
-              </>
-            ) : (
-              <>
-                Actualizar estados DGII
-                {withTrackIds.length > 0 ? ` (${withTrackIds.length})` : ""}
-              </>
-            )}
-          </button>
-          {withTrackIds.length === 0 && !loading ? (
-            <span className="text-xs text-slate-500">
-              No hay cotizaciones con track ID para consultar.
+    <PageShell>
+      <PageHeaderCard
+        title="e-CF"
+        description="Cotizaciones de esta empresa con flujo digital: estado DGII, e-NCF asignado y seguimiento."
+        company={{ name: company.name, rnc: company.rnc }}
+        stats={
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
+            <span>
+              <span className="font-semibold text-slate-800">{summary.total}</span> cotización
+              {summary.total !== 1 ? "es" : ""}
             </span>
-          ) : null}
-        </div>
-      </div>
+            <span className="text-emerald-700">{summary.accepted} aceptada(s)</span>
+            <span className="text-red-700">{summary.rejected} rechazada(s)</span>
+            <span className="text-sky-800">{summary.pending} pendiente(s)</span>
+            <span className="text-amber-800">{summary.prepared} preparada(s)</span>
+            <span>{summary.sinEnviar} sin enviar</span>
+          </div>
+        }
+        actions={
+          <>
+            <button
+              type="button"
+              onClick={() => void handleQueryDgiiTodos()}
+              disabled={
+                loading ||
+                syncDgiiAllProgress != null ||
+                withTrackIds.length === 0
+              }
+              className="rounded-lg border border-indigo-300 bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {syncDgiiAllProgress ? (
+                <>
+                  Sincronizando estados DGII{" "}
+                  {syncDgiiAllProgress.cur}/{syncDgiiAllProgress.total}…
+                </>
+              ) : (
+                <>
+                  Actualizar estados DGII
+                  {withTrackIds.length > 0 ? ` (${withTrackIds.length})` : ""}
+                </>
+              )}
+            </button>
+            {withTrackIds.length === 0 && !loading ? (
+              <span className="text-xs text-slate-500">
+                No hay cotizaciones con track ID para consultar.
+              </span>
+            ) : null}
+          </>
+        }
+      />
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="border-b border-slate-100 bg-slate-50/70 p-4 sm:p-5">
@@ -669,6 +673,6 @@ export default function ECF({ company }: { company: AuthCompany }) {
           </div>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

@@ -111,7 +111,7 @@ function App() {
         <Route element={<AppLayout company={company} onLogout={handleLogout} />}>
           <Route path="/" element={<Dashboard company={company} user={session.user} />} />
           <Route path="/ecf" element={<ECF company={company} />} />
-          <Route path="/dgii-pruebas" element={<DgiiPruebasLayout />}>
+          <Route path="/dgii-pruebas" element={<DgiiPruebasLayout company={company} />}>
             <Route index element={<DgiiPruebasHub />} />
             <Route
               path="ecf-excel"

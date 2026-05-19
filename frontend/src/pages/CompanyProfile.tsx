@@ -1,5 +1,7 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { apiFetch, authenticatedFetch, getAuthToken } from "../services/api";
+import PageHeaderCard from "../components/PageHeaderCard";
+import PageShell from "../components/PageShell";
 import type { AuthCompany, AuthSession, AuthUser } from "../types/session";
 import { formatPhoneInput, isValidPhone } from "../utils/phone";
 import { cedulaDigits, formatCedulaInput } from "../utils/cedula";
@@ -18,6 +20,52 @@ function companyInitials(name: string): string {
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 }
 
+const inputCls =
+  "mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-[#0b57d0] focus:outline-none focus:ring-2 focus:ring-[#0b57d0]/15";
+
+function Field({
+  label,
+  htmlFor,
+  hint,
+  children,
+}: {
+  label: string;
+  htmlFor?: string;
+  hint?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div>
+      <label htmlFor={htmlFor} className="block text-sm font-medium text-slate-700">
+        {label}
+      </label>
+      {hint ? <p className="mt-0.5 text-xs text-slate-500">{hint}</p> : null}
+      {children}
+    </div>
+  );
+}
+
+function SectionTitle({ title, description }: { title: string; description?: string }) {
+  return (
+    <div className="mb-6">
+      <h3 className="text-[15px] font-semibold text-slate-900">{title}</h3>
+      {description ? <p className="mt-1 max-w-xl text-sm leading-relaxed text-slate-500">{description}</p> : null}
+    </div>
+  );
+}
+
+function StatusLine({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-2 text-sm text-slate-600">
+      <span
+        className={`h-1.5 w-1.5 shrink-0 rounded-full ${ok ? "bg-emerald-500" : "bg-slate-300"}`}
+        aria-hidden
+      />
+      {label}
+    </span>
+  );
+}
+
 function EyeToggle({
   visible,
   onToggle,
@@ -31,7 +79,7 @@ function EyeToggle({
     <button
       type="button"
       onClick={onToggle}
-      className="rounded p-1.5 text-slate-500 hover:bg-slate-200 hover:text-slate-800"
+      className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
       aria-label={label}
       aria-pressed={visible}
     >
@@ -48,6 +96,13 @@ function EyeToggle({
     </button>
   );
 }
+
+const btnPrimary =
+  "inline-flex items-center justify-center rounded-lg bg-[#0b57d0] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0948ad] disabled:opacity-50";
+const btnSecondary =
+  "inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50";
+const btnGhost =
+  "text-sm font-medium text-slate-600 hover:text-slate-900 disabled:opacity-50";
 
 export default function CompanyProfile({ session, onProfileUpdated }: Props) {
   const [fullName, setFullName] = useState(session.user.full_name);
@@ -81,7 +136,6 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
 
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoObjectUrl, setLogoObjectUrl] = useState<string | null>(null);
-  /** Tras guardar sin logo propio el backend deja logoUrl null (en el panel solo se muestra el ícono pequeño). */
   const [clearCompanyLogo, setClearCompanyLogo] = useState(false);
 
   const [certificateFile, setCertificateFile] = useState<File | null>(null);
@@ -268,8 +322,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
     }
   };
 
-  const canRestoreDefault =
-    Boolean(session.company.logoUrl) || Boolean(logoFile);
+  const canRestoreDefault = Boolean(session.company.logoUrl) || Boolean(logoFile);
 
   const runDgiiTest = async () => {
     setTestingDgii(true);
@@ -294,10 +347,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
           signatureTestPassed: boolean;
           validNow: boolean;
         };
-      }>(
-        "/auth/company/dgii/test",
-        { method: "POST" },
-      );
+      }>("/auth/company/dgii/test", { method: "POST" });
       setTestResult(`${out.message}${out.signatureModeUsed ? ` · modo firma: ${out.signatureModeUsed}` : ""}`);
       setDgiiToken(out.token ?? "");
       setCertTest(out.certificate ?? null);
@@ -308,347 +358,377 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
     }
   };
 
+  const certOk = Boolean(session.company.certificateConfigured);
+  const dgiiOk = Boolean(dgiiUsername.trim());
+  const logoOk = Boolean(previewImageSrc);
+
   return (
-    <div className="w-full px-4 sm:px-0 pb-10 pt-4 sm:pt-5">
-      <div className="mx-auto max-w-2xl mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h1 className="text-3xl font-extrabold text-[#0b57d0]">Perfil de empresa</h1>
-        <p className="text-slate-600">Actualiza los datos que se muestran en cotizaciones y PDF.</p>
-        <p className="text-xs text-slate-500 mt-1">{session.company.name} · RNC {session.company.rnc}</p>
-      </div>
-      <div className="mx-auto max-w-2xl rounded-xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
-        <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Logo</p>
-          <p className="mt-1 text-xs text-slate-600">
-            Sin logo subido, en la barra lateral solo se muestra el ícono pequeño de la app; con archivo, tu marca aparece
-            también en cotizaciones y PDF.
-          </p>
-          <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start">
-            <div className="h-24 w-24 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 shadow-inner grid place-items-center">
-              {previewImageSrc ? (
-                <img src={previewImageSrc} alt="" className="max-h-[90%] max-w-[90%] object-contain p-2 bg-white rounded-lg" />
-              ) : (
-                <span className="text-lg font-bold tracking-tight text-slate-500 select-none" aria-hidden>
-                  {companyInitials(name || session.company.name)}
-                </span>
-              )}
+    <PageShell>
+      <form id="company-profile-form" onSubmit={onSubmit} className="space-y-4 sm:space-y-6">
+        <PageHeaderCard
+          title="Perfil de empresa"
+          description="Datos del emisor, credenciales DGII y certificado digital para cotizaciones, e-CF y representación impresa."
+          company={{ name: session.company.name, rnc: session.company.rnc }}
+          stats={
+            <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1">
+              <StatusLine ok={certOk} label={certOk ? "Certificado configurado" : "Sin certificado"} />
+              <StatusLine ok={dgiiOk} label={dgiiOk ? "Usuario DGII" : "Usuario DGII pendiente"} />
+              <StatusLine ok={logoOk} label={logoOk ? "Logo personalizado" : "Logo por defecto"} />
             </div>
-            <div className="flex flex-col gap-2 min-w-0">
-              <label className="inline-flex w-fit cursor-pointer items-center rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1d4ed8] shadow-sm">
+          }
+          actions={
+            <>
+              <button
+                type="button"
+                onClick={() => void runDgiiTest()}
+                disabled={testingDgii || loading}
+                className={btnSecondary}
+              >
+                {testingDgii ? "Probando…" : "Probar conexión DGII"}
+              </button>
+              <button type="submit" disabled={loading} className={btnPrimary}>
+                {loading ? "Guardando…" : "Guardar cambios"}
+              </button>
+            </>
+          }
+        />
+
+        {(error || success || testResult || dgiiToken || certTest) && (
+          <div className="space-y-2">
+            {error ? (
+              <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+                {error}
+              </p>
+            ) : null}
+            {success ? (
+              <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status">
+                {success}
+              </p>
+            ) : null}
+            {testResult ? (
+              <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">{testResult}</p>
+            ) : null}
+            {dgiiToken ? (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="font-medium">Token DGII (prueba)</span>
+                  <button
+                    type="button"
+                    onClick={() => void navigator.clipboard.writeText(dgiiToken)}
+                    className="rounded-md bg-slate-800 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-900"
+                  >
+                    Copiar
+                  </button>
+                </div>
+                <pre className="max-h-28 overflow-y-auto whitespace-pre-wrap break-all rounded-md bg-white p-2 font-mono text-xs text-slate-600">
+                  {dgiiToken}
+                </pre>
+              </div>
+            ) : null}
+            {certTest ? (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 space-y-1">
+                <p>
+                  <span className="font-medium text-slate-900">Titular:</span> {certTest.subject}
+                </p>
+                <p>
+                  <span className="font-medium text-slate-900">Emisor CA:</span> {certTest.issuer}
+                </p>
+                <p>
+                  <span className="font-medium text-slate-900">Válido hasta:</span>{" "}
+                  {new Date(certTest.validUntil).toLocaleString("es-DO")}
+                </p>
+                <p className="text-slate-600">
+                  Cadena: {certTest.chainCount} certificado(s) · clave {certTest.privateKey ? "OK" : "ausente"} · firma{" "}
+                  {certTest.signatureTestPassed ? "OK" : "falló"} · {certTest.validNow ? "vigente" : "no vigente"}
+                </p>
+              </div>
+            ) : null}
+          </div>
+        )}
+
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm divide-y divide-slate-100">
+          {/* Logo */}
+          <section className="px-6 py-8 sm:px-8">
+            <SectionTitle
+              title="Logo de la empresa"
+              description="Se muestra en la barra lateral, cotizaciones y PDF de representación impresa."
+            />
+            <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-slate-50">
+                {previewImageSrc ? (
+                  <img src={previewImageSrc} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <span className="text-lg font-semibold text-[#0b57d0]" aria-hidden>
+                    {companyInitials(name || session.company.name)}
+                  </span>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-slate-900">{name || session.company.name}</p>
+                <p className="mt-0.5 text-sm text-slate-500">PNG, JPG, GIF o WebP · recomendado cuadrado</p>
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <label className={`${btnPrimary} cursor-pointer`}>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/gif,image/webp,.png,.jpg,.jpeg,.gif,.webp"
+                      className="sr-only"
+                      onChange={(e) => onPickLogo(e.target.files)}
+                    />
+                    {logoFile ? "Cambiar imagen" : "Subir logo"}
+                  </label>
+                  {canRestoreDefault ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        clearPendingUpload();
+                        setClearCompanyLogo(true);
+                      }}
+                      className={`${btnGhost} text-red-600 hover:text-red-700`}
+                    >
+                      Quitar logo
+                    </button>
+                  ) : null}
+                  {logoFile ? (
+                    <button type="button" onClick={() => resetPendingLogo()} className={btnGhost}>
+                      Descartar
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Account */}
+          <section className="px-6 py-8 sm:px-8">
+            <SectionTitle
+              title="Responsable de la cuenta"
+              description="Persona vinculada al usuario que opera la plataforma."
+            />
+            <div className="grid max-w-2xl grid-cols-1 gap-5 sm:grid-cols-2">
+              <Field label="Nombre completo" htmlFor="prof-fullname">
+                <input
+                  id="prof-fullname"
+                  className={inputCls}
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  required
+                />
+              </Field>
+              <Field label="Cédula" htmlFor="prof-cedula">
+                <input
+                  id="prof-cedula"
+                  inputMode="numeric"
+                  className={`${inputCls} font-mono`}
+                  value={cedula}
+                  onChange={(e) => setCedula(formatCedulaInput(e.target.value))}
+                  placeholder="001-1234567-8"
+                  maxLength={13}
+                  required
+                />
+              </Field>
+            </div>
+          </section>
+
+          {/* Emisor */}
+          <section className="px-6 py-8 sm:px-8">
+            <SectionTitle
+              title="Datos del emisor"
+              description="Información fiscal que aparece en el XML y la representación impresa del e-CF."
+            />
+            <div className="grid max-w-2xl grid-cols-1 gap-5 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <Field label="Razón social / nombre comercial" htmlFor="prof-name">
+                  <input
+                    id="prof-name"
+                    className={inputCls}
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                  />
+                </Field>
+              </div>
+              <Field label="RNC emisor" htmlFor="prof-rnc">
+                <input
+                  id="prof-rnc"
+                  className={`${inputCls} font-mono`}
+                  value={rnc}
+                  onChange={(e) => setRnc(e.target.value)}
+                  required
+                />
+              </Field>
+              <Field label="Régimen tributario" htmlFor="prof-regime">
+                <input id="prof-regime" className={inputCls} value={regime} onChange={(e) => setRegime(e.target.value)} />
+              </Field>
+              <div className="sm:col-span-2">
+                <Field label="Dirección fiscal" htmlFor="prof-address">
+                  <input
+                    id="prof-address"
+                    className={inputCls}
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    required
+                  />
+                </Field>
+              </div>
+              <Field label="Teléfono" htmlFor="prof-phone">
+                <input
+                  id="prof-phone"
+                  inputMode="numeric"
+                  className={inputCls}
+                  value={phone}
+                  onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
+                  placeholder="809-555-0000"
+                  maxLength={12}
+                />
+              </Field>
+              <Field label="Correo de contacto" htmlFor="prof-email">
+                <input
+                  id="prof-email"
+                  type="email"
+                  className={inputCls}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </Field>
+            </div>
+          </section>
+
+          {/* DGII */}
+          <section className="px-6 py-8 sm:px-8">
+            <SectionTitle
+              title="Integración DGII"
+              description="Credenciales del portal para obtener token al enviar e-CF. Las URLs de recepción se configuran en Pruebas DGII."
+            />
+            <div className="grid max-w-2xl grid-cols-1 gap-5 sm:grid-cols-2">
+              <Field label="Usuario DGII" htmlFor="dgii-user-prof">
+                <input
+                  id="dgii-user-prof"
+                  className={inputCls}
+                  autoComplete="off"
+                  value={dgiiUsername}
+                  onChange={(e) => setDgiiUsername(e.target.value)}
+                />
+              </Field>
+              <Field label="Contraseña DGII" htmlFor="dgii-pass-prof">
+                <div className="relative">
+                  <input
+                    id="dgii-pass-prof"
+                    type={showDgiiPassword ? "text" : "password"}
+                    autoComplete="new-password"
+                    className={`${inputCls} pr-10`}
+                    value={dgiiPassword}
+                    onChange={(e) => setDgiiPassword(e.target.value)}
+                  />
+                  <span className="absolute inset-y-0 right-0 flex items-center pr-1 pt-1">
+                    <EyeToggle
+                      visible={showDgiiPassword}
+                      onToggle={() => setShowDgiiPassword((v) => !v)}
+                      label={showDgiiPassword ? "Ocultar contraseña DGII" : "Mostrar contraseña DGII"}
+                    />
+                  </span>
+                </div>
+              </Field>
+            </div>
+          </section>
+
+          {/* Certificate */}
+          <section className="px-6 py-8 sm:px-8">
+            <SectionTitle
+              title="Certificado digital"
+              description="Archivo .p12 o .pfx cifrado en el servidor. La contraseña abre el certificado y actúa como clave de cifrado (mín. 8 caracteres)."
+            />
+            <div className="max-w-2xl space-y-5">
+              <StatusLine
+                ok={certOk}
+                label={certOk ? "Certificado guardado en el servidor" : "Aún no hay certificado cargado"}
+              />
+              {certificateFile ? (
+                <p className="text-sm text-slate-600">
+                  Archivo seleccionado: <span className="font-medium text-slate-900">{certificateFile.name}</span>
+                </p>
+              ) : null}
+
+              <label className={`${btnSecondary} w-fit cursor-pointer`}>
                 <input
                   type="file"
-                  accept="image/png,image/jpeg,image/gif,image/webp,.png,.jpg,.jpeg,.gif,.webp"
+                  accept=".p12,.pfx,application/x-pkcs12"
                   className="sr-only"
-                  onChange={(e) => onPickLogo(e.target.files)}
-                />
-                Cambiar logo
-              </label>
-              {canRestoreDefault ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    clearPendingUpload();
-                    setClearCompanyLogo(true);
+                  onChange={(e) => {
+                    setClearCertificate(false);
+                    setCertificateFile(e.target.files?.[0] ?? null);
                   }}
-                  className="w-fit text-left text-sm font-medium text-slate-600 underline-offset-2 hover:text-red-700 hover:underline"
-                >
-                  Quitar logo
-                </button>
-              ) : null}
-              {logoFile ? (
-                <button
-                  type="button"
-                  onClick={() => resetPendingLogo()}
-                  className="w-fit text-sm text-slate-500 hover:text-slate-800"
-                >
-                  Cancelar nueva imagen
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50/80 p-4 space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">DGII Integration</p>
-          <p className="text-xs text-slate-600">
-            Usuario y contraseña para autenticar con DGII al enviar e-CF. Las URLs de servicios (recepción, consulta,
-            resúmenes) se configuran en Pruebas DGII → Datos e-CF (Excel).
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-slate-700" htmlFor="dgii-user-prof">
-                Usuario DGII
-              </label>
-              <input
-                id="dgii-user-prof"
-                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                autoComplete="off"
-                value={dgiiUsername}
-                onChange={(e) => setDgiiUsername(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700" htmlFor="dgii-pass-prof">
-                Contraseña DGII
-              </label>
-              <div className="relative mt-1">
-                <input
-                  id="dgii-pass-prof"
-                  type={showDgiiPassword ? "text" : "password"}
-                  autoComplete="new-password"
-                  className="w-full rounded border border-slate-300 py-2 pl-3 pr-11 text-sm"
-                  value={dgiiPassword}
-                  onChange={(e) => setDgiiPassword(e.target.value)}
                 />
-                <span className="absolute inset-y-0 right-1 flex items-center">
-                  <EyeToggle
-                    visible={showDgiiPassword}
-                    onToggle={() => setShowDgiiPassword((v) => !v)}
-                    label={showDgiiPassword ? "Ocultar contraseña DGII" : "Mostrar contraseña DGII"}
-                  />
-                </span>
-              </div>
-            </div>
-          </div>
-          <p className="text-[11px] text-slate-500">
-            El RNC del emisor es el de la empresa (campo RNC más abajo). Con usuario y contraseña, el backend obtiene un
-            token en memoria por empresa y envía el e-CF firmado a la URL de recepción.
-          </p>
-        </div>
-
-        <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50/80 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Digital Certificate</p>
-          <p className="mt-1 text-xs text-slate-600">
-            Subí tu .p12 o .pfx: el archivo queda cifrado en disco. La{" "}
-            <span className="font-medium text-slate-700">contraseña del archivo</span> (exportación del certificado) no se
-            guarda en texto plano; la <span className="font-medium text-slate-700">clave de cifrado</span> (mín. 8
-            caracteres) sí se guarda en tu empresa para poder enviar e-CF desde Cotizaciones sin volver a escribirla.
-            Podés verla u ocultarla con el ícono del ojo.
-          </p>
-          <p className="mt-2 text-sm font-medium text-slate-800">
-            Estado:{" "}
-            <span className={session.company.certificateConfigured ? "text-emerald-700" : "text-amber-700"}>
-              {session.company.certificateConfigured ? "Certificado configurado" : "Sin certificado"}
-            </span>
-          </p>
-          <div className="mt-3 flex flex-col gap-3">
-            <label className="inline-flex w-fit cursor-pointer items-center rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-900">
-              <input
-                type="file"
-                accept=".p12,.pfx,application/x-pkcs12"
-                className="sr-only"
-                onChange={(e) => {
-                  setClearCertificate(false);
-                  setCertificateFile(e.target.files?.[0] ?? null);
-                }}
-              />
-              {certificateFile ? "Cambiar archivo de certificado" : "Seleccionar .p12 / .pfx"}
-            </label>
-            <div className="space-y-2">
-              <label className="block text-xs font-semibold text-slate-700" htmlFor="cert-pass-prof">
-                Contraseña del certificado (.p12 / .pfx)
+                {certificateFile ? "Cambiar archivo" : "Seleccionar .p12 o .pfx"}
               </label>
-              <div className="relative">
-                <input
-                  id="cert-pass-prof"
-                  type={showP12Password ? "text" : "password"}
-                  autoComplete="new-password"
-                className={`w-full rounded border py-2 pl-3 pr-11 text-sm ${
-                  fieldErrors.certificatePassword ? "border-red-400 bg-red-50" : "border-slate-300"
-                }`}
-                  placeholder={
-                    session.company.certificateConfigured
-                      ? "Dejá vacío si no cambiás la contraseña; o completá con la nueva"
-                      : "Obligatoria al subir un archivo nuevo"
-                  }
-                  value={certificatePassword}
-                  onChange={(e) => setCertificatePassword(e.target.value)}
-                />
-                <span className="absolute inset-y-0 right-1 flex items-center">
-                  <EyeToggle
-                    visible={showP12Password}
-                    onToggle={() => setShowP12Password((v) => !v)}
-                    label={showP12Password ? "Ocultar contraseña del certificado" : "Mostrar contraseña del certificado"}
+
+              <Field
+                label="Contraseña del certificado"
+                htmlFor="cert-pass-prof"
+                hint={
+                  session.company.certificateConfigured
+                    ? "Dejá vacío para no cambiarla"
+                    : "Obligatoria al subir un archivo nuevo"
+                }
+              >
+                <div className="relative">
+                  <input
+                    id="cert-pass-prof"
+                    type={showP12Password ? "text" : "password"}
+                    autoComplete="new-password"
+                    className={`${inputCls} pr-10 ${
+                      fieldErrors.certificatePassword ? "border-red-300 focus:border-red-400 focus:ring-red-100" : ""
+                    }`}
+                    value={certificatePassword}
+                    onChange={(e) => setCertificatePassword(e.target.value)}
                   />
-                </span>
+                  <span className="absolute inset-y-0 right-0 flex items-center pr-1 pt-1">
+                    <EyeToggle
+                      visible={showP12Password}
+                      onToggle={() => setShowP12Password((v) => !v)}
+                      label={
+                        showP12Password
+                          ? "Ocultar contraseña del certificado"
+                          : "Mostrar contraseña del certificado"
+                      }
+                    />
+                  </span>
+                </div>
+                {fieldErrors.certificatePassword ? (
+                  <p className="mt-1 text-xs text-red-600">{fieldErrors.certificatePassword}</p>
+                ) : null}
+              </Field>
+
+              <div className="flex flex-wrap gap-4">
+                {certificateFile ? (
+                  <button type="button" onClick={() => cancelPendingCertificate()} className={btnGhost}>
+                    Cancelar archivo nuevo
+                  </button>
+                ) : null}
+                {!certificateFile && session.company.certificateConfigured ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setClearCertificate(true);
+                      cancelPendingCertificate();
+                    }}
+                    className={`${btnGhost} text-red-600 hover:text-red-700`}
+                  >
+                    Quitar certificado guardado
+                  </button>
+                ) : null}
               </div>
-              {fieldErrors.certificatePassword ? (
-                <p className="mt-1 text-xs text-red-700">{fieldErrors.certificatePassword}</p>
+
+              {clearCertificate ? (
+                <p className="text-sm text-amber-800">El certificado se eliminará al guardar los cambios.</p>
               ) : null}
-              <p className="text-[11px] text-slate-500">
-                Esta contraseña se usa para abrir el .p12 y también como clave interna de cifrado de la app.
-              </p>
             </div>
-            {certificateFile ? (
-              <button
-                type="button"
-                onClick={() => cancelPendingCertificate()}
-                className="w-fit text-sm text-slate-600 hover:text-slate-900"
-              >
-                Cancelar nueva carga de certificado
-              </button>
-            ) : null}
-            {!certificateFile && session.company.certificateConfigured ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setClearCertificate(true);
-                  cancelPendingCertificate();
-                }}
-                className="w-fit text-sm font-medium text-red-700 hover:underline"
-              >
-                Quitar certificado guardado
-              </button>
-            ) : null}
-            {clearCertificate ? (
-              <p className="text-xs text-amber-800">
-                Se eliminará el certificado al guardar los cambios.
-              </p>
-            ) : null}
-          </div>
+          </section>
         </div>
 
-        <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-          <div>
-            <p className="text-xs font-semibold uppercase text-slate-500">Nombre de la persona</p>
-            <input
-              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase text-slate-500">Cedula de la persona</p>
-            <input
-              inputMode="numeric"
-              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm font-mono"
-              value={cedula}
-              onChange={(e) => setCedula(formatCedulaInput(e.target.value))}
-              placeholder="001-1234567-8"
-              maxLength={13}
-              required
-            />
-          </div>
-        </div>
-
-        <form onSubmit={onSubmit} className="mt-5 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700">Nombre empresa</label>
-            <input
-              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700">RNC</label>
-            <input
-              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm font-mono"
-              value={rnc}
-              onChange={(e) => setRnc(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700">Dirección</label>
-            <input
-              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              required
-            />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-slate-700">Teléfono</label>
-              <input
-                inputMode="numeric"
-                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                value={phone}
-                onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
-                placeholder="xxx-xxx-xxxx"
-                maxLength={12}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700">Correo</label>
-              <input
-                type="email"
-                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700">Régimen</label>
-            <input
-              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-              value={regime}
-              onChange={(e) => setRegime(e.target.value)}
-            />
-          </div>
-
-          {error && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-          {success && (
-            <p className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-              {success}
-            </p>
-          )}
-          {testResult && (
-            <p className="rounded border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-700">
-              {testResult}
-            </p>
-          )}
-          {dgiiToken && (
-            <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 space-y-1">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold shrink-0">Token DGII:</span>
-                <button
-                  type="button"
-                  onClick={() => void navigator.clipboard.writeText(dgiiToken)}
-                  className="shrink-0 rounded bg-amber-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-amber-700"
-                >
-                  Copiar
-                </button>
-              </div>
-              <pre className="whitespace-pre-wrap break-all font-mono text-[11px] max-h-32 overflow-y-auto">
-                {dgiiToken}
-              </pre>
-            </div>
-          )}
-          {certTest && (
-            <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 space-y-1">
-              <p><span className="font-semibold">Owner:</span> {certTest.subject}</p>
-              <p><span className="font-semibold">Issuer:</span> {certTest.issuer}</p>
-              <p><span className="font-semibold">Valid until:</span> {new Date(certTest.validUntil).toLocaleString()}</p>
-              <p>
-                <span className="font-semibold">Chain status:</span>{" "}
-                {certTest.chainCount} cert(s) · key {certTest.privateKey ? "OK" : "missing"} · signature{" "}
-                {certTest.signatureTestPassed ? "OK" : "failed"} · {certTest.validNow ? "vigente" : "vencido/no vigente"}
-              </p>
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={() => void runDgiiTest()}
-            disabled={testingDgii || loading}
-            className="mr-2 rounded bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
-          >
-            {testingDgii ? "Probando..." : "Test DGII Signature"}
-          </button>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
-          >
-            {loading ? "Guardando..." : "Guardar cambios"}
-          </button>
-        </form>
-      </div>
-    </div>
+        <p className="pb-2 text-center text-xs text-slate-400 sm:text-left">
+          Los cambios en logo, certificado y datos del emisor se aplican al guardar.
+        </p>
+      </form>
+    </PageShell>
   );
 }

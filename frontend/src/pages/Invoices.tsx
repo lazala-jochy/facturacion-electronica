@@ -83,6 +83,8 @@ export default function Invoices() {
   const [textFilter, setTextFilter] = useState("");
   const [minAmount, setMinAmount] = useState("");
   const [maxAmount, setMaxAmount] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   useEffect(() => {
     const run = async () => {
@@ -134,6 +136,28 @@ export default function Invoices() {
       return true;
     });
   }, [allMovements, yearFilter, monthFilter, typeFilter, textFilter, minAmount, maxAmount]);
+
+  const sortedFiltered = useMemo(
+    () =>
+      [...filtered].sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+      ),
+    [filtered],
+  );
+
+  const totalPages = Math.max(1, Math.ceil(sortedFiltered.length / pageSize));
+  const pageRows = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return sortedFiltered.slice(start, start + pageSize);
+  }, [sortedFiltered, page, pageSize]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [yearFilter, monthFilter, typeFilter, textFilter, minAmount, maxAmount, pageSize]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   const totals = useMemo(() => {
     const ingresos = filtered
@@ -342,6 +366,17 @@ export default function Invoices() {
             value={maxAmount}
             onChange={(e) => setMaxAmount(e.target.value)}
           />
+          <select
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+            value={pageSize}
+            onChange={(e) => setPageSize(Number(e.target.value))}
+            aria-label="Registros por página"
+          >
+            <option value={5}>5</option>
+            <option value={10}>10</option>
+            <option value={20}>20</option>
+            <option value={50}>50</option>
+          </select>
         </div>
 
         {loading ? (
@@ -350,52 +385,80 @@ export default function Invoices() {
           <p className="mt-5 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
             {error}
           </p>
-        ) : filtered.length === 0 ? (
+        ) : sortedFiltered.length === 0 ? (
           <p className="mt-5 text-sm text-slate-600">
             No hay movimientos para los filtros seleccionados.
           </p>
         ) : (
-          <div className="mt-5 overflow-x-auto border border-slate-200 rounded-lg">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-slate-600">
-                <tr>
-                  <th className="px-3 py-2 text-left">Fecha</th>
-                  <th className="px-3 py-2 text-left">Descripción</th>
-                  <th className="px-3 py-2 text-left">Referencia</th>
-                  <th className="px-3 py-2 text-left">Tipo</th>
-                  <th className="px-3 py-2 text-right">Monto</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((m) => (
-                  <tr key={m.id} className="border-t border-slate-100 transition-colors duration-150 hover:bg-slate-50">
-                    <td className="px-3 py-2 text-slate-700">
-                      {new Date(m.date).toLocaleDateString("es-DO")}
-                    </td>
-                    <td className="px-3 py-2 text-slate-900">{m.description}</td>
-                    <td className="px-3 py-2 font-mono text-slate-700">{m.reference}</td>
-                    <td className="px-3 py-2">
-                      <span
-                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                          m.type === "ingreso"
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-rose-100 text-rose-700"
+          <div className="mt-5 overflow-hidden rounded-lg border border-slate-200">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-100 text-slate-600">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Fecha</th>
+                    <th className="px-3 py-2 text-left">Descripción</th>
+                    <th className="px-3 py-2 text-left">Referencia</th>
+                    <th className="px-3 py-2 text-left">Tipo</th>
+                    <th className="px-3 py-2 text-right">Monto</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {pageRows.map((m) => (
+                    <tr key={m.id} className="transition-colors duration-150 hover:bg-slate-50">
+                      <td className="px-3 py-2 text-slate-700">
+                        {new Date(m.date).toLocaleDateString("es-DO")}
+                      </td>
+                      <td className="px-3 py-2 text-slate-900">{m.description}</td>
+                      <td className="px-3 py-2 font-mono text-slate-700">{m.reference}</td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                            m.type === "ingreso"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-rose-100 text-rose-700"
+                          }`}
+                        >
+                          {m.type}
+                        </span>
+                      </td>
+                      <td
+                        className={`px-3 py-2 text-right font-semibold ${
+                          m.type === "ingreso" ? "text-emerald-700" : "text-rose-700"
                         }`}
                       >
-                        {m.type}
-                      </span>
-                    </td>
-                    <td
-                      className={`px-3 py-2 text-right font-semibold ${
-                        m.type === "ingreso" ? "text-emerald-700" : "text-rose-700"
-                      }`}
-                    >
-                      {money(m.amount)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                        {money(m.amount)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex flex-col gap-2 border-t border-slate-100 px-4 py-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+              <span>
+                Mostrando {pageRows.length} de {sortedFiltered.length} movimientos
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="rounded border border-slate-300 px-2.5 py-1 disabled:opacity-50"
+                >
+                  Anterior
+                </button>
+                <span>
+                  Pagina {page} de {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="rounded border border-slate-300 px-2.5 py-1 disabled:opacity-50"
+                >
+                  Siguiente
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

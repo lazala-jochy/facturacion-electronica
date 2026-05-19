@@ -42,6 +42,23 @@ ipcMain.handle("ecf-pick-parent-folder", async (event) => {
   return result.filePaths[0];
 });
 
+/** Excel del set DGII — Pruebas de datos e-CF. */
+ipcMain.handle("ecf-pick-excel-file", async (event) => {
+  const parentWindow = BrowserWindow.fromWebContents(event.sender);
+  const options: OpenDialogOptions = {
+    title: "Elegir Excel de pruebas e-CF (DGII)",
+    defaultPath: app.getPath("downloads"),
+    properties: ["openFile"],
+    filters: [{ name: "Excel", extensions: ["xlsx", "xls"] }],
+  };
+  const result = parentWindow
+    ? await dialog.showOpenDialog(parentWindow, options)
+    : await dialog.showOpenDialog(options);
+  if (result.canceled || !result.filePaths.length) return null;
+  const filePath = result.filePaths[0];
+  return { path: filePath, name: path.basename(filePath) };
+});
+
 /** Excel del set DGII — Aprobaciones comerciales (ACECF). */
 ipcMain.handle("acecf-pick-excel-file", async (event) => {
   const parentWindow = BrowserWindow.fromWebContents(event.sender);

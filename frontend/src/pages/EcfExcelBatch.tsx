@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { AuthCompany } from "../types/session";
 import { ApiError, apiUrl } from "../services/api";
@@ -17,6 +17,7 @@ import {
   type PortalConsumoMenor250ExportResponse,
 } from "../services/portalConsumoMenor250";
 import DgiiEcfUrlsPanel from "../components/DgiiEcfUrlsPanel";
+import EcfExcelSelector, { type EcfExcelSelection } from "../components/EcfExcelSelector";
 
 export default function EcfExcelBatch({
   company,
@@ -43,6 +44,8 @@ export default function EcfExcelBatch({
   const [portalExportError, setPortalExportError] = useState("");
   const [portalExportResult, setPortalExportResult] =
     useState<PortalConsumoMenor250ExportResponse | null>(null);
+  const [excelSelection, setExcelSelection] = useState<EcfExcelSelection | undefined>();
+  const [excelFile, setExcelFile] = useState<File | null>(null);
 
   const electron = window.electronAPI;
   const canUseFolderPicker = !!electron?.pickOutputParentFolder;
@@ -59,10 +62,8 @@ export default function EcfExcelBatch({
     void api.getDesktopParentPath().then(setDesktopPreview);
   }, []);
 
-  const hintSubtitle = useMemo(
-    () =>
-      'Se usa el primer .xlsx de la carpeta de prueba del instalador/assets (hojas "eCF" y opcional "rFCE"). La firma usa el certificado guardado en Perfil de empresa.',
-    [],
+  const hasExcelSelected = Boolean(
+    excelSelection?.filePath?.trim() || excelFile || excelSelection?.fileName,
   );
 
   const testStatusLabel = (status?: string) => {
@@ -132,6 +133,10 @@ export default function EcfExcelBatch({
   };
 
   const runBatch = async () => {
+    if (!excelSelection?.filePath?.trim() && !excelFile) {
+      setError("Elegí el Excel de pruebas e-CF antes de generar.");
+      return;
+    }
     setLoading(true);
     setError("");
     setResult(null);
@@ -145,6 +150,8 @@ export default function EcfExcelBatch({
       }
       const data = await runEcfExcelBatchFromApp({
         desktop_parent_dir,
+        excel_path: excelSelection?.filePath,
+        excel_file: excelFile ?? undefined,
       });
       setResult(data);
     } catch (e) {
@@ -230,12 +237,7 @@ export default function EcfExcelBatch({
   };
 
   return (
-    <div className="space-y-6">
-      <header>
-        <h2 className="text-lg font-semibold text-slate-900 sm:text-xl">Pruebas de Datos e-CF (Excel)</h2>
-        <p className="mt-2 text-sm text-slate-600">{hintSubtitle}</p>
-      </header>
-
+    <div className="space-y-4 sm:space-y-6">
       {!company.certificateConfigured && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 space-y-2">
           <p>
@@ -252,6 +254,18 @@ export default function EcfExcelBatch({
       )}
 
       <DgiiEcfUrlsPanel company={company} onCompanyUpdated={onCompanyUpdated} />
+
+      <EcfExcelSelector
+        selection={excelSelection}
+        onSelect={(excel, file) => {
+          setExcelSelection(excel);
+          setExcelFile(file ?? null);
+        }}
+        onClear={() => {
+          setExcelSelection(undefined);
+          setExcelFile(null);
+        }}
+      />
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm space-y-4">
         <div className="space-y-2">
@@ -306,11 +320,14 @@ export default function EcfExcelBatch({
         <button
           type="button"
           onClick={() => void runBatch()}
-          disabled={loading}
+          disabled={loading || !hasExcelSelected}
           className="w-full sm:w-auto rounded-lg bg-[#15803d] text-white px-5 py-2.5 text-sm font-medium shadow hover:bg-[#166534] disabled:opacity-60 transition"
         >
           {loading ? "Generando…" : "Generar en el Escritorio"}
         </button>
+        {!hasExcelSelected && (
+          <p className="text-xs text-amber-800">Seleccioná el Excel arriba para habilitar la generación.</p>
+        )}
 
         <div className="rounded-lg border border-blue-200 bg-blue-50/80 p-4 space-y-3">
           <p className="text-sm font-medium text-blue-950">

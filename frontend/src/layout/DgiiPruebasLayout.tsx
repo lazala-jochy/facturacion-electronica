@@ -1,46 +1,52 @@
-import { Outlet, Link, useLocation } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
+import type { AuthCompany } from "../types/session";
 import DgiiPruebaTypeSelect from "../components/DgiiPruebaTypeSelect";
+import PageHeaderCard from "../components/PageHeaderCard";
+import PageShell from "../components/PageShell";
 import { DGII_PRUEBAS_BASE, findDgiiPruebaByPath } from "../config/dgiiPruebas";
 
-export default function DgiiPruebasLayout() {
+export default function DgiiPruebasLayout({ company }: { company: AuthCompany }) {
   const { pathname } = useLocation();
   const isHub = pathname === DGII_PRUEBAS_BASE || pathname === `${DGII_PRUEBAS_BASE}/`;
   const active = findDgiiPruebaByPath(pathname);
 
+  const title = isHub ? "Pruebas DGII" : (active?.label ?? "Pruebas DGII");
+  const description = isHub
+    ? "Certificación CerteCF: elegí el paso (Excel e-CF, aprobaciones comerciales o simulación) y seguí el flujo oficial de la DGII."
+    : active?.description;
+
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-4">
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="min-w-0 flex-1">
-            <Link
-              to={DGII_PRUEBAS_BASE}
-              className="text-xs font-medium text-[#0b57d0] hover:underline"
-            >
-              ← Todas las pruebas
-            </Link>
-            <h1 className="mt-1 text-lg font-semibold text-slate-900 sm:text-xl">
-              CerteCF — Pruebas de datos
-            </h1>
-            {!isHub && active && (
-              <p className="mt-0.5 text-xs font-medium text-slate-500">
-                {active.paso} · {active.label}
-              </p>
-            )}
-          </div>
-          {!isHub && (
-            <div className="w-full lg:max-w-sm shrink-0">
+    <PageShell>
+      <PageHeaderCard
+        title={title}
+        description={description}
+        company={{ name: company.name, rnc: company.rnc }}
+        backLink={
+          isHub
+            ? undefined
+            : { to: DGII_PRUEBAS_BASE, label: "← Todas las pruebas" }
+        }
+      >
+        {!isHub ? (
+          <div className="mt-4 border-t border-slate-100 pt-4 space-y-3">
+            {active ? (
+              <p className="text-xs font-medium text-slate-500">{active.paso}</p>
+            ) : null}
+            <div className="max-w-md">
               <DgiiPruebaTypeSelect compact />
             </div>
-          )}
-        </div>
-        {!isHub && (
-          <p className="mt-3 text-xs text-slate-500 border-t border-slate-100 pt-3">
-            Cambiar el tipo de prueba no afecta el progreso de la otra modalidad.
-          </p>
+            <p className="text-xs text-slate-500">
+              Cambiar el tipo de prueba no afecta el progreso de la otra modalidad.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-4 border-t border-slate-100 pt-4 max-w-md">
+            <DgiiPruebaTypeSelect />
+          </div>
         )}
-      </div>
+      </PageHeaderCard>
 
       <Outlet />
-    </div>
+    </PageShell>
   );
 }

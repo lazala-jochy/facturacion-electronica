@@ -221,17 +221,7 @@ export default function DgiiAprobacionesComerciales({
   };
 
   return (
-    <div className="space-y-6">
-      <header>
-        <h2 className="text-lg font-semibold text-slate-900 sm:text-xl">
-          Paso 3 — Prueba de Datos: Aprobaciones o Rechazos Comerciales
-        </h2>
-        <p className="mt-2 text-sm leading-relaxed text-slate-600">
-          Generá XML en formato <strong>ACECF</strong> (documentación DGII e-CF) por cada e-CF enviado en el paso
-          anterior, firmalos y remitilos al servicio de Impuestos Internos para validar la correcta generación.
-        </p>
-      </header>
-
+    <div className="space-y-4 sm:space-y-6">
       <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-4 sm:p-5 text-sm text-blue-950 space-y-3">
         <h3 className="font-semibold">Flujo oficial DGII (resumen)</h3>
         <ol className="list-decimal ml-5 space-y-2 leading-relaxed">
