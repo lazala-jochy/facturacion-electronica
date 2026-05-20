@@ -31,11 +31,20 @@ function collectMensajesValores(root: Record<string, unknown>): string[] {
   return out;
 }
 
-/** Texto corto para mostrar en listas / toasts (no sustituye el JSON completo en detalle). */
+/** Mensaje legible completo (sin truncar) para modales / copiar. */
+export function formatDgiiResponseFullMessage(raw: string | null | undefined): string {
+  return buildDgiiDisplayText(raw, 0);
+}
+
+/** Texto corto para mostrar en listas / toasts (no sustituye el mensaje completo en detalle). */
 export function summarizeDgiiResponse(
   raw: string | null | undefined,
   maxLen = 420,
 ): string {
+  return buildDgiiDisplayText(raw, maxLen);
+}
+
+function buildDgiiDisplayText(raw: string | null | undefined, maxLen: number): string {
   if (!raw?.trim()) return "";
   if (isInconclusiveDgiiReceptionBody(raw)) {
     return "Comprobante recibido por DGII; consultando estado final por Track ID.";
@@ -45,21 +54,26 @@ export function summarizeDgiiResponse(
     const o = j as Record<string, unknown>;
     const fromArr = collectMensajesValores(o);
     if (fromArr.length) {
-      const s = fromArr.join(" · ");
-      return s.length <= maxLen ? s : `${s.slice(0, maxLen - 1)}…`;
+      const s = maxLen > 0 ? fromArr.join(" · ") : fromArr.join("\n\n");
+      return truncateDisplayText(s, maxLen);
     }
     const bits: string[] = [];
-    for (const k of ["estado", "Estado", "error", "mensaje"]) {
+    for (const k of ["estado", "Estado", "error", "mensaje", "detalle", "Detalle"]) {
       const v = o[k];
       if (typeof v === "string" && v.trim()) bits.push(v.trim());
     }
     if (bits.length) {
-      const s = bits.join(" — ");
-      return s.length <= maxLen ? s : `${s.slice(0, maxLen - 1)}…`;
+      const s = maxLen > 0 ? bits.join(" — ") : bits.join("\n");
+      return truncateDisplayText(s, maxLen);
     }
   }
   const one = raw.replace(/\s+/g, " ").trim();
-  return one.length <= maxLen ? one : `${one.slice(0, maxLen - 1)}…`;
+  return truncateDisplayText(one, maxLen);
+}
+
+function truncateDisplayText(text: string, maxLen: number): string {
+  if (maxLen <= 0 || text.length <= maxLen) return text;
+  return `${text.slice(0, maxLen - 1)}…`;
 }
 
 /** e-NCF y correlativo devueltos por DGII en el JSON de recepción (campo `encf`). */

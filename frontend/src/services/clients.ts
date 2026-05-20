@@ -29,6 +29,7 @@ export type ClientListItem = {
     dgii_track_id?: string | null;
     dgii_submitted_at?: string | null;
     dgii_rejection_summary?: string | null;
+    dgii_rejection_full?: string | null;
     dgii_resubmit_new_seq?: boolean;
     created_at: string;
   }>;

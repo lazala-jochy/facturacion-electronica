@@ -7,6 +7,7 @@ import { execFileSync } from "child_process";
 import path from "path";
 import { buildRouter } from "./routes";
 import { prisma } from "./prisma";
+import { startDgiiSubmitRetryWorker } from "./services/dgiiSubmitQueue.service";
 
 const PORT = Number(process.env.PORT ?? 3001);
 
@@ -66,9 +67,15 @@ const bootstrap = async () => {
     },
   );
 
+  const stopDgiiRetryWorker = startDgiiSubmitRetryWorker(uploadsRoot);
+
   app.listen(PORT, () => {
     console.log(`Backend listening on http://localhost:${PORT}`);
+    console.log("Worker de reintento DGII activo (DGII_SUBMIT_RETRY_WORKER=false para desactivar).");
   });
+
+  process.on("SIGTERM", () => stopDgiiRetryWorker());
+  process.on("SIGINT", () => stopDgiiRetryWorker());
 };
 
 bootstrap();

@@ -11,10 +11,13 @@ import {
   signEcfXmlLocal,
   submitConsumoMenor250Rfce,
   submitEcf,
+  retryQueuedDgiiSubmit,
   type CotizacionDetail,
 } from "../services/cotizaciones";
 import { ecfTipoDisplayLabel, isConsumoMenor250Rfce } from "../config/ecfTipos";
 import { formatEcfNumberDisplay } from "../utils/ecfNumber";
+import DgiiResponseModal, { type DgiiResponseModalPayload } from "../components/DgiiResponseModal";
+import DgiiRejectionHint from "../components/DgiiRejectionHint";
 
 // Helper para formatear moneda
 const formatCurrency = (value: number) => {
@@ -40,6 +43,9 @@ const dgiiStatusLabel = (status?: string | null) => {
   if (status === "accepted") return "Aceptado";
   if (status === "rejected") return "Rechazado";
   if (status === "pending") return "Pendiente";
+  if (status === "submit_queued") return "Cola DGII";
+  if (status === "submitting") return "Enviando…";
+  if (status === "submit_failed") return "Envío fallido";
   return status;
 };
 
@@ -48,6 +54,8 @@ const dgiiStatusClass = (status?: string | null) => {
   if (status === "rejected") return "bg-red-100 text-red-800";
   if (status === "prepared") return "bg-amber-100 text-amber-900";
   if (status === "pending") return "bg-sky-100 text-sky-900";
+  if (status === "submit_queued" || status === "submitting") return "bg-violet-100 text-violet-900";
+  if (status === "submit_failed") return "bg-orange-100 text-orange-900";
   return "bg-slate-100 text-slate-700";
 };
 
@@ -60,8 +68,15 @@ type CotDgiiSendRow = {
 const canResubmitToDgiiWithoutEdit = (cot: CotDgiiSendRow | undefined | null): boolean => {
   const status = cot?.dgii_status?.trim() ?? "";
   if (status === "accepted" || status === "pending") return false;
+  if (status === "submit_queued" || status === "submitting") return false;
+  if (status === "submit_failed") return true;
   if (status === "rejected") return cot?.dgii_resubmit_new_seq === true;
   return true;
+};
+
+const isDgiiSubmitQueued = (status?: string | null) => {
+  const s = status?.trim() ?? "";
+  return s === "submit_queued" || s === "submitting";
 };
 
 const dgiiResubmitBlockedMessage =
@@ -208,6 +223,7 @@ export default function Clients() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
   const [detail, setDetail] = useState<CotizacionDetail | null>(null);
+  const [dgiiResponseModal, setDgiiResponseModal] = useState<DgiiResponseModalPayload | null>(null);
   const [crudMessage, setCrudMessage] = useState("");
   const [crudError, setCrudError] = useState("");
   const [downloadingIntegraId, setDownloadingIntegraId] = useState<number | null>(null);
@@ -508,7 +524,9 @@ export default function Clients() {
           ? "El envío está pendiente en DGII. Consultá el estado antes de volver a enviar."
           : cotRow?.dgii_status === "accepted"
             ? "Este comprobante ya fue aceptado por DGII."
-            : dgiiResubmitBlockedMessage,
+            : isDgiiSubmitQueued(cotRow?.dgii_status)
+              ? "El comprobante está en cola de envío automático. Usá «Reintentar envío» o esperá unos minutos."
+              : dgiiResubmitBlockedMessage,
       );
       return;
     }
@@ -567,6 +585,11 @@ export default function Clients() {
               detail || "El estado final aún se está procesando."
             } Volvé a enviar o consultá el estado en unos segundos si sigue pendiente.`.trim(),
           );
+        } else if (out.status === "submit_queued" || out.queued) {
+          setEcfSuccess("");
+          setEcfWarning(
+            `DGII no está disponible. El comprobante quedó firmado y en cola (intento ${out.dgii_submit_retry_count ?? 1}). Se reenviará automáticamente sin perder la operación.`,
+          );
         } else if (out.status === "rejected") {
           setEcfSuccess("");
           if (out.dgii_resubmit_new_seq === true) {
@@ -610,6 +633,54 @@ export default function Clients() {
     }
   };
 
+  const handleRetryQueuedDgiiSubmit = async (cotizacionId: number) => {
+    if (!isOnline) {
+      setEcfError("Debes conectarte a internet para reintentar el envío a DGII.");
+      return;
+    }
+    const encForSend =
+      ecfEncryptionSecret.trim() || company?.certificate_keyphrase?.trim() || "";
+    if (company?.certificateConfigured && encForSend.length < 8) {
+      setEcfError(
+        "No hay clave de cifrado del certificado. Guardala en Perfil de empresa (mín. 8 caracteres) o ingresala abajo.",
+      );
+      return;
+    }
+    setSendingEcfId(cotizacionId);
+    setEcfError("");
+    setEcfSuccess("");
+    setEcfWarning("");
+    try {
+      const out = await retryQueuedDgiiSubmit(cotizacionId, {
+        certificateEncryptionSecret:
+          company?.certificateConfigured && encForSend.length >= 8 ? encForSend : undefined,
+        dgiiCertProfile: isDgiiCertification ? dgiiCertProfile : "paso2",
+      });
+      const detail =
+        out.dgii_status_summary?.trim() || out.dgii_rejection_summary?.trim() || "";
+      if (out.status === "accepted") {
+        setEcfWarning("");
+        setEcfSuccess(`e-CF aceptado por DGII (Track ID: ${out.track_id}).${detail ? ` ${detail}` : ""}`.trim());
+      } else if (out.status === "pending") {
+        setEcfSuccess("");
+        setEcfWarning(`DGII recibió el comprobante (Track ID: ${out.track_id}). ${detail || "Estado pendiente."}`);
+      } else if (out.status === "submit_queued" || out.queued) {
+        setEcfWarning(
+          `DGII sigue sin responder. Reintento ${out.dgii_submit_retry_count ?? "?"} programado automáticamente.`,
+        );
+      } else if (out.status === "rejected") {
+        setEcfWarning(`DGII rechazó el comprobante. ${detail}`.trim());
+      } else {
+        setEcfSuccess(out.message);
+      }
+      await refreshClients();
+    } catch (error) {
+      setEcfError(error instanceof Error ? error.message : "No se pudo reintentar el envío.");
+    } finally {
+      setSendingEcfId(null);
+    }
+  };
+
   const handleSubmitCertAndResend = async () => {
     const id = ecfNeedCertForId;
     if (id === null || !modalCertFile) {
@@ -637,7 +708,9 @@ export default function Clients() {
           ? "El envío está pendiente en DGII. Consultá el estado antes de volver a enviar."
           : cotRow?.dgii_status === "accepted"
             ? "Este comprobante ya fue aceptado por DGII."
-            : dgiiResubmitBlockedMessage,
+            : isDgiiSubmitQueued(cotRow?.dgii_status)
+              ? "El comprobante está en cola de envío automático. Usá «Reintentar envío» o esperá unos minutos."
+              : dgiiResubmitBlockedMessage,
       );
       return;
     }
@@ -1060,7 +1133,10 @@ export default function Clients() {
                       rowIndex > 0 && pageRows[rowIndex - 1].client.id === client.id;
                     const dgiiStatus = cot?.dgii_status;
                     const seqResubmit = cot?.dgii_resubmit_new_seq === true;
-                    const dgiiSendLocked = !canResubmitToDgiiWithoutEdit(cot);
+                    const queueRetry =
+                      cot != null &&
+                      (isDgiiSubmitQueued(dgiiStatus) || dgiiStatus === "submit_failed");
+                    const dgiiSendLocked = !canResubmitToDgiiWithoutEdit(cot) && !queueRetry;
                     const isRfceRow =
                       cot != null && isConsumoMenor250Rfce(cot.ecf_tipo, cot.total);
 
@@ -1076,7 +1152,11 @@ export default function Clients() {
                             : "Enviando..."
                           : rfceIntegraReady
                             ? "Descargar íntegro"
-                            : dgiiSendLocked
+                            : queueRetry
+                              ? sendingEcfId === cot.id
+                                ? "Reintentando…"
+                                : "Reintentar envío"
+                              : dgiiSendLocked
                               ? dgiiStatus === "accepted"
                                 ? "Enviado"
                                 : dgiiStatus === "pending"
@@ -1099,7 +1179,9 @@ export default function Clients() {
                               ? "RFCE pendiente en DGII"
                               : "Estado RFCE en DGII"
                             : "Genera el par RFCE+e-CF íntegro, envía el RFCE a DGII y guarda el XML para el portal <250Mil."
-                        : dgiiSendLocked
+                        : queueRetry
+                          ? "Reenviar el mismo XML firmado a DGII (cola automática activa si sigue caído)"
+                          : dgiiSendLocked
                           ? dgiiStatus === "accepted"
                             ? "Comprobante aceptado por DGII"
                             : dgiiStatus === "pending"
@@ -1111,6 +1193,8 @@ export default function Clients() {
 
                     const dgiiSendBtnClass = rfceIntegraReady
                       ? "border-emerald-500 bg-emerald-600 text-white hover:bg-emerald-700"
+                      : queueRetry
+                        ? "border-violet-400 text-violet-900 bg-violet-50 hover:bg-violet-100"
                       : dgiiSendLocked
                       ? dgiiStatus === "accepted"
                         ? "border-emerald-200 text-emerald-700 bg-emerald-50"
@@ -1212,7 +1296,11 @@ export default function Clients() {
                           {cot ? (
                             <div className="flex flex-col items-center gap-1">
                               <button
-                                onClick={() => void handleRfcePrimaryAction(cot.id)}
+                                onClick={() =>
+                                  void (queueRetry && !isRfceRow
+                                    ? handleRetryQueuedDgiiSubmit(cot.id)
+                                    : handleRfcePrimaryAction(cot.id))
+                                }
                                 disabled={
                                   sendingEcfId === cot.id ||
                                   downloadingIntegraId === cot.id ||
@@ -1234,16 +1322,17 @@ export default function Clients() {
                                   RFCE aceptado. Descargá el íntegro y subilo a CerteCF.
                                 </p>
                               ) : null}
-                              {dgiiStatus === "rejected" &&
-                                typeof cot.dgii_rejection_summary === "string" &&
-                                cot.dgii_rejection_summary.trim().length > 0 && (
-                                  <p
-                                    className="max-w-[13rem] text-left text-[10px] leading-snug text-amber-950 line-clamp-3"
-                                    title={cot.dgii_rejection_summary}
-                                  >
-                                    {cot.dgii_rejection_summary}
-                                  </p>
-                                )}
+                              {dgiiStatus === "rejected" ? (
+                                <DgiiRejectionHint
+                                  status={dgiiStatus}
+                                  summary={cot.dgii_rejection_summary}
+                                  fullMessage={cot.dgii_rejection_full}
+                                  trackId={cot.dgii_track_id}
+                                  cotNumber={cot.number}
+                                  onViewFull={setDgiiResponseModal}
+                                  className="max-w-[13rem] text-left"
+                                />
+                              ) : null}
                             </div>
                           ) : (
                             <span className="text-gray-400">-</span>
@@ -1511,16 +1600,17 @@ export default function Clients() {
                             </button>
                           ) : null}
                         </div>
-                          {dgiiStatus === "rejected" &&
-                            typeof cot.dgii_rejection_summary === "string" &&
-                            cot.dgii_rejection_summary.trim().length > 0 && (
-                              <p
-                                className="mt-1 max-w-[min(100%,300px)] text-xs leading-snug text-amber-950"
-                                title={cot.dgii_rejection_summary}
-                              >
-                                {cot.dgii_rejection_summary}
-                              </p>
-                            )}
+                          {dgiiStatus === "rejected" ? (
+                            <DgiiRejectionHint
+                              status={dgiiStatus}
+                              summary={cot.dgii_rejection_summary}
+                              fullMessage={cot.dgii_rejection_full}
+                              trackId={cot.dgii_track_id}
+                              cotNumber={cot.number}
+                              onViewFull={setDgiiResponseModal}
+                              className="mt-1 max-w-[min(100%,300px)]"
+                            />
+                          ) : null}
                       </>
                       ) : null}
                     </div>
@@ -1733,9 +1823,32 @@ export default function Clients() {
                   <div className="rounded-lg border border-amber-200 bg-amber-50/80 p-3 text-sm">
                     <p className="font-semibold text-amber-950">Último rechazo DGII</p>
                     {detail.dgii_rejection_summary?.trim() ? (
-                      <p className="mt-1 text-amber-950">{detail.dgii_rejection_summary}</p>
+                      <p className="mt-1 line-clamp-4 text-amber-950">{detail.dgii_rejection_summary}</p>
                     ) : (
-                      <p className="mt-1 text-amber-900 text-xs">Sin resumen interpretable; revisá el JSON en «Respuesta técnica».</p>
+                      <p className="mt-1 text-amber-900 text-xs">Sin resumen interpretable.</p>
+                    )}
+                    {(detail.dgii_rejection_full?.trim() ||
+                      detail.dgii_response?.trim() ||
+                      detail.dgii_rejection_summary?.trim()) && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDgiiResponseModal({
+                            title: `Respuesta DGII · cotización #${detail.number}`,
+                            status: detail.dgii_status,
+                            trackId: detail.dgii_track_id,
+                            summary: detail.dgii_rejection_summary,
+                            fullMessage:
+                              detail.dgii_rejection_full?.trim() ||
+                              detail.dgii_rejection_summary?.trim() ||
+                              null,
+                            rawResponse: detail.dgii_response,
+                          })
+                        }
+                        className="mt-2 text-xs font-semibold text-[#0b57d0] hover:underline"
+                      >
+                        Ver mensaje completo
+                      </button>
                     )}
                     {detail.dgii_resubmit_new_seq === true ? (
                       <p className="mt-2 text-xs text-amber-900">
@@ -1747,16 +1860,6 @@ export default function Clients() {
                         No es rechazo por secuencia: el mismo e-NCF se mantiene. Corregí la cotización y usá «Enviar DGII».
                       </p>
                     )}
-                    {detail.dgii_response?.trim() ? (
-                      <details className="mt-2">
-                        <summary className="cursor-pointer text-xs font-medium text-slate-700">
-                          Respuesta técnica (JSON)
-                        </summary>
-                        <pre className="mt-2 max-h-40 overflow-auto rounded bg-white p-2 text-[11px] text-slate-800 border border-slate-200">
-                          {detail.dgii_response}
-                        </pre>
-                      </details>
-                    ) : null}
                   </div>
                 )}
                 <div className="flex flex-wrap gap-2">
@@ -2113,6 +2216,12 @@ export default function Clients() {
           </div>
         </div>
       ) : null}
+
+      <DgiiResponseModal
+        open={dgiiResponseModal != null}
+        payload={dgiiResponseModal}
+        onClose={() => setDgiiResponseModal(null)}
+      />
     </div>
   );
 }

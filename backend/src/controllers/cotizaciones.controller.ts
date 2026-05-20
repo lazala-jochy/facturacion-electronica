@@ -17,8 +17,13 @@ import {
 import { ensureRepresentacionImpresaPdfForCotizacion } from "../services/ecfRepresentacionImpresa.service";
 import { companyHasCertificateRecord } from "../utils/companyCertificateStorage";
 import { parseDgiiCertProfile } from "../types/dgiiCertProfile";
-import { isDgiiSequenceRejection, summarizeDgiiResponse } from "../utils/dgiiRejection";
+import {
+  formatDgiiResponseFullMessage,
+  isDgiiSequenceRejection,
+  summarizeDgiiResponse,
+} from "../utils/dgiiRejection";
 import { buildEcfNumber } from "../utils/ecfTipo";
+import { retryQueuedCotizacionSubmit } from "../services/dgiiSubmitQueue.service";
 
 const stripTenantFromBody = (body: Record<string, unknown>) => {
   delete body.company_id;
@@ -74,9 +79,16 @@ const serializeCotizacion = (
   dgii_response: c.dgiiResponse,
   signed_xml: c.signedXml,
   dgii_submitted_at: c.dgiiSubmittedAt?.toISOString() ?? null,
+  dgii_submit_retry_count: c.dgiiSubmitRetryCount ?? 0,
+  dgii_submit_next_retry_at: c.dgiiSubmitNextRetryAt?.toISOString() ?? null,
+  dgii_submit_last_error: c.dgiiSubmitLastError ?? null,
   dgii_rejection_summary:
     c.dgiiStatus === "rejected" && c.dgiiResponse?.trim()
       ? summarizeDgiiResponse(c.dgiiResponse)
+      : null,
+  dgii_rejection_full:
+    c.dgiiStatus === "rejected" && c.dgiiResponse?.trim()
+      ? formatDgiiResponseFullMessage(c.dgiiResponse)
       : null,
   dgii_resubmit_new_seq:
     c.dgiiStatus === "rejected" && c.dgiiResponse?.trim()
@@ -265,9 +277,16 @@ export const listCotizaciones: RequestHandler = async (req, res) => {
       dgii_status: c.dgiiStatus,
       dgii_track_id: c.dgiiTrackId,
       dgii_submitted_at: c.dgiiSubmittedAt?.toISOString() ?? null,
+      dgii_submit_retry_count: c.dgiiSubmitRetryCount ?? 0,
+      dgii_submit_next_retry_at: c.dgiiSubmitNextRetryAt?.toISOString() ?? null,
+      dgii_submit_last_error: c.dgiiSubmitLastError ?? null,
       dgii_rejection_summary:
         c.dgiiStatus === "rejected" && c.dgiiResponse?.trim()
           ? summarizeDgiiResponse(c.dgiiResponse)
+          : null,
+      dgii_rejection_full:
+        c.dgiiStatus === "rejected" && c.dgiiResponse?.trim()
+          ? formatDgiiResponseFullMessage(c.dgiiResponse)
           : null,
       dgii_resubmit_new_seq:
         c.dgiiStatus === "rejected" && c.dgiiResponse?.trim()
@@ -849,6 +868,21 @@ export const submitEcfByCotizacion: RequestHandler = async (req, res) => {
 
     const dgiiStatusSummary = summarizeDgiiResponse(out.dgiiResponse.rawResponse);
 
+    if (out.submitQueued) {
+      res.status(202).json({
+        message:
+          "DGII no está disponible en este momento. El comprobante quedó firmado y en cola; se reenviará automáticamente sin perder la operación.",
+        status: out.dgiiResponse.status,
+        queued: true,
+        track_id: out.dgiiResponse.trackId,
+        accepted: false,
+        dgii_response: out.dgiiResponse.rawResponse,
+        dgii_submit_retry_count: out.dgiiSubmitRetryCount,
+        dgii_submit_next_retry_at: out.dgiiSubmitNextRetryAt,
+      });
+      return;
+    }
+
     res.json({
       message: "e-CF enviado a DGII.",
       status: out.dgiiResponse.status,
@@ -870,6 +904,54 @@ export const submitEcfByCotizacion: RequestHandler = async (req, res) => {
       message: e instanceof Error ? e.message : "Error al enviar e-CF.",
     });
   }
+};
+
+export const retryQueuedDgiiSubmitByCotizacion: RequestHandler = async (req, res) => {
+  const companyId = req.auth?.companyId;
+  if (!companyId) {
+    res.status(401).json({ message: "No autorizado." });
+    return;
+  }
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ message: "ID invalido." });
+    return;
+  }
+
+  const pathJoin = await import("node:path");
+  const uploadsRoot = pathJoin.join(process.cwd(), "uploads");
+  const certificateEncryptionSecret =
+    pickStr((req.body as Record<string, unknown>) ?? {}, "certificate_encryption_secret") ?? "";
+
+  const out = await retryQueuedCotizacionSubmit(id, companyId, {
+    uploadsRoot,
+    certificateEncryptionSecret: certificateEncryptionSecret || undefined,
+    certProfile: parseDgiiCertProfile(
+      pickStr((req.body as Record<string, unknown>) ?? {}, "dgii_cert_profile"),
+    ),
+    force: true,
+  });
+
+  if (!out.ok) {
+    res.status(out.status).json({
+      message: out.message,
+      ...(out.code ? { code: out.code } : {}),
+      ...(out.requeued ? { requeued: true } : {}),
+      ...(out.submitFailed ? { submit_failed: true } : {}),
+    });
+    return;
+  }
+
+  const dgiiStatusSummary = summarizeDgiiResponse(out.dgiiResponse.rawResponse);
+  res.json({
+    message: "e-CF reenviado a DGII desde la cola.",
+    status: out.dgiiResponse.status,
+    track_id: out.dgiiResponse.trackId,
+    accepted: out.dgiiResponse.accepted,
+    dgii_response: out.dgiiResponse.rawResponse,
+    dgii_status_summary: dgiiStatusSummary,
+    ...(out.newEcfNcfSeq != null ? { ecf_ncf_seq: out.newEcfNcfSeq } : {}),
+  });
 };
 
 export const queryDgiiEcfByCotizacion: RequestHandler = async (req, res) => {

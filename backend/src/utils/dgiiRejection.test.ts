@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isDgiiSequenceRejection, summarizeDgiiResponse } from "./dgiiRejection";
+import {
+  formatDgiiResponseFullMessage,
+  isDgiiSequenceRejection,
+  summarizeDgiiResponse,
+} from "./dgiiRejection";
 
 test("isDgiiSequenceRejection: texto secuencia en mensajes", () => {
   assert.equal(
@@ -55,4 +59,19 @@ test("summarizeDgiiResponse: concatena mensajes[].valor", () => {
   );
   assert.match(s, /Uno/);
   assert.match(s, /Dos/);
+});
+
+test("formatDgiiResponseFullMessage: no trunca mensaje largo", () => {
+  const long =
+    "No se encuentra en una fase válida dentro del proceso de certificación para el emisor.";
+  const full = formatDgiiResponseFullMessage(
+    JSON.stringify({ estado: "Rechazado", mensajes: [{ valor: long, codigo: 0 }] }),
+  );
+  assert.equal(full, long);
+  const short = summarizeDgiiResponse(
+    JSON.stringify({ estado: "Rechazado", mensajes: [{ valor: long, codigo: 0 }] }),
+    80,
+  );
+  assert.ok(short.endsWith("…"));
+  assert.ok(short.length < full.length);
 });

@@ -104,6 +104,11 @@ export const buildRouter = () => {
     ecfCertificateUpload,
     asyncHandler(cotizacionesController.submitEcfByCotizacion),
   );
+  router.post(
+    "/cotizaciones/:id/ecf/retry-queued",
+    requireAuth,
+    asyncHandler(cotizacionesController.retryQueuedDgiiSubmitByCotizacion),
+  );
   router.get(
     "/cotizaciones/:id/ecf/dgii/query",
     requireAuth,

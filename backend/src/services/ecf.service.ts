@@ -27,6 +27,8 @@ import {
   validateCotizacionDgiiResubmit,
 } from "./cotizacion.service";
 import { submitConsumoMenor250RfceForCotizacion } from "./ecfConsumoRfce.service";
+import { isRetryableDgiiSubmitError, DGII_SUBMIT_QUEUED_STATUS } from "../utils/dgiiSubmitRetry";
+import { queueFailedDgiiSubmit } from "./dgiiSubmitQueue.service";
 
 const contactFromClient = (phone?: string | null, email?: string | null) => {
   if (phone?.trim() && email?.trim()) return `${phone.trim()} | ${email.trim()}`;
@@ -269,6 +271,10 @@ export const ecfService = {
         signedXml: string;
         dgiiResponse: DgiiSubmissionResult;
         newEcfNcfSeq?: number;
+        /** DGII no disponible: XML firmado guardado y reintento automático programado. */
+        submitQueued?: boolean;
+        dgiiSubmitNextRetryAt?: string;
+        dgiiSubmitRetryCount?: number;
       }
     | SubmitEcfErr
   > {
@@ -356,6 +362,42 @@ export const ecfService = {
           certProfile,
         });
       } catch (error) {
+        const errCode = error instanceof DgiiEcfError ? error.code : undefined;
+        const httpStatus = error instanceof DgiiEcfError ? error.httpStatus : undefined;
+        const message =
+          error instanceof Error ? error.message : "Error desconocido al llamar al servicio DGII.";
+
+        if (isRetryableDgiiSubmitError(errCode, httpStatus)) {
+          const queued = await queueFailedDgiiSubmit({
+            cotizacionId,
+            companyId,
+            signedXml,
+            certProfile,
+            errorCode: errCode,
+            errorMessage: message,
+            httpStatus,
+          });
+          return {
+            ok: true,
+            xml: generation.xml,
+            signedXml,
+            submitQueued: true,
+            dgiiSubmitRetryCount: queued.retryCount,
+            dgiiSubmitNextRetryAt: queued.nextRetryAt.toISOString(),
+            dgiiResponse: {
+              accepted: false,
+              status: DGII_SUBMIT_QUEUED_STATUS,
+              trackId: "",
+              rawResponse: JSON.stringify({
+                queued: true,
+                code: errCode ?? "NETWORK",
+                message,
+              }),
+              httpStatus,
+            },
+          };
+        }
+
         if (error instanceof DgiiEcfError) {
           const st =
             error.code === "MISSING_CREDENTIALS" || error.code === "TOKEN_PARSE"
@@ -372,8 +414,6 @@ export const ecfService = {
             code: error.code,
           };
         }
-        const message =
-          error instanceof Error ? error.message : "Error desconocido al llamar al servicio DGII.";
         return {
           ok: false,
           status: 502,

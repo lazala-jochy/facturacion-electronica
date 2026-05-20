@@ -26,6 +26,7 @@ export type CotizacionListItem = {
   dgii_track_id?: string | null;
   dgii_submitted_at?: string | null;
   dgii_rejection_summary?: string | null;
+  dgii_rejection_full?: string | null;
   dgii_resubmit_new_seq?: boolean;
   ecf_tipo?: string;
   ecf_ncf_seq?: number | null;
@@ -48,6 +49,7 @@ export type CotizacionDetail = {
   dgii_track_id?: string | null;
   dgii_response?: string | null;
   dgii_rejection_summary?: string | null;
+  dgii_rejection_full?: string | null;
   dgii_resubmit_new_seq?: boolean;
   signed_xml?: string | null;
   ecf_ri_pdf_path?: string | null;
@@ -305,10 +307,20 @@ export const queryDgiiEcfForCotizacion = (
 
 export type SubmitEcfResult = {
   message: string;
-  status: "accepted" | "rejected" | "prepared" | "pending";
+  status:
+    | "accepted"
+    | "rejected"
+    | "prepared"
+    | "pending"
+    | "submit_queued"
+    | "submit_failed"
+    | "submitting";
   track_id: string;
   accepted: boolean;
   dgii_response: string;
+  queued?: boolean;
+  dgii_submit_retry_count?: number;
+  dgii_submit_next_retry_at?: string;
   certificate_saved?: boolean;
   /** Correlativo e-NCF guardado tras el envío (p. ej. tras rechazo por secuencia). */
   ecf_ncf_seq?: number;
@@ -363,6 +375,25 @@ export const submitEcf = async (
     throw new ApiError(data.message ?? "No se pudo enviar.", response.status, data as Record<string, unknown>);
   }
   return data as SubmitEcfResult;
+};
+
+/** Reintento manual de un e-CF en cola (mismo XML firmado guardado). */
+export const retryQueuedDgiiSubmit = async (
+  id: number,
+  opts?: {
+    certificateEncryptionSecret?: string;
+    dgiiCertProfile?: "paso2" | "paso4";
+  },
+): Promise<SubmitEcfResult> => {
+  return apiFetch<SubmitEcfResult>(`/cotizaciones/${id}/ecf/retry-queued`, {
+    method: "POST",
+    body: JSON.stringify({
+      ...(opts?.certificateEncryptionSecret?.trim()
+        ? { certificate_encryption_secret: opts.certificateEncryptionSecret.trim() }
+        : {}),
+      ...(opts?.dgiiCertProfile ? { dgii_cert_profile: opts.dgiiCertProfile } : {}),
+    }),
+  });
 };
 
 /**

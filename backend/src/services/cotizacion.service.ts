@@ -95,6 +95,20 @@ export function validateCotizacionDgiiResubmit(cot: {
     };
   }
 
+  if (status === "submit_queued" || status === "submitting") {
+    return {
+      allowed: false,
+      status: 409,
+      message:
+        "El comprobante está en cola de envío a DGII (reintento automático). Esperá unos minutos o usá «Reintentar envío».",
+      code: "DGII_SUBMIT_QUEUED",
+    };
+  }
+
+  if (status === "submit_failed") {
+    return { allowed: true };
+  }
+
   if (status === "rejected" && !isDgiiSequenceRejection(cot.dgiiResponse)) {
     return {
       allowed: false,

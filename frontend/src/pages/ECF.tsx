@@ -14,6 +14,7 @@ import {
 } from "../services/cotizaciones";
 import PageHeaderCard from "../components/PageHeaderCard";
 import PageShell from "../components/PageShell";
+import DgiiResponseModal, { type DgiiResponseModalPayload } from "../components/DgiiResponseModal";
 
 export default function ECF({ company }: { company: AuthCompany }) {
   const location = useLocation();
@@ -40,6 +41,7 @@ export default function ECF({ company }: { company: AuthCompany }) {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
+  const [dgiiResponseModal, setDgiiResponseModal] = useState<DgiiResponseModalPayload | null>(null);
 
   const loadRows = useCallback(async () => {
       try {
@@ -132,6 +134,9 @@ export default function ECF({ company }: { company: AuthCompany }) {
     if (status === "accepted") return "Aceptado";
     if (status === "rejected") return "Rechazado";
     if (status === "pending") return "Pendiente";
+    if (status === "submit_queued") return "Cola DGII";
+    if (status === "submitting") return "Enviando…";
+    if (status === "submit_failed") return "Envío fallido";
     return status;
   };
 
@@ -140,6 +145,8 @@ export default function ECF({ company }: { company: AuthCompany }) {
     if (status === "rejected") return "bg-red-100 text-red-700";
     if (status === "prepared") return "bg-amber-100 text-amber-700";
     if (status === "pending") return "bg-sky-100 text-sky-800";
+    if (status === "submit_queued" || status === "submitting") return "bg-violet-100 text-violet-800";
+    if (status === "submit_failed") return "bg-orange-100 text-orange-800";
     return "bg-slate-100 text-slate-700";
   };
 
@@ -410,11 +417,34 @@ export default function ECF({ company }: { company: AuthCompany }) {
                       }).format(row.total)}
                     </td>
                     <td className="p-2 sm:p-3">
-                      <span
-                        className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(row.dgii_status)}`}
-                      >
-                        {statusLabel(row.dgii_status)}
-                      </span>
+                      <div className="flex flex-col items-center gap-1">
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(row.dgii_status)}`}
+                        >
+                          {statusLabel(row.dgii_status)}
+                        </span>
+                        {row.dgii_status === "rejected" &&
+                        (row.dgii_rejection_full?.trim() || row.dgii_rejection_summary?.trim()) ? (
+                          <button
+                            type="button"
+                            className="text-[10px] font-semibold text-[#0b57d0] hover:underline"
+                            onClick={() =>
+                              setDgiiResponseModal({
+                                title: `Respuesta DGII · cotización #${row.number}`,
+                                status: row.dgii_status,
+                                trackId: row.dgii_track_id,
+                                summary: row.dgii_rejection_summary,
+                                fullMessage:
+                                  row.dgii_rejection_full?.trim() ||
+                                  row.dgii_rejection_summary?.trim() ||
+                                  null,
+                              })
+                            }
+                          >
+                            Ver mensaje
+                          </button>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="p-2 sm:p-3 text-[11px] sm:text-xs text-slate-600">
                       {row.dgii_track_id ?? "-"}
@@ -630,12 +660,37 @@ export default function ECF({ company }: { company: AuthCompany }) {
                   </pre>
                 </div>
 
-                <div>
-                  <h4 className="mb-1 text-sm font-semibold text-slate-900">Respuesta DGII</h4>
-                  <pre className="max-h-36 overflow-auto rounded-lg bg-slate-50 p-3 text-xs text-slate-700">
-                    {detailCotizacion.dgii_response ?? "Sin respuesta registrada."}
-                  </pre>
-                </div>
+                {(detailCotizacion.dgii_rejection_full?.trim() ||
+                  detailCotizacion.dgii_rejection_summary?.trim() ||
+                  detailCotizacion.dgii_response?.trim()) && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50/80 p-3 text-sm">
+                    <p className="font-semibold text-amber-950">Mensaje DGII</p>
+                    {detailCotizacion.dgii_rejection_summary?.trim() ? (
+                      <p className="mt-1 line-clamp-4 whitespace-pre-wrap text-amber-950">
+                        {detailCotizacion.dgii_rejection_summary}
+                      </p>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDgiiResponseModal({
+                          title: `Respuesta DGII · cotización #${detailCotizacion.number}`,
+                          status: detailCotizacion.dgii_status,
+                          trackId: detailCotizacion.dgii_track_id,
+                          summary: detailCotizacion.dgii_rejection_summary,
+                          fullMessage:
+                            detailCotizacion.dgii_rejection_full?.trim() ||
+                            detailCotizacion.dgii_rejection_summary?.trim() ||
+                            null,
+                          rawResponse: detailCotizacion.dgii_response,
+                        })
+                      }
+                      className="mt-2 text-xs font-semibold text-[#0b57d0] hover:underline"
+                    >
+                      Ver mensaje completo
+                    </button>
+                  </div>
+                )}
 
                 <div>
                   <h4 className="mb-1 text-sm font-semibold text-slate-900">XML firmado enviado</h4>
@@ -673,6 +728,12 @@ export default function ECF({ company }: { company: AuthCompany }) {
           </div>
         </div>
       )}
+
+      <DgiiResponseModal
+        open={dgiiResponseModal != null}
+        payload={dgiiResponseModal}
+        onClose={() => setDgiiResponseModal(null)}
+      />
     </PageShell>
   );
 }

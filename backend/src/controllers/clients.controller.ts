@@ -1,7 +1,11 @@
 import "../types/express-auth.augment";
 import type { RequestHandler } from "express";
 import { clientService } from "../services/client.service";
-import { isDgiiSequenceRejection, summarizeDgiiResponse } from "../utils/dgiiRejection";
+import {
+  formatDgiiResponseFullMessage,
+  isDgiiSequenceRejection,
+  summarizeDgiiResponse,
+} from "../utils/dgiiRejection";
 import { buildEcfNumber } from "../utils/ecfTipo";
 
 const pickRncCedula = (body: Record<string, unknown>) => {
@@ -84,9 +88,16 @@ export const listClients: RequestHandler = async (req, res) => {
         dgii_status: z.dgiiStatus,
         dgii_track_id: z.dgiiTrackId,
         dgii_submitted_at: z.dgiiSubmittedAt?.toISOString() ?? null,
+        dgii_submit_retry_count: z.dgiiSubmitRetryCount ?? 0,
+        dgii_submit_next_retry_at: z.dgiiSubmitNextRetryAt?.toISOString() ?? null,
+        dgii_submit_last_error: z.dgiiSubmitLastError ?? null,
         dgii_rejection_summary:
           z.dgiiStatus === "rejected" && z.dgiiResponse?.trim()
             ? summarizeDgiiResponse(z.dgiiResponse)
+            : null,
+        dgii_rejection_full:
+          z.dgiiStatus === "rejected" && z.dgiiResponse?.trim()
+            ? formatDgiiResponseFullMessage(z.dgiiResponse)
             : null,
         dgii_resubmit_new_seq:
           z.dgiiStatus === "rejected" && z.dgiiResponse?.trim()
