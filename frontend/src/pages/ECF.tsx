@@ -441,7 +441,7 @@ export default function ECF({ company }: { company: AuthCompany }) {
                               })
                             }
                           >
-                            Ver mensaje
+                            Ver mensaje completo
                           </button>
                         ) : null}
                       </div>

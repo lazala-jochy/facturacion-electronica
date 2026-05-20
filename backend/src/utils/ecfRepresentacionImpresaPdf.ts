@@ -15,7 +15,11 @@ import {
 /** §18.2.3: margen mínimo 2 cm; QR mínimo 22×22 mm. */
 const MARGEN_HOJA_CM_PT = 56.7;
 const QR_SIZE_MM_PT = 62.4;
-const FOOTER_BLOCK_H_PT = QR_SIZE_MM_PT + 44;
+const QR_FOOTER_TEXT_LINE_H_PT = 12;
+const QR_FOOTER_TEXT_GAP_PT = 6;
+/** QR + código de seguridad y fecha firma debajo del QR. */
+const FOOTER_BLOCK_H_PT =
+  QR_SIZE_MM_PT + QR_FOOTER_TEXT_GAP_PT + QR_FOOTER_TEXT_LINE_H_PT * 2 + 8;
 
 const COLOR_ACCENT = "#1e4a8a";
 const COLOR_TABLE_HEAD = "#d9dce3";
@@ -165,7 +169,7 @@ const drawHeaderBlock = (
 
   pushRight(`e-NCF ${data.encf}`, true, 9);
   if (data.fechaVencimientoSecuencia) {
-    pushRight(`Fecha Vencimiento ${data.fechaVencimientoSecuencia}`);
+    pushRight(`Fecha Vencimiento ${formatFechaRiSlash(data.fechaVencimientoSecuencia)}`);
   }
   if (data.ncfModificado) {
     pushRight(`e-NCF modificado ${data.ncfModificado}`);
@@ -374,7 +378,10 @@ const drawTotalesFooter = (doc: PdfDoc, data: RepresentacionImpresaData, baseY: 
   }
 };
 
-/** Pie §18.2.3: QR inferior izquierdo + código de seguridad y fecha firma. */
+/** Fecha RI con barras (ej. 31/12/2028). */
+const formatFechaRiSlash = (raw: string): string => raw.trim().replace(/-/g, "/");
+
+/** Pie §18.2.3: QR inferior izquierdo; código de seguridad y fecha firma debajo del QR. */
 const drawQrFooter = (
   doc: PdfDoc,
   qrPng: Buffer,
@@ -383,15 +390,17 @@ const drawQrFooter = (
 ) => {
   const pageH = doc.page.height;
   const left = MARGEN_HOJA_CM_PT;
-  const qrY = pageH - MARGEN_HOJA_CM_PT - QR_SIZE_MM_PT;
-  const textX = left + QR_SIZE_MM_PT + 10;
+  const footerTop = pageH - MARGEN_HOJA_CM_PT - FOOTER_BLOCK_H_PT;
+  const qrY = footerTop;
 
   doc.image(qrPng, left, qrY, { width: QR_SIZE_MM_PT, height: QR_SIZE_MM_PT });
 
+  let textY = qrY + QR_SIZE_MM_PT + QR_FOOTER_TEXT_GAP_PT;
   doc.font("Helvetica").fontSize(8);
-  doc.text(`Código de Seguridad ${codigoSeg}`, textX, qrY + 4);
+  doc.text(`Código de Seguridad ${codigoSeg}`, left, textY);
+  textY += QR_FOOTER_TEXT_LINE_H_PT;
   if (fechaFirmaDisplay.trim()) {
-    doc.text(`Fecha Firma ${fechaFirmaDisplay}`, textX, qrY + 16);
+    doc.text(`Fecha Firma ${fechaFirmaDisplay}`, left, textY);
   }
 };
 
@@ -449,7 +458,7 @@ export const buildRepresentacionImpresaPdfBuffer = async (
     drawItemsTable(doc, data, logoPath);
     drawDescuentosRecargosGlobales(doc, data);
 
-    const footerY = doc.page.height - MARGEN_HOJA_CM_PT - QR_SIZE_MM_PT;
+    const footerY = doc.page.height - MARGEN_HOJA_CM_PT - FOOTER_BLOCK_H_PT;
     if (doc.y > footerY - 8) {
       doc.addPage();
     }

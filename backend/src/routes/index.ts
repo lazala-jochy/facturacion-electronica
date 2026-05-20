@@ -114,7 +114,6 @@ export const buildRouter = () => {
     requireAuth,
     asyncHandler(cotizacionesController.queryDgiiEcfByCotizacion),
   );
-
   router.post(
     "/ecf-excel-batch/run",
     requireAuth,

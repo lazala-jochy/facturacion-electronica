@@ -41,7 +41,7 @@ test("parseRepresentacionImpresaData: encabezado tipo 31 y totales", () => {
   assert.equal(data.tipoEcf, "31");
   assert.match(data.tipoLabel, /Crédito Fiscal Electrónica/);
   assert.equal(data.encf, "E310000000001");
-  assert.ok(data.fechaVencimientoSecuencia.length > 0);
+  assert.equal(data.fechaVencimientoSecuencia, "31-12-2028");
   assert.equal(data.emisor.rnc, "131880738");
   assert.match(data.emisor.fechaEmision, /^\d{2}-\d{2}-\d{4}$/);
   assert.equal(data.comprador.rncCedula, "40212345678");

@@ -24,7 +24,6 @@ import {
 } from "../utils/dgiiRejection";
 import { buildEcfNumber } from "../utils/ecfTipo";
 import { retryQueuedCotizacionSubmit } from "../services/dgiiSubmitQueue.service";
-
 const stripTenantFromBody = (body: Record<string, unknown>) => {
   delete body.company_id;
   delete body.companyId;

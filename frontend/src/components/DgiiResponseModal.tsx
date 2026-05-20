@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useState } from "react";
 
 export type DgiiResponseModalPayload = {
   title?: string;
@@ -24,24 +24,16 @@ function prettyJson(raw: string): string {
 }
 
 export default function DgiiResponseModal({ open, payload, onClose }: Props) {
-  const displayMessage = useMemo(() => {
-    const full = payload?.fullMessage?.trim() ?? "";
-    const summary = payload?.summary?.trim() ?? "";
-    return full || summary || "";
-  }, [payload?.fullMessage, payload?.summary]);
-
-  const prettyRaw = useMemo(
-    () => (payload?.rawResponse?.trim() ? prettyJson(payload.rawResponse) : ""),
-    [payload?.rawResponse],
-  );
+  const [showTechnical, setShowTechnical] = useState(false);
 
   if (!open || !payload) return null;
 
-  const copyText = () => {
-    const parts = [displayMessage, payload.rawResponse?.trim() ? `\n---\n${prettyRaw}` : ""]
-      .filter(Boolean)
-      .join("");
-    void navigator.clipboard.writeText(parts || prettyRaw);
+  const dgiiMessage =
+    payload.fullMessage?.trim() || payload.summary?.trim() || "";
+  const prettyRaw = payload.rawResponse?.trim() ? prettyJson(payload.rawResponse) : "";
+
+  const copyMessage = () => {
+    void navigator.clipboard.writeText(dgiiMessage);
   };
 
   return (
@@ -77,42 +69,46 @@ export default function DgiiResponseModal({ open, payload, onClose }: Props) {
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5 space-y-4">
-          {displayMessage ? (
-            <section>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+          {dgiiMessage ? (
+            <section className="rounded-lg border border-amber-200 bg-amber-50/90 px-3 py-3">
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-amber-950">
                 Mensaje DGII
-              </p>
-              <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-900">
-                {displayMessage}
+              </h4>
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-amber-950">
+                {dgiiMessage}
               </p>
             </section>
           ) : (
-            <p className="text-sm text-slate-600">
-              No hay mensaje legible; revisá la respuesta técnica abajo.
-            </p>
+            <p className="text-sm text-slate-600">No hay mensaje de DGII registrado.</p>
           )}
 
-          {payload.rawResponse?.trim() ? (
-            <section>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          {prettyRaw ? (
+            <details
+              className="mt-6 rounded-lg border border-slate-200 bg-slate-50/80"
+              open={showTechnical}
+              onToggle={(e) => setShowTechnical(e.currentTarget.open)}
+            >
+              <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-slate-600">
                 Respuesta técnica (JSON)
-              </p>
-              <pre className="mt-2 max-h-64 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-800 whitespace-pre-wrap break-words">
+              </summary>
+              <pre className="max-h-48 overflow-auto border-t border-slate-200 px-3 py-2 text-[11px] text-slate-700 whitespace-pre-wrap break-words">
                 {prettyRaw}
               </pre>
-            </section>
+            </details>
           ) : null}
         </div>
 
         <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 px-4 py-3 sm:px-5">
-          <button
-            type="button"
-            onClick={copyText}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Copiar mensaje
-          </button>
+          {dgiiMessage ? (
+            <button
+              type="button"
+              onClick={copyMessage}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Copiar mensaje
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onClose}

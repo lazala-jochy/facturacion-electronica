@@ -129,11 +129,19 @@ const indicadorEsExentoRi = (indicador: string) => {
 };
 
 const parseYyyymmddDisplay = (raw: string): string => {
-  const t = raw.replace(/\D/g, "");
-  if (t.length === 8) {
-    return `${t.slice(6, 8)}-${t.slice(4, 6)}-${t.slice(0, 4)}`;
+  const trimmed = raw.trim();
+  const ddmmyyyy = /^(\d{2})[-/](\d{2})[-/](\d{4})$/.exec(trimmed);
+  if (ddmmyyyy) {
+    return `${ddmmyyyy[1]}-${ddmmyyyy[2]}-${ddmmyyyy[3]}`;
   }
-  return raw.trim();
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length === 8 && Number(digits.slice(0, 4)) > 1900) {
+    return `${digits.slice(6, 8)}-${digits.slice(4, 6)}-${digits.slice(0, 4)}`;
+  }
+  if (digits.length === 8) {
+    return `${digits.slice(0, 2)}-${digits.slice(2, 4)}-${digits.slice(4, 8)}`;
+  }
+  return trimmed;
 };
 
 const sumImpuestoMonto = (el: XmlEl): number => {
