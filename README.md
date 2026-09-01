@@ -113,7 +113,25 @@ En producción conviene generar migraciones con `migrate dev` desde un estado li
 
 ## 4) Ejecutar en modo desarrollo (desktop + auth + dashboard)
 
-Abre **3 terminales**:
+### Opcion rapida (un solo comando)
+
+Desde la **raiz del proyecto** (una sola vez, para instalar el orquestador):
+
+```bash
+npm install
+```
+
+Luego, cada vez que quieras levantar todo:
+
+```bash
+npm run dev
+```
+
+Esto mata cualquier proceso que quede escuchando en los puertos `3001`/`5173`, levanta `backend` y `frontend` en paralelo, y arranca `electron` automaticamente en cuanto ambos esten listos (usa `concurrently` + `wait-on`). Con `Ctrl+C` se detienen los tres a la vez.
+
+> Si nunca instalaste dependencias de cada modulo, corre primero `npm run install:all` desde la raiz (equivale a `npm install` en `backend`, `frontend` y `electron`).
+
+### Opcion manual (3 terminales)
 
 ### Terminal 1: Backend
 

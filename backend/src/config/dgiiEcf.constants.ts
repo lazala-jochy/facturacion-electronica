@@ -17,7 +17,7 @@ export const ECF_CONSUMO_RFCE_TOTAL_THRESHOLD_RD = 250_000;
 
 export const DGII_ECF_SANDBOX_DEFAULTS = {
   auth: "https://ecf.dgii.gov.do/CerteCF/Autenticacion",
-  reception: "https://ecf.dgii.gov.do/CerteCF/Recepcion",
+  reception: "https://ecf.dgii.gov.do/CerteCF/Recepcion/api/FacturasElectronicas",
   /** Documentación CerteCF: `.../api/Consultas/Estado?trackid={uuid}` */
   consult: "https://ecf.dgii.gov.do/CerteCF/ConsultaResultado/api/Consultas/Estado",
   /** RFCE reception. Official doc: fc.dgii.gov.do/{ambiente}/recepcionfc; CerteCF also works at ecf.dgii.gov.do. */

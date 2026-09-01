@@ -21,6 +21,7 @@ import EcfExcelBatch from "./pages/EcfExcelBatch";
 import DgiiAprobacionesComerciales from "./pages/DgiiAprobacionesComerciales";
 import DgiiPruebasHub from "./pages/DgiiPruebasHub";
 import DgiiEcfSimulacion from "./pages/DgiiEcfSimulacion";
+import Formatos606607 from "./pages/Formatos606607";
 import { documentTitleWithCompany } from "./utils/productBranding";
 
 function App() {
@@ -111,6 +112,8 @@ function App() {
         <Route element={<AppLayout company={company} onLogout={handleLogout} />}>
           <Route path="/" element={<Dashboard company={company} user={session.user} />} />
           <Route path="/ecf" element={<ECF company={company} />} />
+          <Route path="/606-607" element={<Formatos606607 />} />
+          <Route path="/formatos-606-607" element={<Navigate to="/606-607" replace />} />
           <Route path="/dgii-pruebas" element={<DgiiPruebasLayout company={company} />}>
             <Route index element={<DgiiPruebasHub />} />
             <Route

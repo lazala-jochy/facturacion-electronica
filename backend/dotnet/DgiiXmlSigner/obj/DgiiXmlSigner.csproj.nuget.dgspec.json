@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "/Users/joserosario/Desktop/facturacion-electronica/backend/dotnet/DgiiXmlSigner/DgiiXmlSigner.csproj": {}
+    "/Users/joserosario/Desktop/e-cf+cotizacion/facturacion-electronica/backend/dotnet/DgiiXmlSigner/DgiiXmlSigner.csproj": {}
   },
   "projects": {
-    "/Users/joserosario/Desktop/facturacion-electronica/backend/dotnet/DgiiXmlSigner/DgiiXmlSigner.csproj": {
+    "/Users/joserosario/Desktop/e-cf+cotizacion/facturacion-electronica/backend/dotnet/DgiiXmlSigner/DgiiXmlSigner.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/Users/joserosario/Desktop/facturacion-electronica/backend/dotnet/DgiiXmlSigner/DgiiXmlSigner.csproj",
+        "projectUniqueName": "/Users/joserosario/Desktop/e-cf+cotizacion/facturacion-electronica/backend/dotnet/DgiiXmlSigner/DgiiXmlSigner.csproj",
         "projectName": "DgiiXmlSigner",
-        "projectPath": "/Users/joserosario/Desktop/facturacion-electronica/backend/dotnet/DgiiXmlSigner/DgiiXmlSigner.csproj",
+        "projectPath": "/Users/joserosario/Desktop/e-cf+cotizacion/facturacion-electronica/backend/dotnet/DgiiXmlSigner/DgiiXmlSigner.csproj",
         "packagesPath": "/Users/joserosario/.nuget/packages/",
-        "outputPath": "/Users/joserosario/Desktop/facturacion-electronica/backend/dotnet/DgiiXmlSigner/obj/",
+        "outputPath": "/Users/joserosario/Desktop/e-cf+cotizacion/facturacion-electronica/backend/dotnet/DgiiXmlSigner/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "/Users/joserosario/.nuget/NuGet/NuGet.Config"

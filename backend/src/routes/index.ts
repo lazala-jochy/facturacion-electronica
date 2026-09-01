@@ -5,6 +5,7 @@ import * as cotizacionesController from "../controllers/cotizaciones.controller"
 import * as ecfExcelBatchController from "../controllers/ecfExcelBatch.controller";
 import * as portalConsumoMenor250Controller from "../controllers/portalConsumoMenor250.controller";
 import * as commercialApprovalsController from "../controllers/commercialApprovals.controller";
+import * as dgiiFormatosController from "../controllers/dgiiFormatos.controller";
 import { asyncHandler } from "../middleware/asyncHandler";
 import { requireAuth } from "../middleware/auth.middleware";
 import {
@@ -162,6 +163,47 @@ export const buildRouter = () => {
     "/commercial-approvals/batch/send",
     requireAuth,
     asyncHandler(commercialApprovalsController.commercialApprovalBatchSendHandler),
+  );
+
+  router.post(
+    "/dgii-formatos/607/llenar-desde-ecf",
+    requireAuth,
+    asyncHandler(dgiiFormatosController.llenar607DesdeEcfHandler),
+  );
+  router.get(
+    "/dgii-formatos/606/borrador",
+    requireAuth,
+    asyncHandler(dgiiFormatosController.borrador606Handler),
+  );
+  router.get(
+    "/dgii-formatos/:tipo/preview",
+    requireAuth,
+    asyncHandler(dgiiFormatosController.previewFormatoHandler),
+  );
+  router.get(
+    "/dgii-formatos/:tipo/txt",
+    requireAuth,
+    asyncHandler(dgiiFormatosController.downloadFormatoTxtHandler),
+  );
+  router.post(
+    "/dgii-formatos/:tipo/enviar",
+    requireAuth,
+    asyncHandler(dgiiFormatosController.enviarFormatoHandler),
+  );
+  router.get(
+    "/dgii-formatos/606/compras",
+    requireAuth,
+    asyncHandler(dgiiFormatosController.listCompras606Handler),
+  );
+  router.post(
+    "/dgii-formatos/606/compras",
+    requireAuth,
+    asyncHandler(dgiiFormatosController.createCompra606Handler),
+  );
+  router.delete(
+    "/dgii-formatos/606/compras/:id",
+    requireAuth,
+    asyncHandler(dgiiFormatosController.deleteCompra606Handler),
   );
 
   return router;

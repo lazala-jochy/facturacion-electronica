@@ -509,9 +509,8 @@ test("Plantilla 43: alineada a E430000000011 (IdDoc, totales exentos, ítems)", 
   const xml = buildEcfXml(p);
   assert.match(
     xml,
-    /<IdDoc>\s*<TipoeCF>43<\/TipoeCF>\s*<eNCF>E430000000011<\/eNCF>\s*<FechaVencimientoSecuencia>[\s\S]*?<\/IdDoc>/,
+    /<IdDoc>\s*<TipoeCF>43<\/TipoeCF>\s*<eNCF>E430000000011<\/eNCF>\s*<FechaVencimientoSecuencia>[\s\S]*?<TipoPago>1<\/TipoPago>\s*<\/IdDoc>/,
   );
-  assert.doesNotMatch(xml, /<TipoPago>/);
   assert.doesNotMatch(xml, /<Comprador>/);
   assert.doesNotMatch(xml, /<IndicadorMontoGravado>/);
   assert.doesNotMatch(xml, /<TablaFormasPago>/);

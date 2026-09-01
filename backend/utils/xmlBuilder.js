@@ -296,7 +296,7 @@ const IDDOC_FIELDS_BY_TIPO = {
     "IndicadorMontoGravado",
     ...IDDOC_TAIL,
   ],
-  "43": ["TipoeCF", "eNCF", "FechaVencimientoSecuencia"],
+  "43": ["TipoeCF", "eNCF", "FechaVencimientoSecuencia", "TipoPago"],
   "44": ["TipoeCF", "eNCF", "FechaVencimientoSecuencia", "TipoIngresos", ...IDDOC_TAIL],
   "45": [
     "TipoeCF",
@@ -649,12 +649,23 @@ function appendImpuestosAdicionales(parent, row, opts = {}) {
   return wrote;
 }
 
+/**
+ * `TipoImpuesto` existe a nivel Encabezado (`TipoImpuesto[i]`, Impuestos Adicionales) y a nivel
+ * de línea (`TipoImpuesto[lineIndex][i]`, TablaImpuestoAdicional del ítem). Solo la forma anidada
+ * de dos índices cuenta como dato de línea; de lo contrario `TipoImpuesto[2]` (2do impuesto del
+ * encabezado) se confunde con la línea 2 y genera un `<Item>` vacío que invalida el XML ante DGII.
+ */
 function itemHasAnyValue(row, lineIndex) {
   return Object.entries(row).some(([key, value]) => {
     const text = String(value ?? "").trim();
     if (!text || text === "#e") return false;
-    const match = String(key).match(/^(.+?)\[(\d+)\]/);
+    const nested = String(key).match(/^(.+?)\[(\d+)\]\[(\d+)\]$/);
+    if (nested) {
+      return Number(nested[2]) === lineIndex && normCol(nested[1]) === normCol("TipoImpuesto");
+    }
+    const match = String(key).match(/^(.+?)\[(\d+)\]$/);
     if (!match) return false;
+    if (normCol(match[1]) === normCol("TipoImpuesto")) return false;
     return Number(match[2]) === lineIndex && ITEM_FIELD_BASES.includes(normCol(match[1]));
   });
 }

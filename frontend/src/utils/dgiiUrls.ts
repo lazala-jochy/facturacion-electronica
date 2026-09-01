@@ -1,7 +1,7 @@
 /** URLs base CerteCF para pruebas e-CF (Excel). */
 export const DGII_ECF_SANDBOX = {
   auth: "https://ecf.dgii.gov.do/CerteCF/Autenticacion",
-  reception: "https://ecf.dgii.gov.do/CerteCF/Recepcion",
+  reception: "https://ecf.dgii.gov.do/CerteCF/Recepcion/api/FacturasElectronicas",
   /** Base + ruta; la consulta GET usa `?trackid=` (minúsculas). */
   consult: "https://ecf.dgii.gov.do/CerteCF/ConsultaResultado/api/Consultas/Estado",
   consumerSummaryReception: "https://fc.dgii.gov.do/CerteCF/RecepcionFC",

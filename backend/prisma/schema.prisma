@@ -53,8 +53,43 @@ model Company {
   clients      Client[]
   cotizaciones Cotizacion[]
   ecfSeqCounters CompanyEcfSeqCounter[]
+  compras606     Compra606[]
 
   @@map("companies")
+}
+
+/// Líneas de compras para formato 606 (gastos / proveedores).
+model Compra606 {
+  id                  Int      @id @default(autoincrement())
+  companyId           Int      @map("company_id")
+  periodo             String
+  rncCedula           String   @map("rnc_cedula")
+  tipoBienesServicios String   @default("02") @map("tipo_bienes_servicios")
+  ncf                 String
+  ncfModificado       String?  @map("ncf_modificado")
+  fechaComprobante    String   @map("fecha_comprobante")
+  fechaPago           String?  @map("fecha_pago")
+  montoServicios      Float    @default(0) @map("monto_servicios")
+  montoBienes         Float    @default(0) @map("monto_bienes")
+  montoFacturado      Float    @map("monto_facturado")
+  itbisFacturado              Float    @default(0) @map("itbis_facturado")
+  itbisRetenido               Float    @default(0) @map("itbis_retenido")
+  itbisSujetoProporcionalidad Float    @default(0) @map("itbis_sujeto_proporcionalidad")
+  itbisLlevadoAlCosto         Float    @default(0) @map("itbis_llevado_al_costo")
+  itbisPorAdelantar           Float    @default(0) @map("itbis_por_adelantar")
+  itbisPercibidoCompras       Float    @default(0) @map("itbis_percibido_compras")
+  retencionRenta              Float    @default(0) @map("retencion_renta")
+  tipoRetencionIsr            String?  @map("tipo_retencion_isr")
+  isrPercibidoCompras         Float    @default(0) @map("isr_percibido_compras")
+  impuestoIsc                 Float    @default(0) @map("impuesto_isc")
+  impuestosOtros              Float    @default(0) @map("impuestos_otros")
+  montoPropinaLegal           Float    @default(0) @map("monto_propina_legal")
+  formaPago                   String   @default("04") @map("forma_pago")
+  createdAt           DateTime @default(now()) @map("created_at")
+  company             Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, periodo])
+  @@map("compras_606")
 }
 
 /// Última secuencia e-NCF consumida por empresa y tipo (cola DGII: siguiente = lastSeq + 1).

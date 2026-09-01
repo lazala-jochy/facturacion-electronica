@@ -23,6 +23,7 @@ export function plantillaEcf43(payload: EcfPayload): string {
   idDoc.ele("TipoeCF").txt("43");
   idDoc.ele("eNCF").txt(payload.ecfNumber.trim());
   idDoc.ele("FechaVencimientoSecuencia").txt(DEFAULT_FECHA_VENC_SEC);
+  idDoc.ele("TipoPago").txt(payload.tipoPago ?? "1");
   idDoc.up();
 
   appendEmisor(enc, payload);
