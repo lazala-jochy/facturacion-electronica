@@ -7,6 +7,7 @@ import {
 } from "../config/dgiiFormato606";
 import { ECF_CONSUMO_RFCE_TOTAL_THRESHOLD_RD } from "../config/dgiiEcf.constants";
 import { prisma } from "../prisma";
+import { extraerTextoDeArchivo, parseFacturaCompraTexto } from "../utils/compra606Extract";
 import { buildEcfNumber } from "../utils/ecfTipo";
 import { extractXmlTagValue } from "../utils/ecfXmlExtract";
 import {
@@ -34,12 +35,10 @@ const periodoRange = (periodo: PeriodoFormato): { from: Date; to: Date } => {
 
 const fechaYyyymmddFromCotizacion = (cot: CotizacionVentas): string => {
   if (cot.signedXml?.trim()) {
+    // <FechaEmision> del e-CF siempre viene en dd-MM-AAAA (XSD DGII); reordenar sin adivinar.
     const raw = extractXmlTagValue(cot.signedXml, "FechaEmision");
     const digits = raw.replace(/\D/g, "");
     if (digits.length === 8) {
-      if (Number(digits.slice(0, 4)) > 1900) {
-        return `${digits.slice(0, 4)}${digits.slice(4, 6)}${digits.slice(6, 8)}`;
-      }
       return `${digits.slice(4, 8)}${digits.slice(2, 4)}${digits.slice(0, 2)}`;
     }
   }
@@ -114,7 +113,8 @@ export const cotizacionToLinea607 = (cot: CotizacionVentas): Linea607 => {
     tipoIdentificacion: id.tipo,
     ncf: encfFromCotizacion(cot),
     ncfModificado: cot.ecfReferenceNcf?.trim() || undefined,
-    tipoIngreso: tipoIngreso.padStart(2, "0").slice(0, 2),
+    // Formato 607 exige "Tipo de Ingreso" de 1 solo dígito (1-6); el e-CF trae "01"-"06".
+    tipoIngreso: String(Number.parseInt(tipoIngreso, 10) || 1),
     fechaComprobante: fechaYyyymmddFromCotizacion(cot),
     montoFacturado: cot.subtotal,
     itbisFacturado: cot.itbis,
@@ -217,9 +217,11 @@ export type Borrador606 = {
   itbis_facturado: number;
   forma_pago: string;
   aviso: string | null;
-  origen: "cliente" | "cotizacion";
+  origen: "cliente" | "cotizacion" | "archivo";
   origen_id: number;
   referencia_venta_encf: string | null;
+  /** Solo cuando origen = "archivo": texto crudo detectado, para verificar campos que la heurística no ubicó. */
+  texto_detectado?: string;
 };
 
 /** Borrador 606: datos del cliente (proveedor) en el maestro de clientes. */
@@ -276,6 +278,51 @@ export const borrador606DesdeCotizacion = async (companyId: number, cotizacionId
       parseXmlAmount(xml, "TotalITBIS") || cot.itbis;
   }
   return { ok: true as const, borrador };
+};
+
+/** Borrador 606 desde una imagen o PDF de la factura de compra (OCR + heurística; siempre a revisar). */
+export const borrador606DesdeArchivo = async (
+  buffer: Buffer,
+  mimetype: string,
+): Promise<
+  | { ok: false; status: number; message: string }
+  | { ok: true; borrador: Borrador606 }
+> => {
+  let texto: string;
+  try {
+    texto = await extraerTextoDeArchivo(buffer, mimetype);
+  } catch (e) {
+    return { ok: false, status: 400, message: e instanceof Error ? e.message : "No se pudo leer el archivo." };
+  }
+
+  const campos = parseFacturaCompraTexto(texto);
+  const faltantes: string[] = [];
+  if (!campos.rnc_cedula) faltantes.push("RNC/Cédula");
+  if (!campos.ncf) faltantes.push("NCF");
+  if (!campos.fecha_comprobante) faltantes.push("fecha");
+  if (campos.monto_servicios <= 0 && campos.itbis_facturado <= 0) faltantes.push("montos");
+
+  const borrador: Borrador606 = {
+    rnc_cedula: campos.rnc_cedula,
+    tipo_bienes_servicios: "02",
+    ncf: campos.ncf,
+    ncf_modificado: "",
+    fecha_comprobante: campos.fecha_comprobante,
+    fecha_pago: "",
+    monto_servicios: campos.monto_servicios,
+    monto_bienes: campos.monto_bienes,
+    itbis_facturado: campos.itbis_facturado,
+    forma_pago: campos.forma_pago,
+    aviso:
+      faltantes.length > 0
+        ? `Datos extraídos por OCR — no se detectó: ${faltantes.join(", ")}. Revise y complete el formulario antes de guardar.`
+        : "Datos extraídos por OCR. Verifique todos los campos (especialmente NCF y montos) antes de guardar.",
+    origen: "archivo",
+    origen_id: 0,
+    referencia_venta_encf: null,
+    texto_detectado: texto.trim(),
+  };
+  return { ok: true, borrador };
 };
 
 export const compra606ToLinea = (row: Compra606): Linea606 => {
@@ -417,6 +464,41 @@ export const createCompra606 = async (
     },
   });
   return { ok: true as const, compra: row };
+};
+
+/** Extrae por OCR y guarda directo (sin pantalla de revisión); si falta un dato obligatorio, falla con detalle. */
+export const crearCompra606DesdeArchivo = async (
+  companyId: number,
+  periodoRaw: string,
+  buffer: Buffer,
+  mimetype: string,
+): Promise<
+  | { ok: false; status: number; message: string; texto_detectado?: string }
+  | { ok: true; compra: Compra606; texto_detectado: string }
+> => {
+  const extraido = await borrador606DesdeArchivo(buffer, mimetype);
+  if (!extraido.ok) return extraido;
+
+  const b = extraido.borrador;
+  const guardado = await createCompra606(companyId, periodoRaw, {
+    rnc_cedula: b.rnc_cedula,
+    tipo_bienes_servicios: b.tipo_bienes_servicios,
+    ncf: b.ncf,
+    fecha_comprobante: b.fecha_comprobante,
+    monto_servicios: b.monto_servicios,
+    monto_bienes: b.monto_bienes,
+    itbis_facturado: b.itbis_facturado,
+    forma_pago: b.forma_pago,
+  });
+  if (!guardado.ok) {
+    return {
+      ok: false,
+      status: guardado.status,
+      message: `No se pudo registrar el gasto automáticamente: ${guardado.message} ${b.aviso}`,
+      texto_detectado: b.texto_detectado,
+    };
+  }
+  return { ok: true, compra: guardado.compra, texto_detectado: b.texto_detectado ?? "" };
 };
 
 export const deleteCompra606 = async (companyId: number, id: number) => {

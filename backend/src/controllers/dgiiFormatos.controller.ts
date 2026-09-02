@@ -3,9 +3,11 @@ import path from "node:path";
 import type { RequestHandler } from "express";
 import type { Compra606 } from "@prisma/client";
 import {
+  borrador606DesdeArchivo,
   borrador606DesdeCliente,
   borrador606DesdeCotizacion,
   createCompra606,
+  crearCompra606DesdeArchivo,
   deleteCompra606,
   generateFormatoTxt,
   listCompras606,
@@ -186,6 +188,49 @@ export const borrador606Handler: RequestHandler = async (req, res) => {
     return;
   }
   res.status(400).json({ message: "Indique client_id o cotizacion_id." });
+};
+
+export const borrador606DesdeArchivoHandler: RequestHandler = async (req, res) => {
+  const companyId = req.auth?.companyId;
+  if (!companyId) {
+    res.status(401).json({ message: "No autorizado." });
+    return;
+  }
+  const file = req.file;
+  if (!file?.buffer?.length) {
+    res.status(400).json({ message: "Suba una imagen o PDF de la factura de compra." });
+    return;
+  }
+  const out = await borrador606DesdeArchivo(file.buffer, file.mimetype);
+  if (!out.ok) {
+    res.status(out.status).json({ message: out.message });
+    return;
+  }
+  res.json(out);
+};
+
+export const crearCompra606DesdeArchivoHandler: RequestHandler = async (req, res) => {
+  const companyId = req.auth?.companyId;
+  if (!companyId) {
+    res.status(401).json({ message: "No autorizado." });
+    return;
+  }
+  const file = req.file;
+  if (!file?.buffer?.length) {
+    res.status(400).json({ message: "Suba una imagen o PDF de la factura de compra." });
+    return;
+  }
+  const periodo = String(req.body?.periodo ?? "").trim();
+  const out = await crearCompra606DesdeArchivo(companyId, periodo, file.buffer, file.mimetype);
+  if (!out.ok) {
+    res.status(out.status).json({ message: out.message, texto_detectado: out.texto_detectado });
+    return;
+  }
+  res.status(201).json({
+    message: "Gasto registrado a partir del archivo.",
+    compra: serializeCompra606(out.compra),
+    texto_detectado: out.texto_detectado,
+  });
 };
 
 export const deleteCompra606Handler: RequestHandler = async (req, res) => {

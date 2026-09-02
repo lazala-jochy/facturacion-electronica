@@ -11,6 +11,7 @@ import { requireAuth } from "../middleware/auth.middleware";
 import {
   acecfExcelUpload,
   authFormUpload,
+  compra606DocumentUpload,
   ecfCertificateUpload,
   ecfExcelUpload,
 } from "../middleware/registerUpload.middleware";
@@ -174,6 +175,18 @@ export const buildRouter = () => {
     "/dgii-formatos/606/borrador",
     requireAuth,
     asyncHandler(dgiiFormatosController.borrador606Handler),
+  );
+  router.post(
+    "/dgii-formatos/606/borrador-desde-archivo",
+    requireAuth,
+    compra606DocumentUpload,
+    asyncHandler(dgiiFormatosController.borrador606DesdeArchivoHandler),
+  );
+  router.post(
+    "/dgii-formatos/606/compras-desde-archivo",
+    requireAuth,
+    compra606DocumentUpload,
+    asyncHandler(dgiiFormatosController.crearCompra606DesdeArchivoHandler),
   );
   router.get(
     "/dgii-formatos/:tipo/preview",

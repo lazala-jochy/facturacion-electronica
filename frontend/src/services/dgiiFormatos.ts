@@ -49,9 +49,10 @@ export type Borrador606 = {
   itbis_facturado: number;
   forma_pago: string;
   aviso: string | null;
-  origen: "cliente" | "cotizacion";
+  origen: "cliente" | "cotizacion" | "archivo";
   origen_id: number;
   referencia_venta_encf: string | null;
+  texto_detectado?: string;
 };
 
 export type Compra606Row = {
@@ -233,6 +234,26 @@ export const llenar607DesdeEcf = async (periodo: string): Promise<Llenar607Resul
     body: JSON.stringify({ periodo }),
   });
   return (await parseJson(response)) as Llenar607Result;
+};
+
+export type CrearCompra606DesdeArchivoResult = {
+  message: string;
+  compra: Compra606Row;
+  texto_detectado?: string;
+};
+
+export const crearCompra606DesdeArchivo = async (
+  periodo: string,
+  file: File,
+): Promise<CrearCompra606DesdeArchivoResult> => {
+  const form = new FormData();
+  form.append("document", file);
+  form.append("periodo", periodo);
+  const response = await authenticatedFetch("/dgii-formatos/606/compras-desde-archivo", {
+    method: "POST",
+    body: form,
+  });
+  return (await parseJson(response)) as CrearCompra606DesdeArchivoResult;
 };
 
 export const fetchBorrador606 = async (params: {

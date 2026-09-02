@@ -27,3 +27,9 @@ export const ecfExcelUpload = multer({
   limits: { fileSize: 8 * 1024 * 1024 },
 }).single("excel");
 
+/** Foto o PDF de factura de compra para extraer datos del 606 (hasta 10 MB). */
+export const compra606DocumentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+}).single("document");
+

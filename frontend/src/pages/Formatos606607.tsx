@@ -1,23 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import PageHeaderCard from "../components/PageHeaderCard";
 import PageShell from "../components/PageShell";
+import { ApiError } from "../services/api";
 import {
-  DGII_606_FORMA_PAGO,
-  DGII_606_TIPO_BIENES,
-  DGII_606_TIPO_RET_ISR,
-} from "../config/dgii606";
-import { listClients, type ClientListItem } from "../services/clients";
-import { listCotizaciones, type CotizacionListItem } from "../services/cotizaciones";
-import {
-  createCompra606,
+  crearCompra606DesdeArchivo,
   deleteCompra606,
   downloadDgiiFormatoTxt,
   enviarDgiiFormato,
-  fetchBorrador606,
   listCompras606,
   llenar607DesdeEcf,
   previewDgiiFormato,
-  type Borrador606,
   type Compra606Row,
   type FormatoEnvioResult,
   type FormatoPreview,
@@ -36,67 +28,6 @@ const money = (n: number) =>
 
 type Tab = "607" | "606";
 
-const num = (s: string) => Number.parseFloat(s) || 0;
-
-const applyBorradorToForm = (b: Borrador606) => ({
-  rnc_cedula: b.rnc_cedula,
-  tipo_bienes_servicios: b.tipo_bienes_servicios,
-  ncf: b.ncf,
-  ncf_modificado: b.ncf_modificado,
-  fecha_comprobante: b.fecha_comprobante,
-  fecha_pago: b.fecha_pago,
-  monto_servicios: b.monto_servicios > 0 ? String(b.monto_servicios) : "",
-  monto_bienes: b.monto_bienes > 0 ? String(b.monto_bienes) : "",
-  itbis_facturado: b.itbis_facturado > 0 ? String(b.itbis_facturado) : "",
-  itbis_retenido: "",
-  itbis_sujeto_proporcionalidad: "",
-  itbis_llevado_al_costo: "",
-  itbis_por_adelantar: "",
-  itbis_percibido_compras: "",
-  tipo_retencion_isr: "",
-  retencion_renta: "",
-  isr_percibido_compras: "",
-  impuesto_isc: "",
-  impuestos_otros: "",
-  monto_propina_legal: "",
-  forma_pago: b.forma_pago,
-});
-
-const cotizacionEnPeriodo = (c: CotizacionListItem, periodo: string): boolean => {
-  const raw = c.dgii_submitted_at ?? c.created_at;
-  if (!raw) return false;
-  const d = new Date(raw);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  return `${y}-${m}` === periodo;
-};
-
-const emptyCompraForm = () => ({
-  rnc_cedula: "",
-  tipo_bienes_servicios: "02",
-  ncf: "",
-  ncf_modificado: "",
-  fecha_comprobante: "",
-  fecha_pago: "",
-  monto_servicios: "",
-  monto_bienes: "",
-  itbis_facturado: "",
-  itbis_retenido: "",
-  itbis_sujeto_proporcionalidad: "",
-  itbis_llevado_al_costo: "",
-  itbis_por_adelantar: "",
-  itbis_percibido_compras: "",
-  tipo_retencion_isr: "",
-  retencion_renta: "",
-  isr_percibido_compras: "",
-  impuesto_isc: "",
-  impuestos_otros: "",
-  monto_propina_legal: "",
-  forma_pago: "04",
-});
-
-const inputCls = "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm";
-
 export default function Formatos606607() {
   const [tab, setTab] = useState<Tab>("607");
   const [periodo, setPeriodo] = useState(currentPeriodo);
@@ -106,13 +37,10 @@ export default function Formatos606607() {
   const [error, setError] = useState("");
   const [actionLoading, setActionLoading] = useState("");
   const [envioResult, setEnvioResult] = useState<FormatoEnvioResult | null>(null);
-  const [compraForm, setCompraForm] = useState(emptyCompraForm);
   const [llenar607, setLlenar607] = useState<Llenar607Result | null>(null);
-  const [borradorAviso, setBorradorAviso] = useState<string | null>(null);
-  const [clients, setClients] = useState<ClientListItem[]>([]);
-  const [cotizaciones, setCotizaciones] = useState<CotizacionListItem[]>([]);
-  const [fillClientId, setFillClientId] = useState("");
-  const [fillCotizacionId, setFillCotizacionId] = useState("");
+  const [extraerFile, setExtraerFile] = useState<File | null>(null);
+  const [textoDetectado, setTextoDetectado] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState("");
 
   const loadPreview = useCallback(async () => {
     setLoading(true);
@@ -136,27 +64,6 @@ export default function Formatos606607() {
     void loadPreview();
   }, [loadPreview]);
 
-  useEffect(() => {
-    if (tab !== "606") return;
-    void (async () => {
-      try {
-        const [{ clients: cl }, { cotizaciones: co }] = await Promise.all([
-          listClients(),
-          listCotizaciones(),
-        ]);
-        setClients(cl);
-        setCotizaciones(co);
-      } catch {
-        /* opcional para autollenado */
-      }
-    })();
-  }, [tab]);
-
-  const cotizacionesPeriodo = useMemo(
-    () => cotizaciones.filter((c) => cotizacionEnPeriodo(c, periodo)),
-    [cotizaciones, periodo],
-  );
-
   const handleLlenar607 = async () => {
     setActionLoading("llenar607");
     setError("");
@@ -171,39 +78,31 @@ export default function Formatos606607() {
     }
   };
 
-  const handleBorradorCliente = async () => {
-    const id = Number(fillClientId);
-    if (!id) {
-      setError("Seleccione un cliente (proveedor).");
+  const handleSubirFactura = async () => {
+    if (!extraerFile) {
+      setError("Seleccione una imagen o PDF de la factura de compra.");
       return;
     }
-    setActionLoading("borrador-cliente");
+    setActionLoading("subir-factura");
     setError("");
+    setSuccessMessage("");
+    setTextoDetectado(null);
     try {
-      const { borrador } = await fetchBorrador606({ client_id: id });
-      setCompraForm(applyBorradorToForm(borrador));
-      setBorradorAviso(borrador.aviso);
+      const result = await crearCompra606DesdeArchivo(periodo, extraerFile);
+      setSuccessMessage(
+        `Gasto registrado: NCF ${result.compra.ncf}, total ${money(result.compra.monto_facturado)}.`,
+      );
+      setTextoDetectado(result.texto_detectado ?? null);
+      setExtraerFile(null);
+      await loadPreview();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo cargar el borrador.");
-    } finally {
-      setActionLoading("");
-    }
-  };
-
-  const handleBorradorCotizacion = async () => {
-    const id = Number(fillCotizacionId);
-    if (!id) {
-      setError("Seleccione una cotización / venta del periodo.");
-      return;
-    }
-    setActionLoading("borrador-cot");
-    setError("");
-    try {
-      const { borrador } = await fetchBorrador606({ cotizacion_id: id });
-      setCompraForm(applyBorradorToForm(borrador));
-      setBorradorAviso(borrador.aviso);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo copiar montos.");
+      if (err instanceof ApiError) {
+        setError(err.message);
+        const texto = err.body?.texto_detectado;
+        setTextoDetectado(typeof texto === "string" ? texto : null);
+      } else {
+        setError(err instanceof Error ? err.message : "No se pudo procesar el archivo.");
+      }
     } finally {
       setActionLoading("");
     }
@@ -236,44 +135,6 @@ export default function Formatos606607() {
     }
   };
 
-  const handleAddCompra = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setActionLoading("compra");
-    setError("");
-    try {
-      await createCompra606({
-        periodo,
-        rnc_cedula: compraForm.rnc_cedula.trim(),
-        tipo_bienes_servicios: compraForm.tipo_bienes_servicios,
-        ncf: compraForm.ncf.trim(),
-        ncf_modificado: compraForm.ncf_modificado.trim() || undefined,
-        fecha_comprobante: compraForm.fecha_comprobante.replace(/\D/g, ""),
-        fecha_pago: compraForm.fecha_pago.replace(/\D/g, "") || undefined,
-        monto_servicios: num(compraForm.monto_servicios),
-        monto_bienes: num(compraForm.monto_bienes),
-        itbis_facturado: num(compraForm.itbis_facturado),
-        itbis_retenido: num(compraForm.itbis_retenido),
-        itbis_sujeto_proporcionalidad: num(compraForm.itbis_sujeto_proporcionalidad),
-        itbis_llevado_al_costo: num(compraForm.itbis_llevado_al_costo),
-        itbis_por_adelantar: num(compraForm.itbis_por_adelantar),
-        itbis_percibido_compras: num(compraForm.itbis_percibido_compras),
-        tipo_retencion_isr: compraForm.tipo_retencion_isr || undefined,
-        retencion_renta: num(compraForm.retencion_renta),
-        isr_percibido_compras: num(compraForm.isr_percibido_compras),
-        impuesto_isc: num(compraForm.impuesto_isc),
-        impuestos_otros: num(compraForm.impuestos_otros),
-        monto_propina_legal: num(compraForm.monto_propina_legal),
-        forma_pago: compraForm.forma_pago,
-      });
-      setCompraForm(emptyCompraForm());
-      await loadPreview();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo guardar la compra.");
-    } finally {
-      setActionLoading("");
-    }
-  };
-
   const handleDeleteCompra = async (id: number) => {
     if (!window.confirm("¿Eliminar este registro de compra?")) return;
     setActionLoading(`del-${id}`);
@@ -291,7 +152,7 @@ export default function Formatos606607() {
     () =>
       tab === "607"
         ? "Origen: cotizaciones / e-CF con estado aceptado por DGII en el periodo (cliente, e-NCF, montos e ITBIS del XML firmado). No se guarda en base de datos: se calcula al generar el TXT."
-        : "Origen: compras a proveedores que usted registra aquí (tabla compras_606). Puede autollenar RNC desde Clientes o copiar montos de una venta como borrador; el NCF debe ser el de la factura de compra del proveedor.",
+        : "Origen: gastos de la empresa. Suba una foto o PDF de la factura de compra y se registra automáticamente.",
     [tab],
   );
 
@@ -502,315 +363,42 @@ export default function Formatos606607() {
           <div className="border-t border-slate-100 pt-6 space-y-4">
             <div className="rounded-lg border border-amber-100 bg-amber-50/80 p-4 space-y-3">
               <p className="text-sm text-slate-800">
-                <strong>606 — compras:</strong> no se generan solas desde sus ventas e-CF. Use el
-                maestro de <strong>Clientes</strong> (proveedor) o copie montos de una venta como
-                ayuda; siempre ingrese el NCF de la factura de compra del proveedor.
+                <strong>606 — gastos de la empresa:</strong> suba una foto o PDF de la factura de
+                compra; el sistema lee el RNC, NCF, fecha, montos e ITBIS y la registra directo.
               </p>
               <div className="flex flex-wrap items-end gap-3">
-                <label className="text-sm block min-w-[12rem]">
-                  Cliente / proveedor
-                  <select
-                    value={fillClientId}
-                    onChange={(e) => setFillClientId(e.target.value)}
-                    className={inputCls}
-                  >
-                    <option value="">— Seleccionar —</option>
-                    {clients.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} ({c.rnc_cedula})
-                      </option>
-                    ))}
-                  </select>
+                <label className="text-sm block min-w-[16rem]">
+                  Imagen o PDF de la factura de compra
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    onChange={(e) => setExtraerFile(e.target.files?.[0] ?? null)}
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
                 </label>
                 <button
                   type="button"
-                  onClick={() => void handleBorradorCliente()}
-                  disabled={!!actionLoading}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                >
-                  Llenar RNC desde cliente
-                </button>
-              </div>
-              <div className="flex flex-wrap items-end gap-3">
-                <label className="text-sm block min-w-[14rem]">
-                  Venta e-CF del periodo (solo montos)
-                  <select
-                    value={fillCotizacionId}
-                    onChange={(e) => setFillCotizacionId(e.target.value)}
-                    className={inputCls}
-                  >
-                    <option value="">— Seleccionar —</option>
-                    {cotizacionesPeriodo.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        #{c.number} {c.client_name} — tipo {c.ecf_tipo ?? "?"} (
-                        {c.dgii_status ?? "—"})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => void handleBorradorCotizacion()}
+                  onClick={() => void handleSubirFactura()}
                   disabled={!!actionLoading}
                   className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
                 >
-                  Copiar montos desde venta
+                  {actionLoading === "subir-factura" ? "Procesando…" : "Subir y registrar gasto"}
                 </button>
               </div>
-              {borradorAviso && (
-                <p className="text-xs text-amber-900 border border-amber-200 rounded-md px-3 py-2 bg-white/70">
-                  {borradorAviso}
+              {successMessage && (
+                <p className="text-xs text-emerald-900 border border-emerald-200 rounded-md px-3 py-2 bg-white/70">
+                  {successMessage}
                 </p>
               )}
+              {textoDetectado && (
+                <details className="text-xs text-slate-600">
+                  <summary className="cursor-pointer font-medium">Ver texto detectado (OCR)</summary>
+                  <pre className="mt-2 whitespace-pre-wrap rounded-md border border-slate-200 bg-white/70 p-2">
+                    {textoDetectado}
+                  </pre>
+                </details>
+              )}
             </div>
-
-            <h3 className="text-sm font-semibold text-slate-900">
-              Detalle de compras (plantilla DGII 606)
-            </h3>
-            <form onSubmit={(e) => void handleAddCompra(e)} className="space-y-5">
-              <fieldset className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <legend className="col-span-full text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Identificación
-                </legend>
-                <label className="text-sm">
-                  RNC / cédula proveedor
-                  <input
-                    required
-                    value={compraForm.rnc_cedula}
-                    onChange={(e) => setCompraForm((f) => ({ ...f, rnc_cedula: e.target.value }))}
-                    className={inputCls}
-                  />
-                </label>
-                <label className="text-sm">
-                  Tipo bienes y servicios
-                  <select
-                    value={compraForm.tipo_bienes_servicios}
-                    onChange={(e) =>
-                      setCompraForm((f) => ({ ...f, tipo_bienes_servicios: e.target.value }))
-                    }
-                    className={inputCls}
-                  >
-                    {DGII_606_TIPO_BIENES.map((t) => (
-                      <option key={t.code} value={t.code}>
-                        {t.code} — {t.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="text-sm">
-                  NCF
-                  <input
-                    required
-                    value={compraForm.ncf}
-                    onChange={(e) => setCompraForm((f) => ({ ...f, ncf: e.target.value }))}
-                    className={inputCls}
-                  />
-                </label>
-                <label className="text-sm">
-                  NCF / documento modificado
-                  <input
-                    value={compraForm.ncf_modificado}
-                    onChange={(e) =>
-                      setCompraForm((f) => ({ ...f, ncf_modificado: e.target.value }))
-                    }
-                    className={inputCls}
-                  />
-                </label>
-                <label className="text-sm">
-                  Fecha comprobante (AAAAMMDD)
-                  <input
-                    required
-                    placeholder="20260510"
-                    value={compraForm.fecha_comprobante}
-                    onChange={(e) =>
-                      setCompraForm((f) => ({ ...f, fecha_comprobante: e.target.value }))
-                    }
-                    className={inputCls}
-                  />
-                </label>
-                <label className="text-sm">
-                  Fecha pago (AAAAMMDD)
-                  <input
-                    placeholder="Opcional"
-                    value={compraForm.fecha_pago}
-                    onChange={(e) => setCompraForm((f) => ({ ...f, fecha_pago: e.target.value }))}
-                    className={inputCls}
-                  />
-                </label>
-              </fieldset>
-
-              <fieldset className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <legend className="col-span-full text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Montos facturados
-                </legend>
-                <label className="text-sm">
-                  Monto en servicios
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={compraForm.monto_servicios}
-                    onChange={(e) =>
-                      setCompraForm((f) => ({ ...f, monto_servicios: e.target.value }))
-                    }
-                    className={inputCls}
-                  />
-                </label>
-                <label className="text-sm">
-                  Monto en bienes
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={compraForm.monto_bienes}
-                    onChange={(e) => setCompraForm((f) => ({ ...f, monto_bienes: e.target.value }))}
-                    className={inputCls}
-                  />
-                </label>
-                <p className="text-xs text-slate-500 self-end pb-2">
-                  Total = servicios + bienes (si deja ambos en 0, indique al menos uno).
-                </p>
-              </fieldset>
-
-              <fieldset className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <legend className="col-span-full text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  ITBIS
-                </legend>
-                {(
-                  [
-                    ["itbis_facturado", "ITBIS facturado"],
-                    ["itbis_retenido", "ITBIS retenido"],
-                    ["itbis_sujeto_proporcionalidad", "Sujeto proporcionalidad"],
-                    ["itbis_llevado_al_costo", "Llevado al costo"],
-                    ["itbis_por_adelantar", "Por adelantar"],
-                    ["itbis_percibido_compras", "Percibido en compras"],
-                  ] as const
-                ).map(([key, label]) => (
-                  <label key={key} className="text-sm">
-                    {label}
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={compraForm[key]}
-                      onChange={(e) =>
-                        setCompraForm((f) => ({ ...f, [key]: e.target.value }))
-                      }
-                      className={inputCls}
-                    />
-                  </label>
-                ))}
-              </fieldset>
-
-              <fieldset className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <legend className="col-span-full text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Retenciones e impuestos
-                </legend>
-                <label className="text-sm">
-                  Tipo retención ISR
-                  <select
-                    value={compraForm.tipo_retencion_isr}
-                    onChange={(e) =>
-                      setCompraForm((f) => ({ ...f, tipo_retencion_isr: e.target.value }))
-                    }
-                    className={inputCls}
-                  >
-                    {DGII_606_TIPO_RET_ISR.map((t) => (
-                      <option key={t.code || "none"} value={t.code}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="text-sm">
-                  Monto retención renta
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={compraForm.retencion_renta}
-                    onChange={(e) =>
-                      setCompraForm((f) => ({ ...f, retencion_renta: e.target.value }))
-                    }
-                    className={inputCls}
-                  />
-                </label>
-                <label className="text-sm">
-                  ISR percibido en compras
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={compraForm.isr_percibido_compras}
-                    onChange={(e) =>
-                      setCompraForm((f) => ({ ...f, isr_percibido_compras: e.target.value }))
-                    }
-                    className={inputCls}
-                  />
-                </label>
-                <label className="text-sm">
-                  Impuesto selectivo (ISC)
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={compraForm.impuesto_isc}
-                    onChange={(e) =>
-                      setCompraForm((f) => ({ ...f, impuesto_isc: e.target.value }))
-                    }
-                    className={inputCls}
-                  />
-                </label>
-                <label className="text-sm">
-                  Otros impuestos / tasas
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={compraForm.impuestos_otros}
-                    onChange={(e) =>
-                      setCompraForm((f) => ({ ...f, impuestos_otros: e.target.value }))
-                    }
-                    className={inputCls}
-                  />
-                </label>
-                <label className="text-sm">
-                  Monto propina legal
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={compraForm.monto_propina_legal}
-                    onChange={(e) =>
-                      setCompraForm((f) => ({ ...f, monto_propina_legal: e.target.value }))
-                    }
-                    className={inputCls}
-                  />
-                </label>
-                <label className="text-sm">
-                  Forma de pago
-                  <select
-                    value={compraForm.forma_pago}
-                    onChange={(e) => setCompraForm((f) => ({ ...f, forma_pago: e.target.value }))}
-                    className={inputCls}
-                  >
-                    {DGII_606_FORMA_PAGO.map((t) => (
-                      <option key={t.code} value={t.code}>
-                        {t.code} — {t.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </fieldset>
-
-              <button
-                type="submit"
-                disabled={actionLoading === "compra"}
-                className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-900 disabled:opacity-50"
-              >
-                {actionLoading === "compra" ? "Guardando…" : "Agregar al periodo"}
-              </button>
-            </form>
 
             {compras.length > 0 && (
               <div className="overflow-x-auto">
