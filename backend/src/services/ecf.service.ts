@@ -71,6 +71,7 @@ const toPayload = (cotizacion: CotizacionWithRelations): EcfPayload => {
     subtotal: cotizacion.subtotal,
     itbis: cotizacion.itbis,
     total: cotizacion.total,
+    exento: cotizacion.exento,
     ecfTipo: cotizacion.ecfTipo,
     referenceEncf: cotizacion.ecfReferenceNcf?.trim() || undefined,
   };

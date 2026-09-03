@@ -10,6 +10,7 @@ import {
   itemLineTotalValue,
 } from "../utils/tax";
 import { formatPhoneInput, isValidPhone } from "../utils/phone";
+import ClientRncAutocomplete from "../components/ClientRncAutocomplete";
 import {
   DEFAULT_ECF_TIPO,
   ECF_CONSUMO_RFCE_THRESHOLD_RD,
@@ -71,6 +72,7 @@ export default function CotizacionCreate() {
   const [manualSubtotal, setManualSubtotal] = useState(0);
   const [manualItbis, setManualItbis] = useState(0);
   const [manualTotal, setManualTotal] = useState(0);
+  const [exento, setExento] = useState(false);
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -85,7 +87,7 @@ export default function CotizacionCreate() {
   const totals = calculateTotalsFromItems(
     lineTotals.map((totalValue) => ({ totalValue })),
   );
-  const displayTotals =
+  const calcModeTotals =
     calcMode === "manual"
       ? {
           subtotal: Number.isFinite(manualSubtotal) ? Math.max(0, manualSubtotal) : 0,
@@ -93,6 +95,9 @@ export default function CotizacionCreate() {
           total: Number.isFinite(manualTotal) ? Math.max(0, manualTotal) : 0,
         }
       : totals;
+  const displayTotals = exento
+    ? { subtotal: calcModeTotals.subtotal, itbis: 0, total: calcModeTotals.subtotal }
+    : calcModeTotals;
 
   useEffect(() => {
     if (calcMode === "manual") {
@@ -178,6 +183,7 @@ export default function CotizacionCreate() {
           subtotal: displayTotals.subtotal,
           itbis: displayTotals.itbis,
           total: displayTotals.total,
+          exento,
         },
         items: payloadItems,
         ...(enc.length >= 8 ? { certificate_encryption_secret: enc } : {}),
@@ -197,6 +203,7 @@ export default function CotizacionCreate() {
       setEcfReferenceNcf("");
       setComment("");
       setItems([newRow()]);
+      setExento(false);
       setCalcMode("auto");
       setManualSubtotal(0);
       setManualItbis(0);
@@ -305,11 +312,22 @@ export default function CotizacionCreate() {
             <label className="mt-2 block text-xs font-medium text-slate-600">
               RNC o cédula
             </label>
-            <input
+            <ClientRncAutocomplete
               className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-xs sm:text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400"
               value={clientRnc}
-              onChange={(e) => setClientRnc(e.target.value)}
+              onChange={setClientRnc}
               required
+              onSelect={(c) => {
+                setClientName(c.name);
+                setClientRnc(c.rnc_cedula);
+                setClientAddress(c.address ?? "");
+                setClientPhone(c.phone ?? "");
+                setClientEmail(c.email ?? "");
+                const lastAccountManager = c.cotizaciones.find((cot) =>
+                  cot.account_manager?.trim(),
+                )?.account_manager;
+                if (lastAccountManager?.trim()) setAccountManager(lastAccountManager.trim());
+              }}
             />
             {ecfTipo === "31" && (
               <p className="mt-1 text-[11px] text-slate-500">
@@ -558,6 +576,15 @@ export default function CotizacionCreate() {
           {/* Totales */}
           <div className="mt-3 sm:mt-4 flex justify-end">
             <div className="w-full max-w-xs space-y-1 rounded border border-slate-200 bg-slate-50 p-3 sm:p-4 text-xs sm:text-sm">
+              <label className="mb-2 flex items-center justify-between gap-2 rounded border border-slate-200 bg-white px-2 py-1.5">
+                <span className="text-slate-600">Exento de ITBIS</span>
+                <input
+                  type="checkbox"
+                  checked={exento}
+                  onChange={(e) => setExento(e.target.checked)}
+                  className="h-4 w-4"
+                />
+              </label>
               <div className="mb-2 flex items-center justify-between gap-2 rounded border border-slate-200 bg-white px-2 py-1.5">
                 <span className="text-slate-600">Modo cálculo</span>
                 <select
@@ -588,7 +615,9 @@ export default function CotizacionCreate() {
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-600">ITBIS (18%)</span>
-                {calcMode === "manual" ? (
+                {exento ? (
+                  <span className="font-mono font-medium">RD$ 0.00</span>
+                ) : calcMode === "manual" ? (
                   <input
                     type="number"
                     step="0.01"
@@ -605,7 +634,9 @@ export default function CotizacionCreate() {
               </div>
               <div className="flex justify-between border-t border-slate-300 pt-2 font-semibold text-slate-900">
                 <span>Total</span>
-                {calcMode === "manual" ? (
+                {exento ? (
+                  <span className="font-mono">RD$ {displayTotals.total.toFixed(2)}</span>
+                ) : calcMode === "manual" ? (
                   <input
                     type="number"
                     step="0.01"

@@ -70,12 +70,7 @@ const unidadCorta = (row: RiItemRow): string => {
 };
 
 const direccionEmisorLinea = (data: RepresentacionImpresaData): string => {
-  const parts = [
-    data.emisor.direccion,
-    data.emisor.municipio,
-    data.emisor.provincia,
-    "Rep. Dom.",
-  ].filter((p) => p.trim());
+  const parts = [data.emisor.direccion, "Rep. Dom."].filter((p) => p.trim());
   return parts.join(", ");
 };
 

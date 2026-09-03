@@ -180,6 +180,8 @@ model Cotizacion {
   subtotal       Float
   itbis          Float
   total          Float
+  /// Exenta de ITBIS: fuerza itbis=0 y usa el bloque de totales exentos en el e-CF.
+  exento         Boolean          @default(false) @map("exento")
   dgiiTrackId    String?          @map("dgii_track_id")
   dgiiStatus     String?          @map("dgii_status")
   dgiiResponse   String?          @map("dgii_response")

@@ -118,6 +118,12 @@ export function appendCompradorRfce32(enc: XMLBuilder, payload: RfcePayload): vo
 /** Totales RFCE 32: sin `ITBIS1` (XSD resumen E320000000011 / lote Excel). */
 export function appendTotalesRfce32(enc: XMLBuilder, payload: RfcePayload): void {
   const tot = enc.ele("Totales");
+  if (payload.exento) {
+    tot.ele("MontoExento").txt(money(payload.subtotal));
+    tot.ele("MontoTotal").txt(money(payload.total));
+    tot.up();
+    return;
+  }
   tot.ele("MontoGravadoTotal").txt(money(payload.subtotal));
   tot.ele("MontoGravadoI1").txt(money(payload.subtotal));
   tot.ele("TotalITBIS").txt(money(payload.itbis));

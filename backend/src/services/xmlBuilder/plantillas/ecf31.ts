@@ -12,6 +12,7 @@ import {
   appendEmisor,
   appendFechaHoraFirma,
   appendIdDocTipoPagoYFormas,
+  appendTotalesExento,
   appendTotalesItbis18,
 } from "../bloques";
 
@@ -25,17 +26,23 @@ export function plantillaEcf31(payload: EcfPayload): string {
   idDoc.ele("TipoeCF").txt("31");
   idDoc.ele("eNCF").txt(payload.ecfNumber.trim());
   idDoc.ele("FechaVencimientoSecuencia").txt(DEFAULT_FECHA_VENC_SEC);
-  idDoc.ele("IndicadorMontoGravado").txt("0");
+  if (!payload.exento) {
+    idDoc.ele("IndicadorMontoGravado").txt("0");
+  }
   idDoc.ele("TipoIngresos").txt("01");
   appendIdDocTipoPagoYFormas(idDoc, payload);
   idDoc.up();
 
   appendEmisor(enc, payload);
   appendComprador(enc, payload);
-  appendTotalesItbis18(enc, payload);
+  if (payload.exento) {
+    appendTotalesExento(enc, payload);
+  } else {
+    appendTotalesItbis18(enc, payload);
+  }
   enc.up();
 
-  appendDetallesItems(root, payload);
+  appendDetallesItems(root, payload, payload.exento ? "4" : "1");
   appendFechaHoraFirma(root);
 
   return doc.end({ prettyPrint: true });

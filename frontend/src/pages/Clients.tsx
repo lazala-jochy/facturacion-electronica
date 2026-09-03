@@ -16,6 +16,7 @@ import {
 } from "../services/cotizaciones";
 import { ecfTipoDisplayLabel, isConsumoMenor250Rfce } from "../config/ecfTipos";
 import { formatEcfNumberDisplay } from "../utils/ecfNumber";
+import { MONTHS } from "../utils/months";
 import DgiiResponseModal, { type DgiiResponseModalPayload } from "../components/DgiiResponseModal";
 import DgiiRejectionHint from "../components/DgiiRejectionHint";
 
@@ -213,6 +214,8 @@ export default function Clients() {
   const [modalEncryptionSecret, setModalEncryptionSecret] = useState("");
   const [ecfCertModalLoading, setEcfCertModalLoading] = useState(false);
   const [query, setQuery] = useState("");
+  const [yearFilter, setYearFilter] = useState("all");
+  const [monthFilter, setMonthFilter] = useState("all");
   const [sortBy, setSortBy] = useState<"recent" | "name" | "rnc" | "number" | "total" | "status">(
     "recent",
   );
@@ -901,15 +904,38 @@ export default function Clients() {
     }
   };
 
+  const years = useMemo(() => {
+    const setYears = new Set<number>();
+    for (const client of clients) {
+      for (const cot of client.cotizaciones ?? []) {
+        if (cot.created_at) setYears.add(new Date(cot.created_at).getFullYear());
+      }
+    }
+    return Array.from(setYears).sort((a, b) => b - a);
+  }, [clients]);
+
   const rows = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
+    const periodActive = yearFilter !== "all" || monthFilter !== "all";
+    const cotMatchesPeriod = (cot: ClientCotizacion) => {
+      if (!periodActive) return true;
+      if (!cot.created_at) return false;
+      const d = new Date(cot.created_at);
+      const y = String(d.getFullYear());
+      const mo = String(d.getMonth() + 1).padStart(2, "0");
+      if (yearFilter !== "all" && y !== yearFilter) return false;
+      if (monthFilter !== "all" && mo !== monthFilter) return false;
+      return true;
+    };
 
     const flatRows = clients
       .filter((client) => clientMatchesQuery(client, normalizedQuery))
       .flatMap((client): ClientCotRow[] => {
-        const cots = client.cotizaciones ?? [];
+        const cots = (client.cotizaciones ?? []).filter(cotMatchesPeriod);
         if (cots.length === 0) {
-          return [{ client, cot: null, rowKey: `client-${client.id}-empty` }];
+          return periodActive
+            ? []
+            : [{ client, cot: null, rowKey: `client-${client.id}-empty` }];
         }
         return cots.map((cot) => ({
           client,
@@ -922,7 +948,7 @@ export default function Clients() {
       const compare = compareClientCotRows(a, b, sortBy);
       return sortDir === "asc" ? compare : -compare;
     });
-  }, [clients, query, sortBy, sortDir]);
+  }, [clients, query, yearFilter, monthFilter, sortBy, sortDir]);
 
   const clientCount = useMemo(() => new Set(rows.map((r) => r.client.id)).size, [rows]);
 
@@ -934,7 +960,7 @@ export default function Clients() {
 
   useEffect(() => {
     setPage(1);
-  }, [query, sortBy, sortDir, pageSize]);
+  }, [query, yearFilter, monthFilter, sortBy, sortDir, pageSize]);
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
@@ -1026,6 +1052,30 @@ export default function Clients() {
               placeholder="Buscar por nombre, RNC, correo, estado..."
               className="md:col-span-2 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
             />
+            <select
+              value={yearFilter}
+              onChange={(e) => setYearFilter(e.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+            >
+              <option value="all">Todos los años</option>
+              {years.map((year) => (
+                <option key={year} value={String(year)}>
+                  {year}
+                </option>
+              ))}
+            </select>
+            <select
+              value={monthFilter}
+              onChange={(e) => setMonthFilter(e.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+            >
+              <option value="all">Todos los meses</option>
+              {MONTHS.map((month) => (
+                <option key={month.value} value={month.value}>
+                  {month.label}
+                </option>
+              ))}
+            </select>
             <select
               value={sortBy}
               onChange={(e) =>

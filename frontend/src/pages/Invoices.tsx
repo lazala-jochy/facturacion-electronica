@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { listCotizaciones } from "../services/cotizaciones";
 import { AUTH_STORAGE_KEY, type AuthSession } from "../types/session";
+import { MONTHS } from "../utils/months";
 
 type CotizacionListRow = {
   id: number;
@@ -25,21 +26,6 @@ type Movement = {
 
 const money = (value: number) =>
   new Intl.NumberFormat("es-DO", { style: "currency", currency: "DOP" }).format(value);
-
-const MONTHS = [
-  { value: "01", label: "Enero" },
-  { value: "02", label: "Febrero" },
-  { value: "03", label: "Marzo" },
-  { value: "04", label: "Abril" },
-  { value: "05", label: "Mayo" },
-  { value: "06", label: "Junio" },
-  { value: "07", label: "Julio" },
-  { value: "08", label: "Agosto" },
-  { value: "09", label: "Septiembre" },
-  { value: "10", label: "Octubre" },
-  { value: "11", label: "Noviembre" },
-  { value: "12", label: "Diciembre" },
-];
 
 const parseCotizacionRows = (raw: unknown[]): CotizacionListRow[] =>
   raw

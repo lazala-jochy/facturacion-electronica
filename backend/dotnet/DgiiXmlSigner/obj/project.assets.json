@@ -122,11 +122,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "/Users/joserosario/Desktop/e-cf+cotizacion/facturacion-electronica/backend/dotnet/DgiiXmlSigner/DgiiXmlSigner.csproj",
+      "projectUniqueName": "/Users/joserosario/Desktop/facturacion-electronica/backend/dotnet/DgiiXmlSigner/DgiiXmlSigner.csproj",
       "projectName": "DgiiXmlSigner",
-      "projectPath": "/Users/joserosario/Desktop/e-cf+cotizacion/facturacion-electronica/backend/dotnet/DgiiXmlSigner/DgiiXmlSigner.csproj",
+      "projectPath": "/Users/joserosario/Desktop/facturacion-electronica/backend/dotnet/DgiiXmlSigner/DgiiXmlSigner.csproj",
       "packagesPath": "/Users/joserosario/.nuget/packages/",
-      "outputPath": "/Users/joserosario/Desktop/e-cf+cotizacion/facturacion-electronica/backend/dotnet/DgiiXmlSigner/obj/",
+      "outputPath": "/Users/joserosario/Desktop/facturacion-electronica/backend/dotnet/DgiiXmlSigner/obj/",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "/Users/joserosario/.nuget/NuGet/NuGet.Config"
@@ -463,7 +463,67 @@
       "code": "NU1903",
       "level": "Warning",
       "warningLevel": 1,
+      "message": "Package 'System.Security.Cryptography.Xml' 10.0.0 has a known high severity vulnerability, https://github.com/advisories/GHSA-23rf-6693-g89p",
+      "libraryId": "System.Security.Cryptography.Xml",
+      "targetGraphs": [
+        "net10.0"
+      ]
+    },
+    {
+      "code": "NU1903",
+      "level": "Warning",
+      "warningLevel": 1,
       "message": "Package 'System.Security.Cryptography.Xml' 10.0.0 has a known high severity vulnerability, https://github.com/advisories/GHSA-37gx-xxp4-5rgx",
+      "libraryId": "System.Security.Cryptography.Xml",
+      "targetGraphs": [
+        "net10.0"
+      ]
+    },
+    {
+      "code": "NU1903",
+      "level": "Warning",
+      "warningLevel": 1,
+      "message": "Package 'System.Security.Cryptography.Xml' 10.0.0 has a known high severity vulnerability, https://github.com/advisories/GHSA-6588-8gv4-xfgh",
+      "libraryId": "System.Security.Cryptography.Xml",
+      "targetGraphs": [
+        "net10.0"
+      ]
+    },
+    {
+      "code": "NU1903",
+      "level": "Warning",
+      "warningLevel": 1,
+      "message": "Package 'System.Security.Cryptography.Xml' 10.0.0 has a known high severity vulnerability, https://github.com/advisories/GHSA-8q5v-6pqq-x66h",
+      "libraryId": "System.Security.Cryptography.Xml",
+      "targetGraphs": [
+        "net10.0"
+      ]
+    },
+    {
+      "code": "NU1903",
+      "level": "Warning",
+      "warningLevel": 1,
+      "message": "Package 'System.Security.Cryptography.Xml' 10.0.0 has a known high severity vulnerability, https://github.com/advisories/GHSA-cvvh-rhrc-wg4q",
+      "libraryId": "System.Security.Cryptography.Xml",
+      "targetGraphs": [
+        "net10.0"
+      ]
+    },
+    {
+      "code": "NU1903",
+      "level": "Warning",
+      "warningLevel": 1,
+      "message": "Package 'System.Security.Cryptography.Xml' 10.0.0 has a known high severity vulnerability, https://github.com/advisories/GHSA-g8r8-53c2-pm3f",
+      "libraryId": "System.Security.Cryptography.Xml",
+      "targetGraphs": [
+        "net10.0"
+      ]
+    },
+    {
+      "code": "NU1903",
+      "level": "Warning",
+      "warningLevel": 1,
+      "message": "Package 'System.Security.Cryptography.Xml' 10.0.0 has a known high severity vulnerability, https://github.com/advisories/GHSA-mmjf-rqrv-855v",
       "libraryId": "System.Security.Cryptography.Xml",
       "targetGraphs": [
         "net10.0"

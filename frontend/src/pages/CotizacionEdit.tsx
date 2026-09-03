@@ -8,6 +8,7 @@ import {
 } from "../services/cotizaciones";
 import { calculateTotalsFromItems, itemLineTotalValue } from "../utils/tax";
 import { formatPhoneInput, isValidPhone } from "../utils/phone";
+import ClientRncAutocomplete from "../components/ClientRncAutocomplete";
 import {
   DEFAULT_ECF_TIPO,
   ECF_CONSUMO_RFCE_THRESHOLD_RD,
@@ -71,6 +72,7 @@ export default function CotizacionEdit() {
   const [manualSubtotal, setManualSubtotal] = useState(0);
   const [manualItbis, setManualItbis] = useState(0);
   const [manualTotal, setManualTotal] = useState(0);
+  const [exento, setExento] = useState(false);
   const [numberLabel, setNumberLabel] = useState<string>("—");
 
   const [error, setError] = useState("");
@@ -80,7 +82,7 @@ export default function CotizacionEdit() {
 
   const lineTotals = items.map((it) => itemLineTotalValue(it.quantity, it.unit_price));
   const totals = calculateTotalsFromItems(lineTotals.map((totalValue) => ({ totalValue })));
-  const displayTotals =
+  const calcModeTotals =
     calcMode === "manual"
       ? {
           subtotal: Number.isFinite(manualSubtotal) ? Math.max(0, manualSubtotal) : 0,
@@ -88,6 +90,9 @@ export default function CotizacionEdit() {
           total: Number.isFinite(manualTotal) ? Math.max(0, manualTotal) : 0,
         }
       : totals;
+  const displayTotals = exento
+    ? { subtotal: calcModeTotals.subtotal, itbis: 0, total: calcModeTotals.subtotal }
+    : calcModeTotals;
 
   useEffect(() => {
     if (calcMode === "manual") {
@@ -134,6 +139,7 @@ export default function CotizacionEdit() {
         setManualSubtotal(Number((c.subtotal ?? 0).toFixed(2)));
         setManualItbis(Number((c.itbis ?? 0).toFixed(2)));
         setManualTotal(Number((c.total ?? 0).toFixed(2)));
+        setExento(Boolean(c.exento));
       } catch (err) {
         setError(err instanceof Error ? err.message : "No se pudo cargar la cotización.");
       } finally {
@@ -210,6 +216,7 @@ export default function CotizacionEdit() {
           subtotal: displayTotals.subtotal,
           itbis: displayTotals.itbis,
           total: displayTotals.total,
+          exento,
         },
         items: payloadItems,
         ...(enc.length >= 8 ? { certificate_encryption_secret: enc } : {}),
@@ -264,7 +271,23 @@ export default function CotizacionEdit() {
           <div className="grid gap-3 sm:gap-4 border-b border-slate-200 p-4 sm:p-5 grid-cols-1 sm:grid-cols-2">
             <div className="rounded border border-slate-200 bg-slate-50/80 p-3 sm:p-4">
               <input className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-xs sm:text-sm" value={clientName} onChange={(e) => setClientName(e.target.value)} required />
-              <input className="mt-2 w-full rounded border border-slate-300 px-2 py-1.5 text-xs sm:text-sm font-mono" value={clientRnc} onChange={(e) => setClientRnc(e.target.value)} required />
+              <ClientRncAutocomplete
+                className="mt-2 w-full rounded border border-slate-300 px-2 py-1.5 text-xs sm:text-sm font-mono"
+                value={clientRnc}
+                onChange={setClientRnc}
+                required
+                onSelect={(c) => {
+                  setClientName(c.name);
+                  setClientRnc(c.rnc_cedula);
+                  setClientAddress(c.address ?? "");
+                  setClientPhone(c.phone ?? "");
+                  setClientEmail(c.email ?? "");
+                  const lastAccountManager = c.cotizaciones.find((cot) =>
+                    cot.account_manager?.trim(),
+                  )?.account_manager;
+                  if (lastAccountManager?.trim()) setAccountManager(lastAccountManager.trim());
+                }}
+              />
               {ecfTipo === "31" && (
                 <p className="mt-1 text-[11px] text-slate-500">Tipo 31: RNC o cédula del comprador (crédito fiscal).</p>
               )}
@@ -349,6 +372,10 @@ export default function CotizacionEdit() {
 
             <div className="mt-3 sm:mt-4 flex justify-end">
               <div className="w-full max-w-xs space-y-1 rounded border border-slate-200 bg-slate-50 p-3 sm:p-4 text-xs sm:text-sm">
+                <label className="mb-2 flex items-center justify-between gap-2 rounded border border-slate-200 bg-white px-2 py-1.5">
+                  <span className="text-slate-600">Exento de ITBIS</span>
+                  <input type="checkbox" checked={exento} onChange={(e) => setExento(e.target.checked)} className="h-4 w-4" />
+                </label>
                 <div className="mb-2 flex items-center justify-between gap-2 rounded border border-slate-200 bg-white px-2 py-1.5">
                   <span className="text-slate-600">Modo cálculo</span>
                   <select value={calcMode} onChange={(e) => setCalcMode(e.target.value as "auto" | "manual")} className="rounded border border-slate-300 px-2 py-1 text-xs">
@@ -357,8 +384,8 @@ export default function CotizacionEdit() {
                   </select>
                 </div>
                 <div className="flex justify-between"><span className="text-slate-600">Subtotal</span>{calcMode === "manual" ? <input type="number" step="0.01" min={0} value={manualSubtotal} onChange={(e) => setManualSubtotal(Number(e.target.value))} className="w-32 rounded border border-slate-300 px-2 py-1 text-right font-mono text-xs" /> : <span className="font-mono font-medium">RD$ {totals.subtotal.toFixed(2)}</span>}</div>
-                <div className="flex justify-between"><span className="text-slate-600">ITBIS (18%)</span>{calcMode === "manual" ? <input type="number" step="0.01" min={0} value={manualItbis} onChange={(e) => setManualItbis(Number(e.target.value))} className="w-32 rounded border border-slate-300 px-2 py-1 text-right font-mono text-xs" /> : <span className="font-mono font-medium">RD$ {totals.itbis.toFixed(2)}</span>}</div>
-                <div className="flex justify-between border-t border-slate-300 pt-2 font-semibold text-slate-900"><span>Total</span>{calcMode === "manual" ? <input type="number" step="0.01" min={0} value={manualTotal} onChange={(e) => setManualTotal(Number(e.target.value))} className="w-32 rounded border border-slate-300 px-2 py-1 text-right font-mono text-xs" /> : <span className="font-mono">RD$ {totals.total.toFixed(2)}</span>}</div>
+                <div className="flex justify-between"><span className="text-slate-600">ITBIS (18%)</span>{exento ? <span className="font-mono font-medium">RD$ 0.00</span> : calcMode === "manual" ? <input type="number" step="0.01" min={0} value={manualItbis} onChange={(e) => setManualItbis(Number(e.target.value))} className="w-32 rounded border border-slate-300 px-2 py-1 text-right font-mono text-xs" /> : <span className="font-mono font-medium">RD$ {totals.itbis.toFixed(2)}</span>}</div>
+                <div className="flex justify-between border-t border-slate-300 pt-2 font-semibold text-slate-900"><span>Total</span>{exento ? <span className="font-mono">RD$ {displayTotals.total.toFixed(2)}</span> : calcMode === "manual" ? <input type="number" step="0.01" min={0} value={manualTotal} onChange={(e) => setManualTotal(Number(e.target.value))} className="w-32 rounded border border-slate-300 px-2 py-1 text-right font-mono text-xs" /> : <span className="font-mono">RD$ {totals.total.toFixed(2)}</span>}</div>
               </div>
             </div>
 

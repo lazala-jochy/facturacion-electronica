@@ -45,6 +45,8 @@ export type EcfPayload = {
   subtotal: number;
   itbis: number;
   total: number;
+  /** Exenta de ITBIS: usa bloque de totales exentos (MontoExento) e IndicadorFacturacion 4 por ítem. */
+  exento?: boolean;
   /** Tipo de comprobante fiscal DGII (31, 32, …); determina la plantilla XML y debe alinear el prefijo del e-NCF. */
   ecfTipo?: string;
   /** e-NCF documento modificado / referencia (p. ej. notas crédito/débito). */
@@ -167,6 +169,7 @@ export type RfcePayload = {
   subtotal: number;
   itbis: number;
   total: number;
+  exento?: boolean;
   tipoPago?: "1" | "2";
   codigoSeguridadeCF: string;
 };

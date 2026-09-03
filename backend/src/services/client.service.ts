@@ -77,6 +77,7 @@ export const clientService = {
             number: true,
             ecfTipo: true,
             ecfNcfSeq: true,
+            accountManager: true,
             subtotal: true,
             itbis: true,
             total: true,

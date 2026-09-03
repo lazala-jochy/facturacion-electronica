@@ -19,6 +19,7 @@ export type CotizacionListItem = {
   subtotal: number;
   itbis: number;
   total: number;
+  exento?: boolean;
   created_at: string;
   client_name: string;
   client_rnc_cedula?: string;
@@ -45,6 +46,7 @@ export type CotizacionDetail = {
   subtotal?: number;
   itbis?: number;
   total: number;
+  exento?: boolean;
   dgii_status?: string | null;
   dgii_track_id?: string | null;
   dgii_response?: string | null;
@@ -94,6 +96,7 @@ export type CreateClientWithCotizacionPayload = {
     subtotal?: number;
     itbis?: number;
     total?: number;
+    exento?: boolean;
   };
   items: CotizacionItemDraft[];
   /** Clave de cifrado del .p12 (mín. 8); obligatoria si la empresa tiene certificado sin clave guardada en perfil. */

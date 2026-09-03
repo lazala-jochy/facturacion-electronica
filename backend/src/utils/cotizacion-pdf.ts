@@ -15,6 +15,7 @@ type CotizacionForPdf = {
   subtotal: number;
   itbis: number;
   total: number;
+  exento?: boolean;
   company: {
     name: string;
     rnc: string;
@@ -216,8 +217,8 @@ export const buildCotizacionPdfBuffer = (
     };
 
     pushSummaryRow("Subtotal:", money(cotizacion.subtotal));
-    const subtotalExento = 0;
-    const subtotalGravado = cotizacion.subtotal;
+    const subtotalExento = cotizacion.exento ? cotizacion.subtotal : 0;
+    const subtotalGravado = cotizacion.exento ? 0 : cotizacion.subtotal;
     pushSummaryRow("Subtotal Exento:", money(subtotalExento));
     pushSummaryRow("Subtotal Gravado:", money(subtotalGravado));
     pushSummaryRow("ITBIS:", money(cotizacion.itbis));

@@ -44,6 +44,7 @@ export type CreateClientWithCotizacionInput = {
     subtotal?: number;
     itbis?: number;
     total?: number;
+    exento?: boolean;
   };
   items?: IncomingItem[];
 };
@@ -392,7 +393,7 @@ export const cotizacionService = {
       manualItbis >= 0 &&
       manualTotal >= 0 &&
       Math.abs(round2(manualSubtotal + manualItbis) - round2(manualTotal)) <= 0.01;
-    const totals =
+    const calcTotals =
       calcMode === "manual" && hasValidManualTotals
         ? {
             subtotal: round2(manualSubtotal),
@@ -400,6 +401,10 @@ export const cotizacionService = {
             total: round2(manualTotal),
           }
         : autoTotals;
+    const exento = Boolean(input.cotizacion.exento);
+    const totals = exento
+      ? { subtotal: calcTotals.subtotal, itbis: 0, total: calcTotals.subtotal }
+      : calcTotals;
 
     let result;
     try {
@@ -418,21 +423,33 @@ export const cotizacionService = {
             })
           : null;
 
-      const client =
-        clientByRnc ||
-        clientByCedula ||
-        (await tx.client.create({
-          data: {
-            name: cName,
-            address: trimOrNull(input.client.address ?? undefined),
-            rncCedula: cRnc,
-            rnc: maybeRnc,
-            cedula: maybeCedula,
-            phone: clientPhone,
-            email: trimOrNull(input.client.email ?? undefined),
-            companyId,
-          },
-        }));
+      const existingClient = clientByRnc || clientByCedula;
+
+      const client = existingClient
+        ? await tx.client.update({
+            where: { id: existingClient.id },
+            data: {
+              name: cName,
+              address: trimOrNull(input.client.address ?? undefined),
+              rncCedula: cRnc,
+              rnc: maybeRnc,
+              cedula: maybeCedula,
+              phone: clientPhone,
+              email: trimOrNull(input.client.email ?? undefined),
+            },
+          })
+        : await tx.client.create({
+            data: {
+              name: cName,
+              address: trimOrNull(input.client.address ?? undefined),
+              rncCedula: cRnc,
+              rnc: maybeRnc,
+              cedula: maybeCedula,
+              phone: clientPhone,
+              email: trimOrNull(input.client.email ?? undefined),
+              companyId,
+            },
+          });
 
       const number = await nextCotizacionNumber(tx, companyId);
       const ecfNcfSeq = await allocateEcfNcfSeq(tx, companyId, ecfTipo);
@@ -454,6 +471,7 @@ export const cotizacionService = {
           subtotal: totals.subtotal,
           itbis: totals.itbis,
           total: totals.total,
+          exento,
         },
       });
 
@@ -614,7 +632,7 @@ export const cotizacionService = {
       manualItbis >= 0 &&
       manualTotal >= 0 &&
       Math.abs(round2(manualSubtotal + manualItbis) - round2(manualTotal)) <= 0.01;
-    const totals =
+    const calcTotals =
       calcMode === "manual" && hasValidManualTotals
         ? {
             subtotal: round2(manualSubtotal),
@@ -622,6 +640,10 @@ export const cotizacionService = {
             total: round2(manualTotal),
           }
         : autoTotals;
+    const exento = Boolean(input.cotizacion.exento);
+    const totals = exento
+      ? { subtotal: calcTotals.subtotal, itbis: 0, total: calcTotals.subtotal }
+      : calcTotals;
 
     let cotizacion;
     try {
@@ -671,6 +693,7 @@ export const cotizacionService = {
           subtotal: totals.subtotal,
           itbis: totals.itbis,
           total: totals.total,
+          exento,
           ...(resetDgiiAfterNonSequenceReject
             ? {
                 dgiiStatus: null,

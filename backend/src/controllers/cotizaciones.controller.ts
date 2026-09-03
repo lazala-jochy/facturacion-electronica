@@ -73,6 +73,7 @@ const serializeCotizacion = (
   subtotal: c.subtotal,
   itbis: c.itbis,
   total: c.total,
+  exento: c.exento,
   dgii_track_id: c.dgiiTrackId,
   dgii_status: c.dgiiStatus,
   dgii_response: c.dgiiResponse,
@@ -211,6 +212,7 @@ export const createClientWithCotizacion: RequestHandler = async (req, res) => {
       subtotal: Number(cot.subtotal),
       itbis: Number(cot.itbis),
       total: Number(cot.total),
+      exento: Boolean(cot.exento),
     },
     items,
   });
@@ -270,6 +272,7 @@ export const listCotizaciones: RequestHandler = async (req, res) => {
       subtotal: c.subtotal,
       itbis: c.itbis,
       total: c.total,
+      exento: c.exento,
       created_at: c.createdAt.toISOString(),
       client_name: c.client.name,
       client_rnc_cedula: c.client.rncCedula,
@@ -391,6 +394,7 @@ export const updateCotizacionById: RequestHandler = async (req, res) => {
       subtotal: Number(cot.subtotal),
       itbis: Number(cot.itbis),
       total: Number(cot.total),
+      exento: Boolean(cot.exento),
     },
     items,
   });

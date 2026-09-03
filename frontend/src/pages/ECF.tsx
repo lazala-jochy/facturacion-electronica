@@ -15,6 +15,7 @@ import {
 import PageHeaderCard from "../components/PageHeaderCard";
 import PageShell from "../components/PageShell";
 import DgiiResponseModal, { type DgiiResponseModalPayload } from "../components/DgiiResponseModal";
+import { MONTHS } from "../utils/months";
 
 export default function ECF({ company }: { company: AuthCompany }) {
   const location = useLocation();
@@ -37,6 +38,8 @@ export default function ECF({ company }: { company: AuthCompany }) {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [deleteError, setDeleteError] = useState("");
   const [query, setQuery] = useState("");
+  const [yearFilter, setYearFilter] = useState("all");
+  const [monthFilter, setMonthFilter] = useState("all");
   const [sortBy, setSortBy] = useState<"date" | "client" | "rnc" | "total" | "status">("date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
@@ -62,9 +65,20 @@ export default function ECF({ company }: { company: AuthCompany }) {
     void loadRows();
   }, [loadRows, location.key]);
 
+  const years = useMemo(() => {
+    const setYears = new Set<number>();
+    for (const r of rows) setYears.add(new Date(r.created_at).getFullYear());
+    return Array.from(setYears).sort((a, b) => b - a);
+  }, [rows]);
+
   const ecfRows = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     const filtered = rows.filter((r) => {
+      const d = new Date(r.created_at);
+      const y = String(d.getFullYear());
+      const mo = String(d.getMonth() + 1).padStart(2, "0");
+      if (yearFilter !== "all" && y !== yearFilter) return false;
+      if (monthFilter !== "all" && mo !== monthFilter) return false;
       if (!normalizedQuery) return true;
       const encf = formatEcfNumberDisplay(r.ecf_tipo, r.ecf_ncf_seq ?? undefined);
       return [
@@ -96,7 +110,7 @@ export default function ECF({ company }: { company: AuthCompany }) {
       if (sortBy === "status") compare = (a.dgii_status ?? "").localeCompare(b.dgii_status ?? "");
       return sortDir === "asc" ? compare : -compare;
     });
-  }, [rows, query, sortBy, sortDir]);
+  }, [rows, query, yearFilter, monthFilter, sortBy, sortDir]);
 
   const summary = useMemo(() => {
     const s = (rows ?? []).reduce(
@@ -122,7 +136,7 @@ export default function ECF({ company }: { company: AuthCompany }) {
 
   useEffect(() => {
     setPage(1);
-  }, [query, sortBy, sortDir, pageSize]);
+  }, [query, yearFilter, monthFilter, sortBy, sortDir, pageSize]);
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
@@ -337,6 +351,30 @@ export default function ECF({ company }: { company: AuthCompany }) {
               placeholder="Buscar: cliente, RNC, # cotización, tipo, e-NCF, track ID…"
               className="md:col-span-2 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
             />
+            <select
+              value={yearFilter}
+              onChange={(e) => setYearFilter(e.target.value)}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+            >
+              <option value="all">Todos los años</option>
+              {years.map((year) => (
+                <option key={year} value={String(year)}>
+                  {year}
+                </option>
+              ))}
+            </select>
+            <select
+              value={monthFilter}
+              onChange={(e) => setMonthFilter(e.target.value)}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+            >
+              <option value="all">Todos los meses</option>
+              {MONTHS.map((month) => (
+                <option key={month.value} value={month.value}>
+                  {month.label}
+                </option>
+              ))}
+            </select>
             <select
               value={sortBy}
               onChange={(e) =>

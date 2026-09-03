@@ -22,6 +22,7 @@ export type ClientListItem = {
     ecf_tipo?: string;
     ecf_ncf_seq?: number;
     ecf_number?: string | null;
+    account_manager?: string | null;
     subtotal: number;
     itbis: number;
     total: number;
