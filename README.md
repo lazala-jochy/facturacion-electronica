@@ -278,6 +278,42 @@ Genera: `electron/dist`
 
 ---
 
+## CI: generar ambos instaladores con un push a `main`
+
+El "un comando" real para generar Windows + macOS a la vez es **hacer push a `main`** con
+cambios en `backend/`, `frontend/` o `electron/`. Un workflow de GitHub Actions
+(`.github/workflows/release-desktop.yml`) se encarga de todo:
+
+1. Corre en paralelo en un runner **Windows** y uno **macOS** — no se puede compilar ambos desde
+   una sola máquina: Prisma usa un motor de consultas en binario nativo específico por sistema
+   operativo (el mismo que se empaqueta dentro del instalador vía `extraResources` en
+   `electron/package.json`), así que cada runner instala sus propias dependencias y genera el
+   binario correcto para su SO.
+2. Cada uno compila (`frontend` + `backend` + `electron`) y empaqueta su instalador
+   (`.exe` NSIS en Windows, `.dmg`/`.zip` en macOS).
+3. Publica ambos en GitHub Releases con una versión única por corrida (`major.minor` de
+   `electron/package.json` + número de run de GitHub Actions), así siempre es mayor a la
+   anterior y `electron-updater` la reconoce como actualización nueva.
+4. Las apps ya instaladas detectan esa versión nueva y la instalan solas.
+
+Funciona sin configurar ningún secret (usa el `GITHUB_TOKEN` que Actions provee automáticamente).
+Si en algún momento consiguen certificados de firma de código, agreguen estos secrets en
+**Settings → Secrets and variables → Actions** del repo y el workflow los toma solo:
+
+| Secret | Para qué |
+|---|---|
+| `WIN_CSC_LINK` / `WIN_CSC_KEY_PASSWORD` | Firmar el `.exe` (Windows Authenticode) |
+| `MAC_CSC_LINK` / `MAC_CSC_KEY_PASSWORD` | Firmar el `.app`/`.dmg` (Apple Developer ID) |
+
+**Importante sobre macOS sin firmar:** el build se publica igual, pero sin certificado de Apple
+el auto-update en macOS no es confiable (ver "Notas de producción" más abajo) y los usuarios
+necesitan abrir la app con click derecho → "Open" la primera vez (Gatekeeper).
+
+El workflow solo se dispara con cambios reales de la app — un commit que solo toque el README,
+por ejemplo, no lanza un release nuevo.
+
+---
+
 ## 6) Auto updates (electron-updater + GitHub Releases)
 
 La app de Electron ya esta configurada para buscar updates en GitHub Releases usando `electron-updater`.
@@ -367,7 +403,9 @@ npm run release
 
 ## 7) Generar instaladores por sistema operativo
 
-Ya esta configurado con `electron-builder`.
+Ya esta configurado con `electron-builder`. Para generar y publicar ambos instaladores de una,
+ver la sección **"CI: generar ambos instaladores con un push a main"** más arriba — lo de abajo
+es para generar un instalador local (un solo SO, sin publicar), útil para probar antes de subir.
 
 ### Windows (NSIS `.exe`)
 

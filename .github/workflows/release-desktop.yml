@@ -1,0 +1,82 @@
+name: Release desktop app
+
+# Un push a main con cambios de app dispara esto: compila e instala Windows y macOS EN PARALELO
+# (cada runner con su propio SO, asi Prisma descarga el motor nativo correcto para cada uno — no
+# se puede compilar ambos desde una sola maquina, ver README seccion "Build e instaladores").
+# Publica ambos instaladores en GitHub Releases; electron-updater en las apps ya instaladas
+# detecta la version nueva y la instala sola.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "electron/**"
+      - ".github/workflows/release-desktop.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Instalar dependencias (backend, frontend, electron)
+        shell: bash
+        run: |
+          npm install --prefix backend
+          npm install --prefix frontend
+          npm install --prefix electron
+
+      - name: Generar Prisma Client (motor nativo para este SO)
+        shell: bash
+        working-directory: backend
+        run: npm run prisma:generate
+
+      - name: Compilar frontend + backend + electron
+        shell: bash
+        working-directory: electron
+        run: npm run build:all
+
+      - name: Version unica por corrida (major.minor del package.json + numero de run)
+        id: version
+        shell: bash
+        working-directory: electron
+        run: |
+          BASE=$(node -p "require('./package.json').version.split('.').slice(0,2).join('.')")
+          echo "value=${BASE}.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build + publish (Windows NSIS)
+        if: runner.os == 'Windows'
+        shell: bash
+        working-directory: electron
+        run: npx electron-builder --win nsis --publish always -c.extraMetadata.version=${{ steps.version.outputs.value }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Opcionales: si en algun momento agregan firma de codigo Windows, definan estos
+          # secrets en el repo (Settings > Secrets) y electron-builder los toma solo.
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
+      - name: Build + publish (macOS dmg/zip)
+        if: runner.os == 'macOS'
+        shell: bash
+        working-directory: electron
+        run: npx electron-builder --mac dmg zip --publish always -c.extraMetadata.version=${{ steps.version.outputs.value }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Igual que arriba, pero para macOS (Developer ID Application). Sin esto, el build
+          # queda sin firmar: se publica igual, pero el auto-update en macOS no es confiable
+          # (ver README, Auto updates > Notas de produccion) y Gatekeeper pide "Open" manual.
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
