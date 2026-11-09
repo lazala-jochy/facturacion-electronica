@@ -70,6 +70,14 @@ const parseXmlAmount = (signedXml: string, tag: string): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
+const fechaCortaLocal = (d: Date): string =>
+  new Intl.DateTimeFormat("es-DO", { timeZone: "America/Santo_Domingo", dateStyle: "short" }).format(d);
+
+/**
+ * La validacion es por e-CF (su eNCF es el dato unico), no por periodo: una vez que un e-CF
+ * salio en un TXT 607 generado, no debe volver a salir en una generacion posterior aunque se
+ * reclame el mismo periodo — ver formato607GeneradoAt, marcado en generateFormatoTxt.
+ */
 const motivoExclusion607 = (cot: CotizacionVentas): string => {
   const st = cot.dgiiStatus?.trim() ?? "";
   if (st !== "accepted") {
@@ -77,6 +85,9 @@ const motivoExclusion607 = (cot: CotizacionVentas): string => {
   }
   if (cot.ecfTipo === "32" && cot.total < ECF_CONSUMO_RFCE_TOTAL_THRESHOLD_RD) {
     return "Consumo < RD$250,000 (no va en 607; va en RFCE)";
+  }
+  if (cot.formato607GeneradoAt) {
+    return `Ya incluido en un 607 generado el ${fechaCortaLocal(cot.formato607GeneradoAt)}`;
   }
   return "";
 };
@@ -565,13 +576,21 @@ export const generateFormatoTxt = async (
   }
 
   if (tipo === "607") {
-    const lines = await collect607LinesFromCotizaciones(companyId, periodo);
-    const content = build607Txt(company.rnc, periodo, lines);
+    const periodoStr = `${periodo.year}-${String(periodo.month).padStart(2, "0")}`;
+    const out = await llenar607DesdeEcf(companyId, periodoStr);
+    if (!out.ok) return out;
+    const content = build607Txt(company.rnc, periodo, out.lines);
+    if (out.fuentes_incluidas.length > 0) {
+      await prisma.cotizacion.updateMany({
+        where: { id: { in: out.fuentes_incluidas.map((f) => f.cotizacion_id) } },
+        data: { formato607GeneradoAt: new Date() },
+      });
+    }
     return {
       ok: true,
       content,
       filename: dgiiFormatoTxtFilename("607", company.rnc, periodo),
-      registro_count: lines.length,
+      registro_count: out.lines.length,
     };
   }
 

@@ -195,6 +195,8 @@ model Cotizacion {
   dgiiSubmitNextRetryAt  DateTime? @map("dgii_submit_next_retry_at")
   dgiiSubmitLastError    String?   @map("dgii_submit_last_error")
   dgiiSubmitCertProfile  String?   @map("dgii_submit_cert_profile")
+  /// Marca cuando este e-CF se incluyo en un TXT 607 generado — evita reportarlo dos veces.
+  formato607GeneradoAt   DateTime? @map("formato_607_generado_at")
   /// Código tipo e-NCF (ej. 31 factura crédito fiscal, 32 consumo).
   ecfTipo        String           @default("31") @map("ecf_tipo")
   /// Correlativo e-NCF por empresa y tipo (cola numérica del e-CF).

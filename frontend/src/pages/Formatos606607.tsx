@@ -243,6 +243,10 @@ export default function Formatos606607() {
               <strong>607 — ventas:</strong> cada línea sale de un e-CF aceptado (módulo e-CF / cotización):
               RNC del cliente, e-NCF, tipo de ingreso, fechas y montos del XML firmado.
             </p>
+            <p className="text-xs text-slate-600">
+              Cada e-CF solo se reporta una vez: si ya salió en un TXT generado antes (de este periodo
+              o cualquier otro), no vuelve a aparecer en una generación nueva.
+            </p>
             <button
               type="button"
               onClick={() => void handleLlenar607()}
