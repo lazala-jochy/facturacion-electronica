@@ -53,6 +53,8 @@ const failedDueToColumnAlreadyApplied = async (migrationName: string, output: st
   }
 };
 
+const MAX_RECOVERY_ATTEMPTS = 10;
+
 const maybeMigrate = async () => {
   if (process.env.AUTO_MIGRATE === "false") return;
   const runtimeRoot = path.join(__dirname, "..");
@@ -60,41 +62,49 @@ const maybeMigrate = async () => {
   const schemaPath = path.join(runtimeRoot, "prisma", "schema.prisma");
   const deployArgs = ["migrate", "deploy", "--schema", schemaPath];
 
-  try {
-    console.log(runPrismaCli(runtimeRoot, prismaCli, deployArgs));
-  } catch (error) {
-    const output = [
-      (error as { stdout?: string }).stdout ?? "",
-      (error as { stderr?: string }).stderr ?? "",
-      error instanceof Error ? error.message : String(error),
-    ].join("\n");
-    console.error(output);
-
-    const migrationName = extractFailedMigrationName(output);
-    const recoverable = migrationName && (await failedDueToColumnAlreadyApplied(migrationName, output));
-    if (!migrationName || !recoverable) {
-      console.error("No se pudo aplicar migraciones Prisma en el arranque.", error);
-      throw error;
-    }
-
-    console.warn(
-      `Migracion "${migrationName}" ya estaba aplicada en esta base de datos (columna duplicada). Marcandola como aplicada y reintentando...`,
-    );
+  // Puede haber mas de una migracion renombrada sin resolver acumulada en el
+  // historial de una misma base de datos; cada resolve solo desbloquea la
+  // siguiente, asi que hay que reintentar en bucle hasta que no queden mas.
+  for (let attempt = 0; attempt < MAX_RECOVERY_ATTEMPTS; attempt += 1) {
     try {
-      runPrismaCli(runtimeRoot, prismaCli, [
-        "migrate",
-        "resolve",
-        "--applied",
-        migrationName,
-        "--schema",
-        schemaPath,
-      ]);
       console.log(runPrismaCli(runtimeRoot, prismaCli, deployArgs));
-    } catch (recoveryError) {
-      console.error("No se pudo recuperar automaticamente de la migracion duplicada.", recoveryError);
-      throw recoveryError;
+      return;
+    } catch (error) {
+      const output = [
+        (error as { stdout?: string }).stdout ?? "",
+        (error as { stderr?: string }).stderr ?? "",
+        error instanceof Error ? error.message : String(error),
+      ].join("\n");
+      console.error(output);
+
+      const migrationName = extractFailedMigrationName(output);
+      const recoverable = migrationName && (await failedDueToColumnAlreadyApplied(migrationName, output));
+      if (!migrationName || !recoverable) {
+        console.error("No se pudo aplicar migraciones Prisma en el arranque.", error);
+        throw error;
+      }
+
+      console.warn(
+        `Migracion "${migrationName}" ya estaba aplicada en esta base de datos (columna duplicada). Marcandola como aplicada y reintentando...`,
+      );
+      try {
+        runPrismaCli(runtimeRoot, prismaCli, [
+          "migrate",
+          "resolve",
+          "--applied",
+          migrationName,
+          "--schema",
+          schemaPath,
+        ]);
+      } catch (recoveryError) {
+        console.error("No se pudo recuperar automaticamente de la migracion duplicada.", recoveryError);
+        throw recoveryError;
+      }
     }
   }
+  throw new Error(
+    `Se alcanzo el limite de ${MAX_RECOVERY_ATTEMPTS} intentos de auto-recuperacion de migraciones.`,
+  );
 };
 
 const bootstrap = async () => {
