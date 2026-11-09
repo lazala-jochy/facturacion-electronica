@@ -4,12 +4,12 @@
   "main": "dist/index.js",
   "scripts": {
     "predev": "sh -c 'lsof -ti :3001 | xargs kill -9 2>/dev/null || true'",
-    "dev": "DATABASE_URL=\"file:./prisma/dev.db\" ts-node-dev src/index.ts",
+    "dev": "cross-env DATABASE_URL=\"file:./prisma/dev.db\" ts-node-dev src/index.ts",
     "build": "tsc",
-    "start": "DATABASE_URL=\"file:./prisma/dev.db\" node dist/index.js",
-    "migrate:dev": "DATABASE_URL=\"file:./prisma/dev.db\" prisma migrate dev",
-    "migrate:deploy": "DATABASE_URL=\"file:./prisma/dev.db\" prisma migrate deploy",
-    "prisma:generate": "DATABASE_URL=\"file:./prisma/dev.db\" prisma generate",
+    "start": "cross-env DATABASE_URL=\"file:./prisma/dev.db\" node dist/index.js",
+    "migrate:dev": "cross-env DATABASE_URL=\"file:./prisma/dev.db\" prisma migrate dev",
+    "migrate:deploy": "cross-env DATABASE_URL=\"file:./prisma/dev.db\" prisma migrate deploy",
+    "prisma:generate": "cross-env DATABASE_URL=\"file:./prisma/dev.db\" prisma generate",
     "ecf-excel-batch": "node script/run.js",
     "test:signer": "npm run build && node --test dist/services/dgiiXmlSigner.test.js",
     "test:acecf": "npm run build && node --test dist/commercial-approvals/acecfSheet.test.js dist/commercial-approvals/acecfXmlBuilder.test.js dist/commercial-approvals/acecfDgiiResponse.test.js",
@@ -48,6 +48,7 @@
     "@types/node-forge": "^1.3.14",
     "@types/pdfkit": "^0.17.6",
     "@types/qrcode": "^1.5.6",
+    "cross-env": "^7.0.3",
     "ts-node-dev": "^2.0.0",
     "typescript": "^6.0.3"
   }
