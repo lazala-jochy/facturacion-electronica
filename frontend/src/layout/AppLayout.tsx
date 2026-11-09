@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { AuthCompany } from "../types/session";
 import { BuildingIcon } from "../icons/branding";
 import { companyUploadedLogoUrl } from "../utils/companyLogo";
@@ -15,6 +15,45 @@ export default function AppLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const sidebarLogoUrl = companyUploadedLogoUrl(company);
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+
+  useEffect(() => {
+    void window.electronAPI?.getAppVersion().then(setAppVersion);
+    const unsubscribe = window.electronAPI?.onUpdateStatus((status) => {
+      if (status.status === "checking") {
+        setCheckingUpdate(true);
+        setUpdateMessage("Buscando actualizaciones…");
+      } else if (status.status === "available") {
+        setCheckingUpdate(false);
+        setUpdateMessage(`Descargando actualización v${status.version}…`);
+      } else if (status.status === "not-available") {
+        setCheckingUpdate(false);
+        setUpdateMessage("Ya tienes la última versión.");
+      } else if (status.status === "downloading") {
+        setCheckingUpdate(false);
+        setUpdateMessage(`Descargando… ${Math.round(status.percent)}%`);
+      } else if (status.status === "downloaded") {
+        setCheckingUpdate(false);
+        setUpdateMessage(`Actualización v${status.version} lista para instalar.`);
+      } else if (status.status === "error") {
+        setCheckingUpdate(false);
+        setUpdateMessage(`Error al actualizar: ${status.message}`);
+      }
+    });
+    return unsubscribe;
+  }, []);
+
+  const handleCheckForUpdates = async () => {
+    setCheckingUpdate(true);
+    setUpdateMessage("Buscando actualizaciones…");
+    const result = await window.electronAPI?.checkForUpdates();
+    if (result && !result.ok) {
+      setCheckingUpdate(false);
+      setUpdateMessage(result.message ?? "No se pudo buscar actualizaciones.");
+    }
+  };
 
   return (
     <div className="min-h-screen flex flex-col lg:flex-row bg-gradient-to-br from-[#f5f6ff] via-[#f8f9ff] to-[#eef2ff]">
@@ -232,13 +271,32 @@ export default function AppLayout({
               >
                 Perfil de empresa
               </NavLink>
+              {window.electronAPI?.checkForUpdates ? (
+                <div className="border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => void handleCheckForUpdates()}
+                    disabled={checkingUpdate}
+                    className="block w-full text-left px-3 py-2 text-sm hover:bg-slate-50 transition-all duration-200 disabled:opacity-60"
+                  >
+                    {checkingUpdate ? "Buscando…" : "Buscar actualizaciones"}
+                  </button>
+                  {(appVersion || updateMessage) && (
+                    <p className="px-3 pb-2 text-[11px] text-slate-500 leading-snug">
+                      {appVersion ? `Versión actual: v${appVersion}` : null}
+                      {appVersion && updateMessage ? " · " : null}
+                      {updateMessage}
+                    </p>
+                  )}
+                </div>
+              ) : null}
               <button
                 type="button"
                 onClick={() => {
                   setAccountOpen(false);
                   onLogout();
                 }}
-                className="block w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-all duration-200"
+                className="block w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-all duration-200 border-t border-slate-100"
               >
                 Cerrar sesión
               </button>
