@@ -67,6 +67,9 @@ jobs:
           # secrets en el repo (Settings > Secrets) y electron-builder los toma solo.
           CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          # Sin esto, electron-builder intenta auto-descubrir una identidad de firma en el
+          # keychain del runner (aunque no hayamos puesto CSC_LINK) y revienta el build.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - name: Build + publish (macOS dmg/zip)
         if: runner.os == 'macOS'
@@ -80,3 +83,6 @@ jobs:
           # (ver README, Auto updates > Notas de produccion) y Gatekeeper pide "Open" manual.
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          # Sin esto, electron-builder intenta auto-descubrir una identidad de firma en el
+          # keychain del runner (aunque no hayamos puesto CSC_LINK) y revienta el build.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
