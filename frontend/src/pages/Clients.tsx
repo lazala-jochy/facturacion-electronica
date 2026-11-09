@@ -992,15 +992,15 @@ export default function Clients() {
           Sin conexion a internet. El envio a DGII estara deshabilitado hasta reconectar.
         </div>
       )}
-      {company?.certificateConfigured ? (
+      {company?.certificateConfigured && !company?.certificate_keyphrase?.trim() ? (
         <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50/90 p-4 text-sm shadow-sm">
           <label htmlFor="ecf-enc-clients" className="block font-semibold text-slate-800">
             Clave de cifrado del certificado (DGII)
           </label>
           <p className="mt-1 text-xs text-slate-600">
-            Si la guardaste en <strong className="font-medium text-slate-800">Perfil de empresa</strong>, no hace falta
-            volver a escribirla. Podés sobreescribirla acá solo para esta sesión; también se puede recordar en este
-            navegador al salir del campo.
+            Guardala en <strong className="font-medium text-slate-800">Perfil de empresa</strong> para que se reutilice
+            automáticamente en toda la app sin tener que volver a escribirla acá. Mientras tanto, podés usarla solo
+            para esta sesión; también se puede recordar en este navegador al salir del campo.
           </p>
           <input
             id="ecf-enc-clients"
