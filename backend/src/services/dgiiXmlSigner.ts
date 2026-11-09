@@ -68,6 +68,24 @@ export type DgiiSignatureVerificationReport = {
 const SIGNATURE_LOG = path.join(process.cwd(), "logs", "dgii-signature.log");
 const DEBUG_DIR = path.join(process.cwd(), "logs", "dgii-debug");
 const DOTNET_SIGNER_PROJECT = path.join(process.cwd(), "dotnet", "DgiiXmlSigner", "DgiiXmlSigner.csproj");
+const DOTNET_SIGNER_DLL = path.join(
+  path.dirname(DOTNET_SIGNER_PROJECT),
+  "bin",
+  "Debug",
+  "net10.0",
+  "DgiiXmlSigner.dll",
+);
+
+/**
+ * `dotnet run --project` reconstruye/valida el proyecto en cada llamada (~2-3s de overhead de
+ * MSBuild) — inaceptable para flujos síncronos con deadline externo (ej. ARECF ante DGII, con
+ * pocos segundos de margen). Si el DLL ya está compilado (caso normal en dev/checkout con build
+ * previo) lo ejecutamos directo (~50-100ms); si no existe, cae a `dotnet run` como antes.
+ */
+function dotnetSignerArgs(extraArgs: string[]): string[] {
+  if (fs.existsSync(DOTNET_SIGNER_DLL)) return [DOTNET_SIGNER_DLL, ...extraArgs];
+  return ["run", "--project", DOTNET_SIGNER_PROJECT, "--", ...extraArgs];
+}
 function appendSignatureLog(line: string): void {
   try {
     fs.mkdirSync(path.dirname(SIGNATURE_LOG), { recursive: true });
@@ -356,7 +374,7 @@ const signXmlWithDotnet = (
 
     const result = spawnSync(
       "dotnet",
-      ["run", "--project", DOTNET_SIGNER_PROJECT, "--", inputPath, certPath, passwordPath, outputPath, mode],
+      dotnetSignerArgs([inputPath, certPath, passwordPath, outputPath, mode]),
       {
         cwd: process.cwd(),
         encoding: "utf8",
@@ -387,7 +405,7 @@ const verifyXmlWithDotnet = (signedXml: string): boolean => {
     fs.writeFileSync(inputPath, signedXml, "utf8");
     const result = spawnSync(
       "dotnet",
-      ["run", "--project", DOTNET_SIGNER_PROJECT, "--", "--verify", inputPath],
+      dotnetSignerArgs(["--verify", inputPath]),
       {
         cwd: process.cwd(),
         encoding: "utf8",

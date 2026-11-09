@@ -39,6 +39,9 @@ export type AuthCompany = {
   dgiiPaso4SeedUrl?: string | null;
   dgiiPaso4ValidateSeedUrl?: string | null;
   dgiiPaso4EcfReceiveUrl?: string | null;
+  /** DGII Communication Gateway (ecf-gateway) — conector local, ver CompanyProfile. */
+  ecfGatewayBaseUrl?: string | null;
+  ecfGatewayApiKey?: string | null;
   certificatePath?: string | null;
   tokenExpiration?: string | null;
   token_cached?: boolean;

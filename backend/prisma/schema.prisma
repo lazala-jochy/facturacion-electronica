@@ -42,6 +42,9 @@ model Company {
   dgiiPaso4SeedUrl           String?      @map("dgii_paso4_seed_url")
   dgiiPaso4ValidateSeedUrl   String?      @map("dgii_paso4_validate_seed_url")
   dgiiPaso4EcfReceiveUrl     String?      @map("dgii_paso4_ecf_receive_url")
+  // DGII Communication Gateway (ecf-gateway) — conector local, ver ecfGatewayClient.ts.
+  ecfGatewayBaseUrl          String?      @map("ecf_gateway_base_url")
+  ecfGatewayApiKey           String?      @map("ecf_gateway_api_key")
   certificatePath            String?      @map("certificate_path")
   certificatePassword        String?      @map("certificate_password")
   tokenCache                 String?      @map("token_cache")

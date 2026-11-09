@@ -63,4 +63,7 @@ export type UpdateCompanyBody = {
   dgii_paso4_environment?: "CERTIFICACION" | "PRODUCCION";
   certificate_path?: string;
   certificate_password?: string;
+  /** DGII Communication Gateway (ecf-gateway) — conector local. */
+  ecf_gateway_base_url?: string;
+  ecf_gateway_api_key?: string;
 };

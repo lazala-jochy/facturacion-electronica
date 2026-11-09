@@ -69,6 +69,8 @@ export type PublicCompany = Pick<
   | "dgiiPaso4EcfReceiveUrl"
   | "certificatePath"
   | "tokenExpiration"
+  | "ecfGatewayBaseUrl"
+  | "ecfGatewayApiKey"
 > & {
   certificateConfigured: boolean;
   /** Clave de cifrado del .p12 persistida (misma que al guardar el certificado). */
@@ -171,6 +173,8 @@ const publicCompany = (c: Company): PublicCompany => ({
   dgiiPaso4SeedUrl: c.dgiiPaso4SeedUrl,
   dgiiPaso4ValidateSeedUrl: c.dgiiPaso4ValidateSeedUrl,
   dgiiPaso4EcfReceiveUrl: c.dgiiPaso4EcfReceiveUrl,
+  ecfGatewayBaseUrl: c.ecfGatewayBaseUrl,
+  ecfGatewayApiKey: c.ecfGatewayApiKey,
   certificatePath: c.certificatePath,
   tokenExpiration: c.tokenExpiration,
   certificateConfigured: companyHasCertificateRecord(c),
@@ -669,6 +673,27 @@ export const authService = {
         : null;
     }
 
+    const ecfGatewayMerge: Partial<Pick<Company, "ecfGatewayBaseUrl" | "ecfGatewayApiKey">> = {};
+    if (body.ecf_gateway_base_url !== undefined) {
+      const raw = (body.ecf_gateway_base_url ?? "").trim().replace(/\/+$/, "");
+      if (raw) {
+        try {
+          // eslint-disable-next-line no-new -- validación de URL absoluta
+          new URL(raw);
+        } catch {
+          return {
+            ok: false,
+            status: 400,
+            message: "La URL del DGII Communication Gateway debe ser una dirección válida (https://...).",
+          };
+        }
+      }
+      ecfGatewayMerge.ecfGatewayBaseUrl = raw || null;
+    }
+    if (body.ecf_gateway_api_key !== undefined) {
+      ecfGatewayMerge.ecfGatewayApiKey = (body.ecf_gateway_api_key ?? "").trim() || null;
+    }
+
     if (!name || !rnc || !address || !fullName || !cedula) {
       return {
         ok: false,
@@ -715,6 +740,7 @@ export const authService = {
           ...(dgiiEcfEndpointUpdate ?? {}),
           ...dgiiTenantMerge,
           ...(hasPaso4InBody ? dgiiPaso4Merge : {}),
+          ...ecfGatewayMerge,
         },
       });
       const userRow = await tx.user.update({

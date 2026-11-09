@@ -20,6 +20,10 @@ pnpm-debug.log*
 backend/uploads/companies/*
 !backend/uploads/companies/.gitkeep
 
+# Archivos generados por uso real (facturas, batches) — no son codigo ni fixtures.
+backend/uploads/ecf-ri/
+backend/uploads/ecf-excel-batch/
+
 # OS / editor files
 .DS_Store
 Thumbs.db

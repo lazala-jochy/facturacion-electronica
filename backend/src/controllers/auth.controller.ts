@@ -56,6 +56,8 @@ const updateCompanyBodyFromReq = (req: Request): UpdateCompanyBody => {
     dgii_paso4_environment: pickStr(b, "dgii_paso4_environment") as "CERTIFICACION" | "PRODUCCION" | undefined,
     certificate_path: pickStr(b, "certificate_path"),
     certificate_password: pickStr(b, "certificate_password"),
+    ecf_gateway_base_url: pickStr(b, "ecf_gateway_base_url"),
+    ecf_gateway_api_key: pickStr(b, "ecf_gateway_api_key"),
   };
 };
 

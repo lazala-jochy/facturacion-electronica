@@ -116,6 +116,9 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
   const [dgiiUsername, setDgiiUsername] = useState(session.company.dgiiUsername ?? "");
   const [dgiiPassword, setDgiiPassword] = useState(session.company.dgiiPassword ?? "");
   const [showDgiiPassword, setShowDgiiPassword] = useState(false);
+  const [ecfGatewayBaseUrl, setEcfGatewayBaseUrl] = useState(session.company.ecfGatewayBaseUrl ?? "");
+  const [ecfGatewayApiKey, setEcfGatewayApiKey] = useState(session.company.ecfGatewayApiKey ?? "");
+  const [showEcfGatewayApiKey, setShowEcfGatewayApiKey] = useState(false);
   const [loading, setLoading] = useState(false);
   const [testingDgii, setTestingDgii] = useState(false);
   const [error, setError] = useState("");
@@ -153,6 +156,11 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
     setDgiiUsername(session.company.dgiiUsername ?? "");
     setDgiiPassword(session.company.dgiiPassword ?? "");
   }, [session.company.dgiiUsername, session.company.dgiiPassword]);
+
+  useEffect(() => {
+    setEcfGatewayBaseUrl(session.company.ecfGatewayBaseUrl ?? "");
+    setEcfGatewayApiKey(session.company.ecfGatewayApiKey ?? "");
+  }, [session.company.ecfGatewayBaseUrl, session.company.ecfGatewayApiKey]);
 
   const uploadedFromSession = companyUploadedLogoUrl(session.company);
   const previewImageSrc =
@@ -249,6 +257,8 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
         fd.append("regime", regime.trim() || "Régimen general");
         fd.append("dgii_username", dgiiUsername.trim());
         fd.append("dgii_password", dgiiPassword.trim());
+        fd.append("ecf_gateway_base_url", ecfGatewayBaseUrl.trim());
+        fd.append("ecf_gateway_api_key", ecfGatewayApiKey.trim());
         if (certificateFile || session.company.certificateConfigured) {
           fd.append("certificate_keyphrase", certificatePassword.trim());
         }
@@ -285,6 +295,8 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
             regime: regime.trim() || undefined,
             dgii_username: dgiiUsername.trim(),
             dgii_password: dgiiPassword.trim(),
+            ecf_gateway_base_url: ecfGatewayBaseUrl.trim(),
+            ecf_gateway_api_key: ecfGatewayApiKey.trim(),
             ...(session.company.certificateConfigured || pwdTrim
               ? { certificate_keyphrase: certificatePassword.trim() }
               : {}),
@@ -304,6 +316,8 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
       setCertificatePassword(res.company.certificate_keyphrase ?? "");
       setDgiiUsername(res.company.dgiiUsername ?? "");
       setDgiiPassword(res.company.dgiiPassword ?? "");
+      setEcfGatewayBaseUrl(res.company.ecfGatewayBaseUrl ?? "");
+      setEcfGatewayApiKey(res.company.ecfGatewayApiKey ?? "");
       setClearCertificate(false);
       setSuccess("Perfil de empresa actualizado.");
     } catch (err) {
@@ -624,6 +638,46 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
                       visible={showDgiiPassword}
                       onToggle={() => setShowDgiiPassword((v) => !v)}
                       label={showDgiiPassword ? "Ocultar contraseña DGII" : "Mostrar contraseña DGII"}
+                    />
+                  </span>
+                </div>
+              </Field>
+            </div>
+          </section>
+
+          {/* ECF Gateway Connector */}
+          <section className="px-6 py-8 sm:px-8">
+            <SectionTitle
+              title="DGII Communication Gateway (conector local)"
+              description="URL y API key del connector que registraste en el panel admin del gateway (sección Connectors del tenant). Se generan ahí una sola vez; si la perdiste, revocá y creá uno nuevo."
+            />
+            <div className="grid max-w-2xl grid-cols-1 gap-5 sm:grid-cols-2">
+              <Field label="URL del gateway" htmlFor="gateway-url-prof">
+                <input
+                  id="gateway-url-prof"
+                  className={inputCls}
+                  autoComplete="off"
+                  placeholder="https://ecf-gateway.onrender.com"
+                  value={ecfGatewayBaseUrl}
+                  onChange={(e) => setEcfGatewayBaseUrl(e.target.value)}
+                />
+              </Field>
+              <Field label="API key del connector" htmlFor="gateway-key-prof">
+                <div className="relative">
+                  <input
+                    id="gateway-key-prof"
+                    type={showEcfGatewayApiKey ? "text" : "password"}
+                    autoComplete="off"
+                    className={`${inputCls} pr-10`}
+                    placeholder="4.255152011f967a46d1e304dfc85c655e4bfd493c81b274ac"
+                    value={ecfGatewayApiKey}
+                    onChange={(e) => setEcfGatewayApiKey(e.target.value)}
+                  />
+                  <span className="absolute inset-y-0 right-0 flex items-center pr-1 pt-1">
+                    <EyeToggle
+                      visible={showEcfGatewayApiKey}
+                      onToggle={() => setShowEcfGatewayApiKey((v) => !v)}
+                      label={showEcfGatewayApiKey ? "Ocultar API key" : "Mostrar API key"}
                     />
                   </span>
                 </div>

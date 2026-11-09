@@ -1,3 +1,4 @@
+import "dotenv/config";
 import "./types/express-auth.augment";
 import cors from "cors";
 import express from "express";
@@ -8,6 +9,7 @@ import path from "path";
 import { buildRouter } from "./routes";
 import { prisma } from "./prisma";
 import { startDgiiSubmitRetryWorker } from "./services/dgiiSubmitQueue.service";
+import { startEcfGatewayConnectorWorker } from "./services/ecfGatewayConnector.service";
 
 const PORT = Number(process.env.PORT ?? 3001);
 
@@ -68,14 +70,19 @@ const bootstrap = async () => {
   );
 
   const stopDgiiRetryWorker = startDgiiSubmitRetryWorker(uploadsRoot);
+  const stopEcfGatewayConnector = startEcfGatewayConnectorWorker();
 
   app.listen(PORT, () => {
     console.log(`Backend listening on http://localhost:${PORT}`);
     console.log("Worker de reintento DGII activo (DGII_SUBMIT_RETRY_WORKER=false para desactivar).");
   });
 
-  process.on("SIGTERM", () => stopDgiiRetryWorker());
-  process.on("SIGINT", () => stopDgiiRetryWorker());
+  const shutdown = () => {
+    stopDgiiRetryWorker();
+    stopEcfGatewayConnector();
+  };
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
 };
 
 bootstrap();
