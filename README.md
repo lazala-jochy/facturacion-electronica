@@ -425,7 +425,7 @@ Este comando hace:
 
 El instalador se genera en:
 
-- `electron/dist/*.exe`
+- `electron/release/*.exe`
 
 ### macOS (`.dmg` / `.zip`)
 
@@ -439,8 +439,8 @@ npx electron-builder --mac dmg zip
 
 Archivos generados (aprox):
 
-- `electron/dist/*.dmg`
-- `electron/dist/*-mac.zip`
+- `electron/release/*.dmg`
+- `electron/release/*-mac.zip`
 
 ### Linux (`.AppImage` / `.deb`)
 
@@ -454,8 +454,8 @@ npx electron-builder --linux AppImage deb
 
 Archivos generados (aprox):
 
-- `electron/dist/*.AppImage`
-- `electron/dist/*.deb`
+- `electron/release/*.AppImage`
+- `electron/release/*.deb`
 
 > Importante: genera cada instalador en su propio sistema operativo (Windows en Windows, macOS en macOS, Linux en Linux).
 
