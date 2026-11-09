@@ -1,6 +1,6 @@
 {
   "name": "facturacion-electronica-rd",
-  "version": "1.1.10",
+  "version": "1.1.11",
   "main": "dist/main.js",
   "scripts": {
     "compile": "tsc",
@@ -84,11 +84,6 @@
         "to": "backend-runtime/utils"
       },
       {
-        "from": "../backend/dotnet",
-        "to": "backend-runtime/dotnet",
-        "filter": ["**/*", "!**/obj/**", "!**/*.csproj.lscache"]
-      },
-      {
         "from": "../backend/assets",
         "to": "ecf-test-assets"
       }
@@ -97,13 +92,26 @@
       "icon": "assets/default.png",
       "target": [
         "nsis"
+      ],
+      "extraResources": [
+        {
+          "from": "../backend/dotnet/DgiiXmlSigner/publish/win-x64/DgiiXmlSigner.exe",
+          "to": "dotnet-signer/DgiiXmlSigner.exe"
+        }
       ]
     },
     "mac": {
       "icon": "assets/default.png",
+      "identity": "-",
       "target": [
         "dmg",
         "zip"
+      ],
+      "extraResources": [
+        {
+          "from": "../backend/dotnet/DgiiXmlSigner/publish/osx-x64/DgiiXmlSigner",
+          "to": "dotnet-signer/DgiiXmlSigner"
+        }
       ]
     },
     "nsis": {

@@ -75,16 +75,35 @@ const DOTNET_SIGNER_DLL = path.join(
   "net10.0",
   "DgiiXmlSigner.dll",
 );
+/**
+ * Ejecutable self-contained (`dotnet publish --self-contained`), generado por el release y
+ * empaquetado solo en la build correspondiente a cada plataforma — no requiere que el usuario
+ * final tenga el runtime de .NET instalado. Es el unico camino que se usa en produccion.
+ */
+const SELF_CONTAINED_SIGNER_BIN = path.join(
+  process.cwd(),
+  "dotnet-signer",
+  process.platform === "win32" ? "DgiiXmlSigner.exe" : "DgiiXmlSigner",
+);
+
+const signerIsAvailable = (): boolean =>
+  fs.existsSync(SELF_CONTAINED_SIGNER_BIN) || fs.existsSync(DOTNET_SIGNER_DLL) || fs.existsSync(DOTNET_SIGNER_PROJECT);
 
 /**
  * `dotnet run --project` reconstruye/valida el proyecto en cada llamada (~2-3s de overhead de
  * MSBuild) — inaceptable para flujos síncronos con deadline externo (ej. ARECF ante DGII, con
- * pocos segundos de margen). Si el DLL ya está compilado (caso normal en dev/checkout con build
- * previo) lo ejecutamos directo (~50-100ms); si no existe, cae a `dotnet run` como antes.
+ * pocos segundos de margen). Orden de preferencia: binario self-contained empaquetado (no
+ * depende de `dotnet` instalado) > DLL ya compilado localmente (~50-100ms via `dotnet <dll>`,
+ * dev/checkout con build previo) > `dotnet run --project` (fallback mas lento, requiere SDK).
  */
-function dotnetSignerArgs(extraArgs: string[]): string[] {
-  if (fs.existsSync(DOTNET_SIGNER_DLL)) return [DOTNET_SIGNER_DLL, ...extraArgs];
-  return ["run", "--project", DOTNET_SIGNER_PROJECT, "--", ...extraArgs];
+function resolveSignerCommand(extraArgs: string[]): { command: string; args: string[] } {
+  if (fs.existsSync(SELF_CONTAINED_SIGNER_BIN)) {
+    return { command: SELF_CONTAINED_SIGNER_BIN, args: extraArgs };
+  }
+  if (fs.existsSync(DOTNET_SIGNER_DLL)) {
+    return { command: "dotnet", args: [DOTNET_SIGNER_DLL, ...extraArgs] };
+  }
+  return { command: "dotnet", args: ["run", "--project", DOTNET_SIGNER_PROJECT, "--", ...extraArgs] };
 }
 function appendSignatureLog(line: string): void {
   try {
@@ -357,8 +376,10 @@ const signXmlWithDotnet = (
   password: string,
   mode: SignatureMode,
 ): string => {
-  if (!fs.existsSync(DOTNET_SIGNER_PROJECT)) {
-    throw new Error(`No se encontró el firmador DGII .NET en ${DOTNET_SIGNER_PROJECT}.`);
+  if (!signerIsAvailable()) {
+    throw new Error(
+      `No se encontró el firmador DGII .NET (ni el ejecutable empaquetado en ${SELF_CONTAINED_SIGNER_BIN} ni el proyecto en ${DOTNET_SIGNER_PROJECT}).`,
+    );
   }
 
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "dgii-xmlsign-"));
@@ -372,15 +393,12 @@ const signXmlWithDotnet = (
     fs.writeFileSync(certPath, p12Buffer);
     fs.writeFileSync(passwordPath, password, "utf8");
 
-    const result = spawnSync(
-      "dotnet",
-      dotnetSignerArgs([inputPath, certPath, passwordPath, outputPath, mode]),
-      {
-        cwd: process.cwd(),
-        encoding: "utf8",
-        maxBuffer: 1024 * 1024 * 4,
-      },
-    );
+    const { command, args } = resolveSignerCommand([inputPath, certPath, passwordPath, outputPath, mode]);
+    const result = spawnSync(command, args, {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024 * 4,
+    });
 
     if (result.status !== 0) {
       const message = [result.stderr, result.stdout].filter(Boolean).join("\n").trim();
@@ -398,20 +416,17 @@ const signXmlWithDotnet = (
 };
 
 const verifyXmlWithDotnet = (signedXml: string): boolean => {
-  if (!fs.existsSync(DOTNET_SIGNER_PROJECT)) return false;
+  if (!signerIsAvailable()) return false;
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "dgii-xmlverify-"));
   const inputPath = path.join(workDir, "signed.xml");
   try {
     fs.writeFileSync(inputPath, signedXml, "utf8");
-    const result = spawnSync(
-      "dotnet",
-      dotnetSignerArgs(["--verify", inputPath]),
-      {
-        cwd: process.cwd(),
-        encoding: "utf8",
-        maxBuffer: 1024 * 1024 * 4,
-      },
-    );
+    const { command, args } = resolveSignerCommand(["--verify", inputPath]);
+    const result = spawnSync(command, args, {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024 * 4,
+    });
     return result.status === 0;
   } finally {
     try {

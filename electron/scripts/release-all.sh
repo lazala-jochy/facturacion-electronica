@@ -16,6 +16,16 @@ echo "=== Generando Prisma Client (engine nativo + Windows) ==="
 npm --prefix ../backend run prisma:generate
 
 echo ""
+echo "=== Firmador DGII .NET (self-contained, sin depender del runtime del usuario) ==="
+DOTNET_SIGNER_DIR="../backend/dotnet/DgiiXmlSigner"
+dotnet publish "$DOTNET_SIGNER_DIR" -c Release -r win-x64 --self-contained true \
+  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
+  -o "$DOTNET_SIGNER_DIR/publish/win-x64"
+dotnet publish "$DOTNET_SIGNER_DIR" -c Release -r osx-x64 --self-contained true \
+  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
+  -o "$DOTNET_SIGNER_DIR/publish/osx-x64"
+
+echo ""
 echo "=== Windows (NSIS .exe) ==="
 CSC_IDENTITY_AUTO_DISCOVERY=false dotenv -e .env -- electron-builder --win nsis --publish "$PUBLISH"
 
