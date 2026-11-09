@@ -8,7 +8,8 @@
     "build:modules": "npm --prefix ../frontend run build && npm --prefix ../backend exec tsc -- --noEmit && npm run compile",
     "build:all": "npm --prefix ../frontend run build && npm --prefix ../backend run build && npm run compile",
     "build": "npm run build:all && dotenv -e .env -- electron-builder --publish never",
-    "release": "npm run build:all && dotenv -e .env -- electron-builder --publish always",
+    "release": "sh scripts/release-all.sh always",
+    "release:dry": "sh scripts/release-all.sh never",
     "dist:win": "npm run build:all && electron-builder --win nsis",
     "dist:dir": "npm run build:all && electron-builder --dir"
   },
@@ -34,6 +35,9 @@
   "build": {
     "appId": "com.facturacionelectronica.rd",
     "productName": "Facturacion Electronica RD",
+    "directories": {
+      "output": "release"
+    },
     "files": [
       "dist/**/*",
       "assets/**/*",
