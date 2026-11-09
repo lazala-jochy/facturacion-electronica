@@ -117,10 +117,14 @@ function App() {
           <Route
             path="/dgii-pruebas"
             element={
-              <DgiiPruebasLayout
-                company={company}
-                onCompanyUpdated={(c) => handleProfileUpdated(session.user, c)}
-              />
+              company.dgiiEnvironment === "PRODUCCION" ? (
+                <Navigate to="/" replace />
+              ) : (
+                <DgiiPruebasLayout
+                  company={company}
+                  onCompanyUpdated={(c) => handleProfileUpdated(session.user, c)}
+                />
+              )
             }
           >
             <Route index element={<DgiiPruebasHub />} />
