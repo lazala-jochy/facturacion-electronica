@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { apiFetch, authenticatedFetch, getAuthToken } from "../services/api";
+import DgiiEnvironmentStatus from "../components/DgiiEnvironmentStatus";
 import PageHeaderCard from "../components/PageHeaderCard";
 import PageShell from "../components/PageShell";
 import type { AuthCompany, AuthSession, AuthUser } from "../types/session";
@@ -613,6 +614,12 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
               title="Integración DGII"
               description="Credenciales del portal para obtener token al enviar e-CF. Las URLs de recepción se configuran en Pruebas DGII."
             />
+            <div className="mb-6 max-w-2xl">
+              <DgiiEnvironmentStatus
+                company={session.company}
+                onCompanyUpdated={(c) => onProfileUpdated(session.user, c)}
+              />
+            </div>
             <div className="grid max-w-2xl grid-cols-1 gap-5 sm:grid-cols-2">
               <Field label="Usuario DGII" htmlFor="dgii-user-prof">
                 <input
