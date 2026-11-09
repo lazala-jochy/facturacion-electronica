@@ -106,6 +106,34 @@ const waitForBackend = async () => {
   throw new Error("Backend no respondio a tiempo.");
 };
 
+const isPidAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Si un cierre anormal (force quit, crash) deja el backend anterior corriendo,
+ * sigue ocupando BACKEND_PORT con una base de datos ya abierta. El backend
+ * nuevo nunca logra escuchar el puerto, pero `waitForBackend` igual recibe un
+ * /health 200 del huerfano -> la app conversa con datos viejos en silencio.
+ */
+const killStaleBackend = (pidFile: string) => {
+  if (!fs.existsSync(pidFile)) return;
+  const previousPid = Number(fs.readFileSync(pidFile, "utf8").trim());
+  if (Number.isInteger(previousPid) && previousPid > 0 && isPidAlive(previousPid)) {
+    try {
+      process.kill(previousPid, "SIGKILL");
+    } catch {
+      // ya habia terminado entre el chequeo y el kill
+    }
+  }
+  fs.rmSync(pidFile, { force: true });
+};
+
 function startBackend() {
   if (!app.isPackaged) {
     return;
@@ -117,10 +145,13 @@ function startBackend() {
   const dbDir = path.join(userDataPath, "db");
   const dbPath = path.join(dbDir, "facturacion.db");
   const databaseUrl = pathToFileURL(dbPath).href;
+  const pidFile = path.join(userDataPath, "backend.pid");
 
   if (!fs.existsSync(dbDir)) {
     fs.mkdirSync(dbDir, { recursive: true });
   }
+
+  killStaleBackend(pidFile);
 
   const ecfTestAssets = path.join(process.resourcesPath, "ecf-test-assets");
 
@@ -135,6 +166,13 @@ function startBackend() {
       ...(fs.existsSync(ecfTestAssets) ? { ECF_TEST_ASSETS_DIR: ecfTestAssets } : {}),
     },
     stdio: "inherit",
+  });
+
+  if (backendProcess.pid) {
+    fs.writeFileSync(pidFile, String(backendProcess.pid));
+  }
+  backendProcess.on("exit", () => {
+    fs.rmSync(pidFile, { force: true });
   });
 }
 
