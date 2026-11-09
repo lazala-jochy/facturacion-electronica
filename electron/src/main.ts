@@ -59,6 +59,23 @@ ipcMain.handle("ecf-pick-excel-file", async (event) => {
   return { path: filePath, name: path.basename(filePath) };
 });
 
+/** Version actual de la app (para mostrarla en el frontend). */
+ipcMain.handle("ecf-app-version", () => app.getVersion());
+
+/** Disparar un chequeo manual de actualizaciones desde el frontend. */
+ipcMain.handle("ecf-check-for-updates", async () => {
+  if (!app.isPackaged) {
+    return { ok: false, message: "Las actualizaciones solo funcionan en la app instalada." };
+  }
+  try {
+    await autoUpdater.checkForUpdates();
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Error desconocido.";
+    return { ok: false, message };
+  }
+});
+
 /** Excel del set DGII — Aprobaciones comerciales (ACECF). */
 ipcMain.handle("acecf-pick-excel-file", async (event) => {
   const parentWindow = BrowserWindow.fromWebContents(event.sender);
@@ -190,6 +207,7 @@ const setupAutoUpdater = () => {
 
   autoUpdater.on("checking-for-update", () => {
     log.info("[auto-update] checking-for-update");
+    mainWindow?.webContents.send("update-status", { status: "checking" });
   });
 
   autoUpdater.on("update-available", (info) => {
@@ -197,22 +215,35 @@ const setupAutoUpdater = () => {
       `[auto-update] update-available current=v${currentVersion} latest=v${info.version}`,
     );
     log.info(`[auto-update] update payload files=${JSON.stringify(info.files ?? [])}`);
+    mainWindow?.webContents.send("update-status", {
+      status: "available",
+      version: info.version,
+    });
   });
 
   autoUpdater.on("update-not-available", (info) => {
     log.info(
       `[auto-update] update-not-available current=v${currentVersion} latest=v${info.version}`,
     );
+    mainWindow?.webContents.send("update-status", { status: "not-available" });
   });
 
   autoUpdater.on("download-progress", (progressObj) => {
     log.info(
       `[auto-update] download-progress percent=${progressObj.percent.toFixed(2)} transferred=${progressObj.transferred} total=${progressObj.total} bytesPerSecond=${progressObj.bytesPerSecond}`,
     );
+    mainWindow?.webContents.send("update-status", {
+      status: "downloading",
+      percent: progressObj.percent,
+    });
   });
 
   autoUpdater.on("update-downloaded", async (info) => {
     log.info(`[auto-update] update-downloaded latest=v${info.version}`);
+    mainWindow?.webContents.send("update-status", {
+      status: "downloaded",
+      version: info.version,
+    });
     const result = await dialog.showMessageBox({
       type: "info",
       buttons: ["Restart Now", "Later"],
@@ -234,6 +265,10 @@ const setupAutoUpdater = () => {
 
   autoUpdater.on("error", (error) => {
     log.error("[auto-update] error:", error);
+    mainWindow?.webContents.send("update-status", {
+      status: "error",
+      message: error?.message ?? String(error),
+    });
     dialog.showErrorBox(
       "Error de actualizacion",
       `No se pudo buscar/descargar la actualizacion.\n\n${error?.message ?? String(error)}`,
