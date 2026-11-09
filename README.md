@@ -6,6 +6,84 @@ Aplicacion de escritorio para facturacion electronica en Republica Dominicana us
 - `backend`: Node.js + Prisma + SQLite
 - `electron`: contenedor desktop
 
+Este repo es la mitad **local** de un sistema de dos repos: corre en la PC del contribuyente, sin
+IP pública, y es quien arma, firma y envía las facturas electrónicas (e-CF) a DGII. La otra mitad
+— [`ecf-gateway`](https://github.com/lazala-jochy/ecf-gateway), desplegado con URL pública en
+Render — existe únicamente porque DGII necesita poder llamarte a vos (recepción, aprobación
+comercial, autenticación), y esta PC no puede recibir conexiones entrantes. Ver su README para el
+detalle de ese lado.
+
+---
+
+## Arquitectura
+
+```mermaid
+flowchart LR
+    DGII[("DGII<br/>CerteCF / Producción")]
+
+    subgraph GW["ecf-gateway — Render, URL pública"]
+        API["API REST<br/>/{rnc}/fe/..."]
+        PG[("Postgres<br/>tenants · connectors · cola")]
+        API --- PG
+    end
+
+    subgraph FE["facturacion-electronica (este repo) — PC del contribuyente, sin IP pública"]
+        APP["Backend + UI<br/>factura · firma · certificado .p12"]
+        LC["Local Connector<br/>1 poller por empresa"]
+        APP --- LC
+    end
+
+    APP -- "① Emite e-CF: firma y envía DIRECTO" --> DGII
+    DGII -- "② Llama a los 4 endpoints públicos" --> API
+    LC -- "③ Long-polling: sale a buscar trabajo, nunca entra" --> API
+```
+
+Dos caminos, totalmente distintos:
+
+- **Saliente** (lo que hace este backend al emitir una factura desde Cotizaciones/Clientes):
+  firma el XML con el `.p12` de la empresa y lo envía **directo** a los servidores reales de DGII.
+  No pasa por `ecf-gateway` en absoluto.
+- **Entrante** (lo que DGII te manda a vos: recepción de un e-CF ajeno, aprobación comercial,
+  semilla/validación de certificado): como esta PC no tiene IP pública, DGII llama en realidad a
+  `ecf-gateway`, que sostiene la conexión mientras el **Local Connector** — un worker dentro de
+  este mismo backend (`src/services/ecfGatewayConnector.service.ts`) — sale a buscar esa solicitud
+  por long-polling, la procesa acá adentro, y le devuelve el resultado al gateway.
+
+### Flujo entrante paso a paso (ej. recepción de un e-CF ajeno)
+
+```mermaid
+sequenceDiagram
+    participant DGII
+    participant Gateway as ecf-gateway
+    participant Connector as Local Connector
+    participant App as facturacion-electronica
+
+    DGII->>Gateway: POST /{rnc}/fe/recepcion/api/ecf
+    activate Gateway
+    Note over Gateway: Encola en Postgres (PENDING)<br/>y sostiene la conexión de DGII abierta
+    Connector->>Gateway: GET /connector/pending (long-poll ~20s)
+    Gateway-->>Connector: Entrega el pendiente (CLAIMED)
+    Connector->>App: Firma ARECF / evalúa aprobación comercial
+    App-->>Connector: XML firmado / resultado
+    Connector->>Gateway: POST /connector/pending/:id/response
+    Gateway-->>DGII: Responde con el resultado
+    deactivate Gateway
+```
+
+### Configurar el Local Connector
+
+En **Perfil de empresa → Integración DGII** se configuran dos campos por empresa:
+
+- **URL del gateway**: solo el dominio (ej. `https://ecf.lazalainnovaciones.com`), sin ningún path.
+- **API key del connector**: se genera una sola vez desde el panel admin de `ecf-gateway`
+  (`/admin` → tenant → Connectors → Crear connector) y no se puede volver a ver — si se pierde,
+  se revoca y se crea uno nuevo.
+
+Esta misma instalación puede atender **varias empresas a la vez**: cada una con su propio
+connector configurado arranca su propio poller independiente. Un reescaneo cada 30s detecta altas,
+bajas y cambios de API key sin reiniciar el backend. El estado de certificación/producción
+(`dgii_environment`) también vive en el perfil de cada empresa — ver **Pruebas DGII** en la app.
+
 ---
 
 ## 1) Requisitos para instalar en una PC
