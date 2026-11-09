@@ -15,35 +15,47 @@ function appendLog(message: string): void {
   }
 }
 
+export type GatewayConfig = { baseUrl: string; apiKey: string };
+
+/** Un connector activo por empresa — esta instalacion puede atender varios RNC a la vez. */
+export type GatewayConnectorTarget = GatewayConfig & { companyId: number; companyRnc: string };
+
 /**
- * Config del connector: primero el perfil de empresa (campo editable en CompanyProfile),
- * con fallback a ECF_GATEWAY_BASE_URL / ECF_GATEWAY_API_KEY (instalaciones viejas via .env).
+ * Lista las empresas con connector configurado (campo editable en CompanyProfile). Si NINGUNA
+ * empresa lo tiene configurado, cae a ECF_GATEWAY_BASE_URL / ECF_GATEWAY_API_KEY (instalaciones
+ * viejas de una sola empresa via .env) — pero si al menos una empresa SI lo tiene en su perfil,
+ * el .env se ignora por completo (evita mezclar una empresa "fantasma" con las reales).
  */
-async function requireConfig(): Promise<{ baseUrl: string; apiKey: string }> {
-  // Puede haber varias empresas registradas en esta instalacion (desktop multi-perfil); se busca
-  // puntualmente la que tiene el connector configurado en vez de asumir la primera por id.
-  const company = await prisma.company.findFirst({
-    where: { ecfGatewayApiKey: { not: null } },
-    orderBy: { id: "asc" },
+export async function listGatewayConnectorTargets(): Promise<GatewayConnectorTarget[]> {
+  const companies = await prisma.company.findMany({
+    where: { ecfGatewayApiKey: { not: null }, ecfGatewayBaseUrl: { not: null } },
+    select: { id: true, rnc: true, ecfGatewayBaseUrl: true, ecfGatewayApiKey: true },
   });
-  const baseUrl = (company?.ecfGatewayBaseUrl ?? process.env.ECF_GATEWAY_BASE_URL ?? "").trim().replace(/\/+$/, "");
-  const apiKey = (company?.ecfGatewayApiKey ?? process.env.ECF_GATEWAY_API_KEY ?? "").trim();
-  if (!baseUrl || !apiKey) {
-    throw new EcfGatewayError(
-      "Falta configurar la URL y el API key del DGII Communication Gateway (perfil de empresa o ECF_GATEWAY_BASE_URL/ECF_GATEWAY_API_KEY).",
-      "MISSING_CONFIG",
-    );
-  }
-  return { baseUrl, apiKey };
+
+  const targets = companies
+    .map((c) => ({
+      companyId: c.id,
+      companyRnc: c.rnc,
+      baseUrl: (c.ecfGatewayBaseUrl ?? "").trim().replace(/\/+$/, ""),
+      apiKey: (c.ecfGatewayApiKey ?? "").trim(),
+    }))
+    .filter((t) => t.baseUrl && t.apiKey);
+
+  if (targets.length > 0) return targets;
+
+  const baseUrl = (process.env.ECF_GATEWAY_BASE_URL ?? "").trim().replace(/\/+$/, "");
+  const apiKey = (process.env.ECF_GATEWAY_API_KEY ?? "").trim();
+  if (!baseUrl || !apiKey) return [];
+  return [{ companyId: 0, companyRnc: "env", baseUrl, apiKey }];
 }
 
-async function attemptFetch(baseUrl: string, apiKey: string, pathSuffix: string, init: RequestInit, timeoutMs: number): Promise<Response> {
-  return fetch(`${baseUrl}${pathSuffix}`, {
+async function attemptFetch(config: GatewayConfig, pathSuffix: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  return fetch(`${config.baseUrl}${pathSuffix}`, {
     ...init,
-    // Connection: close fuerza una conexión nueva por request — los 2 workers de polling
-    // mantienen long-polls permanentes contra el mismo host, y un socket keep-alive reciclado
-    // desde ese pool puede quedar muerto y colgar la próxima request hasta el timeout.
-    headers: { ...(init.headers ?? {}), Authorization: `Bearer ${apiKey}`, Connection: "close" },
+    // Connection: close fuerza una conexión nueva por request — los workers de polling de cada
+    // empresa mantienen long-polls permanentes contra el mismo host, y un socket keep-alive
+    // reciclado desde ese pool puede quedar muerto y colgar la próxima request hasta el timeout.
+    headers: { ...(init.headers ?? {}), Authorization: `Bearer ${config.apiKey}`, Connection: "close" },
     signal: AbortSignal.timeout(timeoutMs),
   });
 }
@@ -55,15 +67,14 @@ async function attemptFetch(baseUrl: string, apiKey: string, pathSuffix: string,
  * lo resuelve. Seguro para los 3 endpoints del connector (idempotentes por diseño, ver
  * CommunicationService.submitResponse/claimNext).
  */
-async function callGateway(pathSuffix: string, init: RequestInit, timeoutMs: number): Promise<Response> {
-  const { baseUrl, apiKey } = await requireConfig();
+async function callGateway(config: GatewayConfig, pathSuffix: string, init: RequestInit, timeoutMs: number): Promise<Response> {
   try {
-    return await attemptFetch(baseUrl, apiKey, pathSuffix, init, timeoutMs);
+    return await attemptFetch(config, pathSuffix, init, timeoutMs);
   } catch (firstErr) {
     const firstMessage = firstErr instanceof Error ? firstErr.message : "Error de red desconocido.";
     appendLog(`fetch failed (intento 1) path=${pathSuffix} error=${firstMessage}`);
     try {
-      return await attemptFetch(baseUrl, apiKey, pathSuffix, init, timeoutMs);
+      return await attemptFetch(config, pathSuffix, init, timeoutMs);
     } catch (secondErr) {
       const message = secondErr instanceof Error ? secondErr.message : "Error de red desconocido.";
       appendLog(`fetch failed (intento 2) path=${pathSuffix} error=${message}`);
@@ -76,8 +87,8 @@ async function callGateway(pathSuffix: string, init: RequestInit, timeoutMs: num
  * Long-poll: el gateway sostiene esta llamada hasta ~20s si no hay nada pendiente. Devuelve como
  * mucho 1 item, ya reclamado (CLAIMED) para este connector.
  */
-export async function getPendingFromGateway(): Promise<EcfGatewayPendingItem | null> {
-  const res = await callGateway("/connector/pending", { method: "GET" }, 25_000);
+export async function getPendingFromGateway(config: GatewayConfig): Promise<EcfGatewayPendingItem | null> {
+  const res = await callGateway(config, "/connector/pending", { method: "GET" }, 25_000);
   if (res.status === 401) {
     throw new EcfGatewayError("API key de connector invalida o revocada.", "AUTH_FAILED");
   }
@@ -88,11 +99,16 @@ export async function getPendingFromGateway(): Promise<EcfGatewayPendingItem | n
   return data.items[0] ?? null;
 }
 
-export async function submitResponseToGateway(requestId: string, payload: EcfGatewayResponsePayload): Promise<void> {
+export async function submitResponseToGateway(
+  config: GatewayConfig,
+  requestId: string,
+  payload: EcfGatewayResponsePayload,
+): Promise<void> {
   // Timeout corto: DGII sostiene la conexión ~9s del lado del gateway, y para cuando llegamos acá
   // ya se gastó tiempo firmando. callGateway reintenta una vez con conexión nueva ante un socket
   // keep-alive muerto, así que 2 intentos cortos entran mejor en el presupuesto que uno largo.
   const res = await callGateway(
+    config,
     `/connector/pending/${requestId}/response`,
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) },
     3_000,
@@ -102,8 +118,8 @@ export async function submitResponseToGateway(requestId: string, payload: EcfGat
   }
 }
 
-export async function sendHeartbeatToGateway(): Promise<void> {
-  await callGateway("/connector/heartbeat", { method: "POST" }, 5_000);
+export async function sendHeartbeatToGateway(config: GatewayConfig): Promise<void> {
+  await callGateway(config, "/connector/heartbeat", { method: "POST" }, 5_000);
 }
 
 export { appendLog as appendEcfGatewayLog };
