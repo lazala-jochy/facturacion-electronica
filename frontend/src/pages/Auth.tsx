@@ -4,6 +4,12 @@ import {
   loginCompany,
   registerCompany,
 } from "../services/auth";
+import { refreshWithToken } from "../services/api";
+import {
+  readSavedAccounts,
+  removeSavedAccount,
+  type SavedAccount,
+} from "../services/savedAccounts";
 import type { AuthSession } from "../types/session";
 import { formatPhoneInput, isValidPhone } from "../utils/phone";
 import { cedulaDigits, formatCedulaInput } from "../utils/cedula";
@@ -66,6 +72,10 @@ export default function Auth({
   /** Clave definida por el usuario para cifrar el .p12 en disco (no se guarda en el servidor). */
   const [certificateEncryptionSecret, setCertificateEncryptionSecret] = useState("");
   const [registerStep, setRegisterStep] = useState<RegisterStep>(1);
+  const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>(() => readSavedAccounts());
+  const [showSwitcher, setShowSwitcher] = useState(() => readSavedAccounts().length > 0);
+  const [switchingId, setSwitchingId] = useState<number | null>(null);
+  const [switchError, setSwitchError] = useState("");
 
   useEffect(() => {
     return () => {
@@ -247,6 +257,29 @@ export default function Auth({
     }
   };
 
+  const handleUseAccount = async (account: SavedAccount) => {
+    setSwitchError("");
+    setSwitchingId(account.user.id);
+    try {
+      const session = await refreshWithToken(account.refresh_token, account.user, account.company);
+      if (!session) {
+        setSwitchError(`La sesión de ${account.user.email} expiró. Iniciá sesión de nuevo con su contraseña.`);
+        return;
+      }
+      onAuthenticated(session);
+    } finally {
+      setSwitchingId(null);
+    }
+  };
+
+  const handleForgetAccount = (userId: number) => {
+    const next = removeSavedAccount(userId);
+    setSavedAccounts(next);
+    if (next.length === 0) setShowSwitcher(false);
+  };
+
+  const showingSwitcher = isLogin && showSwitcher && savedAccounts.length > 0;
+
   return (
     <main
       className={`min-h-screen [font-family:Inter,system-ui,sans-serif] p-3 sm:p-5 md:p-6 flex items-center justify-center w-full overflow-x-hidden ${
@@ -414,10 +447,12 @@ export default function Auth({
                   </div>
 
                   <h2 className="mt-6 text-center text-[clamp(2rem,3.2vw,3rem)] font-bold tracking-tight text-slate-900">
-                    Iniciar sesión
+                    {showingSwitcher ? "Elegí una cuenta" : "Iniciar sesión"}
                   </h2>
                   <p className="mt-2 text-center text-[clamp(1rem,1.7vw,1.35rem)] text-slate-600">
-                    Ingresa con tu cuenta para continuar
+                    {showingSwitcher
+                      ? "Entrá sin volver a escribir tu contraseña"
+                      : "Ingresa con tu cuenta para continuar"}
                   </p>
                 </>
               ) : (
@@ -492,6 +527,65 @@ export default function Auth({
                 </>
               )}
 
+              {showingSwitcher ? (
+                <div className="mt-8 space-y-3">
+                  {savedAccounts.map((account) => (
+                    <button
+                      key={account.user.id}
+                      type="button"
+                      disabled={switchingId !== null}
+                      onClick={() => void handleUseAccount(account)}
+                      className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition-colors hover:border-[#3f6ce8] hover:bg-indigo-50/40 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold text-slate-900">
+                          {account.company.name}
+                        </span>
+                        <span className="block truncate text-xs text-slate-500">{account.user.email}</span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-3">
+                        <span className="text-xs font-medium text-[#2563eb]">
+                          {switchingId === account.user.id ? "Entrando…" : "Entrar"}
+                        </span>
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleForgetAccount(account.user.id);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.stopPropagation();
+                              handleForgetAccount(account.user.id);
+                            }
+                          }}
+                          className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-red-600"
+                          aria-label={`Olvidar cuenta de ${account.user.email}`}
+                        >
+                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+                          </svg>
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+
+                  {switchError && (
+                    <p className="text-sm rounded-lg border border-red-200 bg-red-50 text-red-700 px-3 py-2">
+                      {switchError}
+                    </p>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setShowSwitcher(false)}
+                    className="w-full rounded-xl py-2.5 text-center text-sm font-semibold text-[#2563eb] hover:text-blue-800 hover:underline"
+                  >
+                    Usar otra cuenta
+                  </button>
+                </div>
+              ) : (
               <form
                 onSubmit={handleSubmit}
                 noValidate={!isLogin}
@@ -499,6 +593,15 @@ export default function Auth({
               >
                 {isLogin ? (
                   <>
+                    {savedAccounts.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowSwitcher(true)}
+                        className="-mt-2 mb-2 text-sm font-medium text-[#3f6ce8] hover:text-indigo-700 hover:underline"
+                      >
+                        ← Ver cuentas guardadas
+                      </button>
+                    )}
                     <div>
                       <label
                         htmlFor="email"
@@ -941,6 +1044,7 @@ export default function Auth({
                   </p>
                 </div>
               </form>
+              )}
               {!isLogin && (
                 <div className="border-t border-sky-100 bg-sky-50/90 px-6 py-2.5 text-center text-xs text-sky-950/80">
                   Todos los campos marcados con <span className="font-semibold text-red-500">*</span> son obligatorios.

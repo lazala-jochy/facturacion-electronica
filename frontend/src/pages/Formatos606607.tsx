@@ -160,7 +160,7 @@ export default function Formatos606607() {
     <PageShell>
       <PageHeaderCard
         title="606/607"
-        subtitle="Remisión mensual de compras (606) y ventas (607) a la DGII — archivo TXT según Norma 06-18 / 07-18."
+        description="Remisión mensual de compras (606) y ventas (607) a la DGII — archivo TXT según Norma 06-18 / 07-18."
       />
 
       <div className="mb-4 flex flex-wrap gap-2">

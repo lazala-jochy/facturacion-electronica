@@ -16,6 +16,7 @@ import {
   proactiveRefreshIfNeeded,
 } from "./services/api";
 import { AUTH_STORAGE_KEY, type AuthSession } from "./types/session";
+import { upsertSavedAccount } from "./services/savedAccounts";
 import CompanyProfile from "./pages/CompanyProfile";
 import EcfExcelBatch from "./pages/EcfExcelBatch";
 import DgiiAprobacionesComerciales from "./pages/DgiiAprobacionesComerciales";
@@ -72,6 +73,7 @@ function App() {
   const handleAuthenticated = (next: AuthSession) => {
     setSession(next);
     localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(next));
+    upsertSavedAccount(next);
   };
 
   const handleLogout = () => {
@@ -87,6 +89,7 @@ function App() {
       if (!prev) return prev;
       const next = { ...prev, user, company };
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(next));
+      upsertSavedAccount(next);
       return next;
     });
   };

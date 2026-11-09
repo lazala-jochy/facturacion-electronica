@@ -72,16 +72,18 @@ const loginResponseToSession = (data: AuthLoginResponse): AuthSession => ({
   company: data.company,
 });
 
-const refreshSessionFromServer = async (): Promise<AuthSession | null> => {
-  const session = readAuthSessionFromStorage();
-  if (!session?.refresh_token) return null;
-
+/** Pide tokens nuevos a partir de un refresh_token dado, sin tocar localStorage (el caller decide). */
+export const refreshWithToken = async (
+  refreshToken: string,
+  fallbackUser: AuthUser,
+  fallbackCompany: AuthCompany,
+): Promise<AuthSession | null> => {
   let response: Response;
   try {
     response = await fetch(`${API_URL}/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: session.refresh_token }),
+      body: JSON.stringify({ refresh_token: refreshToken }),
     });
   } catch {
     return null;
@@ -92,8 +94,8 @@ const refreshSessionFromServer = async (): Promise<AuthSession | null> => {
     message: "",
     token: "",
     refresh_token: "",
-    user: session.user,
-    company: session.company,
+    user: fallbackUser,
+    company: fallbackCompany,
   };
   if (raw.trim()) {
     try {
@@ -107,7 +109,16 @@ const refreshSessionFromServer = async (): Promise<AuthSession | null> => {
     return null;
   }
 
-  const next = loginResponseToSession(data);
+  return loginResponseToSession(data);
+};
+
+const refreshSessionFromServer = async (): Promise<AuthSession | null> => {
+  const session = readAuthSessionFromStorage();
+  if (!session?.refresh_token) return null;
+
+  const next = await refreshWithToken(session.refresh_token, session.user, session.company);
+  if (!next) return null;
+
   persistAuthSession(next);
   return next;
 };
