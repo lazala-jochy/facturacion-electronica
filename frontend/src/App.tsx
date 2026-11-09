@@ -114,7 +114,15 @@ function App() {
           <Route path="/ecf" element={<ECF company={company} />} />
           <Route path="/606-607" element={<Formatos606607 />} />
           <Route path="/formatos-606-607" element={<Navigate to="/606-607" replace />} />
-          <Route path="/dgii-pruebas" element={<DgiiPruebasLayout company={company} />}>
+          <Route
+            path="/dgii-pruebas"
+            element={
+              <DgiiPruebasLayout
+                company={company}
+                onCompanyUpdated={(c) => handleProfileUpdated(session.user, c)}
+              />
+            }
+          >
             <Route index element={<DgiiPruebasHub />} />
             <Route
               path="ecf-excel"

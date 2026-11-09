@@ -1,11 +1,17 @@
 import { Outlet, useLocation } from "react-router-dom";
 import type { AuthCompany } from "../types/session";
+import DgiiEnvironmentStatus from "../components/DgiiEnvironmentStatus";
 import DgiiPruebaTypeSelect from "../components/DgiiPruebaTypeSelect";
 import PageHeaderCard from "../components/PageHeaderCard";
 import PageShell from "../components/PageShell";
 import { DGII_PRUEBAS_BASE, findDgiiPruebaByPath } from "../config/dgiiPruebas";
 
-export default function DgiiPruebasLayout({ company }: { company: AuthCompany }) {
+type Props = {
+  company: AuthCompany;
+  onCompanyUpdated: (company: AuthCompany) => void;
+};
+
+export default function DgiiPruebasLayout({ company, onCompanyUpdated }: Props) {
   const { pathname } = useLocation();
   const isHub = pathname === DGII_PRUEBAS_BASE || pathname === `${DGII_PRUEBAS_BASE}/`;
   const active = findDgiiPruebaByPath(pathname);
@@ -45,6 +51,10 @@ export default function DgiiPruebasLayout({ company }: { company: AuthCompany })
           </div>
         )}
       </PageHeaderCard>
+
+      {isHub ? (
+        <DgiiEnvironmentStatus company={company} onCompanyUpdated={onCompanyUpdated} />
+      ) : null}
 
       <Outlet />
     </PageShell>
