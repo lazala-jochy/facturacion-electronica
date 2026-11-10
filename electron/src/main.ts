@@ -341,7 +341,7 @@ const setupAutoUpdater = () => {
 app.whenReady().then(async () => {
   try {
     const org = process.env.VITE_ORGANIZATION_NAME?.trim() || process.env.ORGANIZATION_NAME?.trim();
-    app.setName(org ? `Facturación Electrónica ${org}.` : "Facturación Electrónica.");
+    app.setName(org ? `Lazala Facturación ${org}.` : "Lazala Facturación.");
     if (process.platform === "darwin") {
       app.dock?.setIcon(getAppIconPath());
     }

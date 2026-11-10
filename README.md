@@ -1,4 +1,4 @@
-# Facturacion Electronica RD (Desktop App)
+# Lazala Facturacion (Desktop App)
 
 Aplicacion de escritorio para facturacion electronica en Republica Dominicana usando:
 

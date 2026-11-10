@@ -1,6 +1,6 @@
 {
   "name": "facturacion-electronica-rd",
-  "version": "1.1.13",
+  "version": "1.1.14",
   "main": "dist/main.js",
   "scripts": {
     "compile": "tsc",
@@ -34,7 +34,7 @@
   },
   "build": {
     "appId": "com.facturacionelectronica.rd",
-    "productName": "Facturacion Electronica RD",
+    "productName": "Lazala Facturacion",
     "directories": {
       "output": "release"
     },

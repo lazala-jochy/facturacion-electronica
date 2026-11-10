@@ -21,7 +21,7 @@ import {
 } from "../utils/productBranding";
 
 /** Marca visible en registro (sin ETECA). */
-const BRAND_PRODUCT = "Facturación Electrónica";
+const BRAND_PRODUCT = "Lazala Facturación";
 
 type AuthMode = "login" | "register";
 type RegisterStep = 1 | 2 | 3;
