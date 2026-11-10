@@ -1,6 +1,6 @@
 {
   "name": "facturacion-electronica-rd",
-  "version": "1.1.14",
+  "version": "1.1.15",
   "main": "dist/main.js",
   "scripts": {
     "compile": "tsc",
@@ -102,6 +102,7 @@
     },
     "mac": {
       "icon": "assets/default.png",
+      "identity": "-",
       "target": [
         "dmg",
         "zip"
