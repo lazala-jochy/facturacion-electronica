@@ -36,9 +36,22 @@ export const validateSeedUrlFromAuthBase = (authBase: string) =>
 export type DgiiEcfUrlFields = {
   environment: DgiiEnvironment;
   authUrl: string;
+  /** Si se deja vacío, se deriva de authUrl (+ /api/Autenticacion/Semilla) al guardar. */
+  seedUrl: string;
+  /** Si se deja vacío, se deriva de authUrl (+ /api/Autenticacion/ValidarSemilla) al guardar. */
+  validateSeedUrl: string;
   receptionUrl: string;
   consultUrl: string;
   consumerSummaryUrl: string;
+  /** URLs de Producción — exclusivas, nunca se derivan ni se mezclan con las de certificación arriba. */
+  prodAuthUrl: string;
+  /** Si se deja vacío, se deriva de prodAuthUrl al guardar (si hay prodAuthUrl). */
+  prodSeedUrl: string;
+  /** Si se deja vacío, se deriva de prodAuthUrl al guardar (si hay prodAuthUrl). */
+  prodValidateSeedUrl: string;
+  prodReceptionUrl: string;
+  prodConsultUrl: string;
+  prodConsumerSummaryUrl: string;
 };
 
 /** Cuerpo PUT /auth/company con URLs derivadas (semilla, recepción e-CF, etc.). */
@@ -49,6 +62,29 @@ export function buildDgiiEcfUrlsBody(urls: DgiiEcfUrlFields): Record<string, str
   const dgiiConsumerSummaryBase = normalizeDgiiUrl(
     urls.consumerSummaryUrl || DGII_ECF_SANDBOX.consumerSummaryReception,
   );
+  // Semilla/validar-semilla son editables; si se dejan vacíos se derivan de authUrl (compatibilidad).
+  const dgiiSeedBase = urls.seedUrl.trim() ? normalizeDgiiUrl(urls.seedUrl) : seedUrlFromAuthBase(dgiiAuthBase);
+  const dgiiValidateSeedBase = urls.validateSeedUrl.trim()
+    ? normalizeDgiiUrl(urls.validateSeedUrl)
+    : validateSeedUrlFromAuthBase(dgiiAuthBase);
+
+  // Producción no tiene default de sandbox: si se deja vacío, queda sin configurar (no reutiliza certificación).
+  const dgiiProdAuthBase = urls.prodAuthUrl.trim() ? normalizeAuthBaseUrl(urls.prodAuthUrl) : "";
+  const dgiiProdReceptionBase = urls.prodReceptionUrl.trim() ? normalizeDgiiUrl(urls.prodReceptionUrl) : "";
+  const dgiiProdConsultBase = urls.prodConsultUrl.trim() ? normalizeDgiiUrl(urls.prodConsultUrl) : "";
+  const dgiiProdConsumerSummaryBase = urls.prodConsumerSummaryUrl.trim()
+    ? normalizeDgiiUrl(urls.prodConsumerSummaryUrl)
+    : "";
+  const dgiiProdSeedBase = urls.prodSeedUrl.trim()
+    ? normalizeDgiiUrl(urls.prodSeedUrl)
+    : dgiiProdAuthBase
+      ? seedUrlFromAuthBase(dgiiProdAuthBase)
+      : "";
+  const dgiiProdValidateSeedBase = urls.prodValidateSeedUrl.trim()
+    ? normalizeDgiiUrl(urls.prodValidateSeedUrl)
+    : dgiiProdAuthBase
+      ? validateSeedUrlFromAuthBase(dgiiProdAuthBase)
+      : "";
 
   return {
     dgii_environment: urls.environment,
@@ -56,11 +92,17 @@ export function buildDgiiEcfUrlsBody(urls: DgiiEcfUrlFields): Record<string, str
     dgii_reception_url: dgiiReceptionBase,
     dgii_consult_url: dgiiConsultBase,
     dgii_ecf_endpoint: dgiiConsumerSummaryBase,
-    dgii_seed_url: seedUrlFromAuthBase(dgiiAuthBase),
-    dgii_validate_seed_url: validateSeedUrlFromAuthBase(dgiiAuthBase),
+    dgii_seed_url: dgiiSeedBase,
+    dgii_validate_seed_url: dgiiValidateSeedBase,
     dgii_ecf_receive_url: dgiiReceptionBase,
     dgii_track_url: "",
     dgii_status_url: "",
+    dgii_prod_auth_url: dgiiProdAuthBase,
+    dgii_prod_seed_url: dgiiProdSeedBase,
+    dgii_prod_validate_seed_url: dgiiProdValidateSeedBase,
+    dgii_prod_reception_url: dgiiProdReceptionBase,
+    dgii_prod_consult_url: dgiiProdConsultBase,
+    dgii_prod_consumer_summary_url: dgiiProdConsumerSummaryBase,
   };
 }
 

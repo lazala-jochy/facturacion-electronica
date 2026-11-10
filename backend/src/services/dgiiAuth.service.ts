@@ -20,7 +20,7 @@ const DGII_SIGNATURE_LOG = path.join(LOG_DIR, "dgii-signature.log");
 const DGII_AUTH_LOG = path.join(LOG_DIR, "dgii-auth.log");
 const lastSuccessfulMode = new Map<number, SignatureMode>();
 /** Tokens obtenidos con semilla Paso 4 (no mezclar con token Paso 2 guardado en BD). */
-const tokenCachePaso4 = new Map<number, { token: string; expiration: Date }>();
+const tokenCachePaso4 = new Map<number, { token: string; expiration: Date; environment: string }>();
 
 function appendDgiiLog(message: string): void {
   try {
@@ -146,6 +146,17 @@ function resolveSeedUrl(company: Company, profile: DgiiCertProfile = "paso2"): s
       400,
     );
   }
+  if (company.dgiiEnvironment === "PRODUCCION") {
+    const prod = company.dgiiProdSeedUrl?.trim();
+    if (!prod) {
+      throw new DgiiEcfError(
+        "La empresa está en ambiente PRODUCCION pero no tiene configurada dgii_prod_seed_url. Configurala en Perfil de empresa (no reutiliza la URL de certificación).",
+        "MISSING_CREDENTIALS",
+        400,
+      );
+    }
+    return requireUrl(normalizeDgiiEcfUrl(prod), "semilla DGII (Producción)");
+  }
   return requireUrl(
     normalizeDgiiEcfUrl(company.dgiiSeedUrl || DGII_ECF_SANDBOX_DEFAULTS.seed),
     "semilla DGII",
@@ -168,6 +179,17 @@ function resolveValidateSeedUrl(company: Company, profile: DgiiCertProfile = "pa
       "MISSING_CREDENTIALS",
       400,
     );
+  }
+  if (company.dgiiEnvironment === "PRODUCCION") {
+    const prod = company.dgiiProdValidateSeedUrl?.trim();
+    if (!prod) {
+      throw new DgiiEcfError(
+        "La empresa está en ambiente PRODUCCION pero no tiene configurada dgii_prod_validate_seed_url. Configurala en Perfil de empresa (no reutiliza la URL de certificación).",
+        "MISSING_CREDENTIALS",
+        400,
+      );
+    }
+    return requireUrl(normalizeDgiiEcfUrl(prod), "validación de semilla DGII (Producción)");
   }
   return requireUrl(
     normalizeDgiiEcfUrl(company.dgiiValidateSeedUrl || DGII_ECF_SANDBOX_DEFAULTS.validateSeed),
@@ -300,15 +322,20 @@ export const dgiiAuthService = {
 
     if (profile === "paso4") {
       const cached = tokenCachePaso4.get(companyId);
-      if (cached && cached.expiration.getTime() > Date.now() + 30_000) {
+      const paso4Env = company.dgiiPaso4Environment ?? "CERTIFICACION";
+      if (cached && cached.environment === paso4Env && cached.expiration.getTime() > Date.now() + 30_000) {
         return cached.token;
       }
-    } else if (
-      company.tokenCache &&
-      company.tokenExpiration &&
-      company.tokenExpiration.getTime() > Date.now() + 30_000
-    ) {
-      return company.tokenCache;
+    } else {
+      const activeEnv = company.dgiiEnvironment ?? "CERTIFICACION";
+      if (
+        company.tokenCache &&
+        company.tokenExpiration &&
+        company.tokenCacheEnvironment === activeEnv &&
+        company.tokenExpiration.getTime() > Date.now() + 30_000
+      ) {
+        return company.tokenCache;
+      }
     }
 
     appendDgiiLog(`[auth] token renewal company=${company.id} profile=${profile}`);
@@ -363,7 +390,7 @@ export const dgiiAuthService = {
     }
 
     if (profile === "paso4") {
-      tokenCachePaso4.set(companyId, { token, expiration });
+      tokenCachePaso4.set(companyId, { token, expiration, environment: company.dgiiPaso4Environment ?? "CERTIFICACION" });
       appendDgiiLog(`[auth] token cached memory paso4 company=${company.id} exp=${expiration.toISOString()}`);
     } else {
       await prisma.company.update({
@@ -371,6 +398,7 @@ export const dgiiAuthService = {
         data: {
           tokenCache: token,
           tokenExpiration: expiration,
+          tokenCacheEnvironment: company.dgiiEnvironment ?? "CERTIFICACION",
         },
       });
       appendDgiiLog(`[auth] token refreshed company=${company.id} exp=${expiration.toISOString()}`);

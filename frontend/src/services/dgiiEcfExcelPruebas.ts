@@ -31,6 +31,14 @@ export function companyEcfDgiiUrls(company: AuthCompany): DgiiEcfUrlFields {
       DGII_ECF_SANDBOX.consult,
     ),
     consumerSummaryUrl: resolveDgiiUrl(company.dgiiEcfEndpoint, DGII_ECF_SANDBOX.consumerSummaryReception),
+    seedUrl: resolveDgiiUrl(company.dgiiSeedUrl),
+    validateSeedUrl: resolveDgiiUrl(company.dgiiValidateSeedUrl),
+    prodAuthUrl: resolveDgiiUrl(company.dgiiProdAuthUrl, authBaseFromSeedUrl(company.dgiiProdSeedUrl)),
+    prodReceptionUrl: resolveDgiiUrl(company.dgiiProdReceptionUrl),
+    prodConsultUrl: resolveDgiiUrl(company.dgiiProdConsultUrl),
+    prodSeedUrl: resolveDgiiUrl(company.dgiiProdSeedUrl),
+    prodValidateSeedUrl: resolveDgiiUrl(company.dgiiProdValidateSeedUrl),
+    prodConsumerSummaryUrl: resolveDgiiUrl(company.dgiiProdConsumerSummaryUrl),
   };
 }
 

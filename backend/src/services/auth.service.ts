@@ -59,6 +59,13 @@ export type PublicCompany = Pick<
   | "dgiiTrackUrl"
   | "dgiiStatusUrl"
   | "dgiiEnvironment"
+  | "dgiiProdAuthUrl"
+  | "dgiiProdSeedUrl"
+  | "dgiiProdValidateSeedUrl"
+  | "dgiiProdReceptionUrl"
+  | "dgiiProdConsultUrl"
+  | "dgiiProdCommercialApprovalUrl"
+  | "dgiiProdConsumerSummaryUrl"
   | "dgiiPaso4AuthUrl"
   | "dgiiPaso4ReceptionUrl"
   | "dgiiPaso4ConsultUrl"
@@ -165,6 +172,13 @@ const publicCompany = (c: Company): PublicCompany => ({
   dgiiTrackUrl: c.dgiiTrackUrl,
   dgiiStatusUrl: c.dgiiStatusUrl,
   dgiiEnvironment: c.dgiiEnvironment,
+  dgiiProdAuthUrl: c.dgiiProdAuthUrl,
+  dgiiProdSeedUrl: c.dgiiProdSeedUrl,
+  dgiiProdValidateSeedUrl: c.dgiiProdValidateSeedUrl,
+  dgiiProdReceptionUrl: c.dgiiProdReceptionUrl,
+  dgiiProdConsultUrl: c.dgiiProdConsultUrl,
+  dgiiProdCommercialApprovalUrl: c.dgiiProdCommercialApprovalUrl,
+  dgiiProdConsumerSummaryUrl: c.dgiiProdConsumerSummaryUrl,
   dgiiPaso4AuthUrl: c.dgiiPaso4AuthUrl,
   dgiiPaso4ReceptionUrl: c.dgiiPaso4ReceptionUrl,
   dgiiPaso4ConsultUrl: c.dgiiPaso4ConsultUrl,
@@ -179,7 +193,12 @@ const publicCompany = (c: Company): PublicCompany => ({
   tokenExpiration: c.tokenExpiration,
   certificateConfigured: companyHasCertificateRecord(c),
   certificate_keyphrase: c.certificateKeyphrase ?? null,
-  token_cached: Boolean(c.tokenCache && c.tokenExpiration && c.tokenExpiration.getTime() > Date.now()),
+  token_cached: Boolean(
+    c.tokenCache &&
+      c.tokenExpiration &&
+      c.tokenCacheEnvironment === (c.dgiiEnvironment ?? "CERTIFICACION") &&
+      c.tokenExpiration.getTime() > Date.now(),
+  ),
 });
 
 const publicUser = (u: User) => ({
@@ -514,6 +533,13 @@ export const authService = {
         | "dgiiTrackUrl"
         | "dgiiStatusUrl"
         | "dgiiEnvironment"
+        | "dgiiProdAuthUrl"
+        | "dgiiProdSeedUrl"
+        | "dgiiProdValidateSeedUrl"
+        | "dgiiProdReceptionUrl"
+        | "dgiiProdConsultUrl"
+        | "dgiiProdCommercialApprovalUrl"
+        | "dgiiProdConsumerSummaryUrl"
         | "certificatePath"
         | "certificatePassword"
       >
@@ -587,6 +613,41 @@ export const authService = {
         return { ok: false, status: 400, message: "dgii_environment debe ser CERTIFICACION o PRODUCCION." };
       }
       dgiiTenantMerge.dgiiEnvironment = env;
+    }
+    if (body.dgii_prod_auth_url !== undefined) {
+      const v = parseTenantUrl(body.dgii_prod_auth_url, "autenticación DGII (Producción)");
+      if (v && typeof v === "object" && "ok" in v && v.ok === false) return v;
+      dgiiTenantMerge.dgiiProdAuthUrl = v === null || typeof v === "string" ? v : null;
+    }
+    if (body.dgii_prod_seed_url !== undefined) {
+      const v = parseTenantUrl(body.dgii_prod_seed_url, "semilla DGII (Producción)");
+      if (v && typeof v === "object" && "ok" in v && v.ok === false) return v;
+      dgiiTenantMerge.dgiiProdSeedUrl = v === null || typeof v === "string" ? v : null;
+    }
+    if (body.dgii_prod_validate_seed_url !== undefined) {
+      const v = parseTenantUrl(body.dgii_prod_validate_seed_url, "validar semilla DGII (Producción)");
+      if (v && typeof v === "object" && "ok" in v && v.ok === false) return v;
+      dgiiTenantMerge.dgiiProdValidateSeedUrl = v === null || typeof v === "string" ? v : null;
+    }
+    if (body.dgii_prod_reception_url !== undefined) {
+      const v = parseTenantUrl(body.dgii_prod_reception_url, "recepción DGII (Producción)");
+      if (v && typeof v === "object" && "ok" in v && v.ok === false) return v;
+      dgiiTenantMerge.dgiiProdReceptionUrl = v === null || typeof v === "string" ? v : null;
+    }
+    if (body.dgii_prod_consult_url !== undefined) {
+      const v = parseTenantUrl(body.dgii_prod_consult_url, "consulta DGII (Producción)");
+      if (v && typeof v === "object" && "ok" in v && v.ok === false) return v;
+      dgiiTenantMerge.dgiiProdConsultUrl = v === null || typeof v === "string" ? v : null;
+    }
+    if (body.dgii_prod_commercial_approval_url !== undefined) {
+      const v = parseTenantUrl(body.dgii_prod_commercial_approval_url, "aprobación comercial DGII (Producción)");
+      if (v && typeof v === "object" && "ok" in v && v.ok === false) return v;
+      dgiiTenantMerge.dgiiProdCommercialApprovalUrl = v === null || typeof v === "string" ? v : null;
+    }
+    if (body.dgii_prod_consumer_summary_url !== undefined) {
+      const v = parseTenantUrl(body.dgii_prod_consumer_summary_url, "resúmenes de consumo DGII (Producción)");
+      if (v && typeof v === "object" && "ok" in v && v.ok === false) return v;
+      dgiiTenantMerge.dgiiProdConsumerSummaryUrl = v === null || typeof v === "string" ? v : null;
     }
 
     const dgiiPaso4Merge: Partial<

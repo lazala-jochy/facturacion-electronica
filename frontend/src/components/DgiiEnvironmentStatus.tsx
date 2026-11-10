@@ -20,8 +20,14 @@ export default function DgiiEnvironmentStatus({ company, onCompanyUpdated }: Pro
 
   const setEnvironment = async (next: "CERTIFICACION" | "PRODUCCION") => {
     if (next === "PRODUCCION") {
+      if (!company.dgiiProdAuthUrl?.trim() || !company.dgiiProdReceptionUrl?.trim() || !company.dgiiProdConsultUrl?.trim()) {
+        setError(
+          "Faltan las URLs de Producción (autenticación, recepción y consulta). Configuralas primero en el panel «Servicios DGII» antes de marcar PRODUCCION — producción nunca reutiliza las URLs de certificación.",
+        );
+        return;
+      }
       const confirmed = window.confirm(
-        "Vas a marcar el sistema como PRODUCCIÓN. A partir de ahora se asume que DGII ya confirmó la certificación y se deja de mostrar el selector Paso 2 / Paso 4 en Clientes. ¿Confirmás?",
+        "Vas a marcar el sistema como PRODUCCIÓN. A partir de ahora se asume que DGII ya confirmó la certificación, se deja de mostrar el selector Paso 2 / Paso 4 en Clientes, y los envíos usarán las URLs de Producción configuradas (no las de certificación). ¿Confirmás?",
       );
       if (!confirmed) return;
     }

@@ -12,6 +12,15 @@ export function companyPaso4DgiiUrls(company: AuthCompany): DgiiEcfUrlFields {
     receptionUrl: company.dgiiPaso4ReceptionUrl?.trim() ?? "",
     consultUrl: company.dgiiPaso4ConsultUrl?.trim() ?? "",
     consumerSummaryUrl: company.dgiiPaso4RfceUrl?.trim() ?? "",
+    // Paso 4 no usa semilla explícita ni juego de Producción separado (ver dgiiPaso4Urls.ts en backend).
+    seedUrl: "",
+    validateSeedUrl: "",
+    prodAuthUrl: "",
+    prodSeedUrl: "",
+    prodValidateSeedUrl: "",
+    prodReceptionUrl: "",
+    prodConsultUrl: "",
+    prodConsumerSummaryUrl: "",
   };
 }
 

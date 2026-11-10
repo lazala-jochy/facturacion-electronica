@@ -156,16 +156,6 @@ const fuente607FromCotizacion = (cot: CotizacionVentas): Fuente607Cotizacion => 
   };
 };
 
-export const collect607LinesFromCotizaciones = async (
-  companyId: number,
-  periodo: PeriodoFormato,
-): Promise<Linea607[]> => {
-  const periodoStr = `${periodo.year}-${String(periodo.month).padStart(2, "0")}`;
-  const out = await llenar607DesdeEcf(companyId, periodoStr);
-  if (!out.ok) return [];
-  return out.lines;
-};
-
 /** Origen 607: cotizaciones / e-CF aceptados por DGII en el periodo. */
 export const llenar607DesdeEcf = async (companyId: number, periodoRaw: string) => {
   const periodo = parsePeriodoParam(periodoRaw);
@@ -530,17 +520,18 @@ export const previewFormato = async (
   if (!company) return { ok: false as const, status: 404, message: "Empresa no encontrada." };
 
   if (tipo === "607") {
-    const lines = await collect607LinesFromCotizaciones(companyId, periodo);
-    const totalMonto = lines.reduce((a, l) => a + l.montoFacturado, 0);
-    const totalItbis = lines.reduce((a, l) => a + l.itbisFacturado, 0);
+    const out = await llenar607DesdeEcf(companyId, periodoRaw);
+    if (!out.ok) return out;
     return {
       ok: true as const,
       tipo,
       periodo: periodoRaw,
-      registro_count: lines.length,
-      total_monto_facturado: Math.round(totalMonto * 100) / 100,
-      total_itbis: Math.round(totalItbis * 100) / 100,
-      lines_preview: lines.slice(0, 20),
+      registro_count: out.registro_count,
+      total_monto_facturado: out.total_monto_facturado,
+      total_itbis: out.total_itbis,
+      lines_preview: out.lines.slice(0, 20),
+      fuentes_incluidas: out.fuentes_incluidas,
+      fuentes_excluidas: out.fuentes_excluidas,
     };
   }
 

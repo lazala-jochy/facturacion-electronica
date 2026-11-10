@@ -363,7 +363,10 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
           validNow: boolean;
         };
       }>("/auth/company/dgii/test", { method: "POST" });
-      setTestResult(`${out.message}${out.signatureModeUsed ? ` · modo firma: ${out.signatureModeUsed}` : ""}`);
+      const envLabel = session.company.dgiiEnvironment === "PRODUCCION" ? "PRODUCCIÓN" : "CERTIFICACIÓN";
+      setTestResult(
+        `[${envLabel}] ${out.message}${out.signatureModeUsed ? ` · modo firma: ${out.signatureModeUsed}` : ""}`,
+      );
       setDgiiToken(out.token ?? "");
       setCertTest(out.certificate ?? null);
     } catch (e) {
@@ -376,6 +379,10 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
   const certOk = Boolean(session.company.certificateConfigured);
   const dgiiOk = Boolean(dgiiUsername.trim());
   const logoOk = Boolean(previewImageSrc);
+  const isProduction = session.company.dgiiEnvironment === "PRODUCCION";
+  const envBadgeCls = isProduction
+    ? "border-amber-200 bg-amber-50 text-amber-800"
+    : "border-emerald-200 bg-emerald-50 text-emerald-800";
 
   return (
     <PageShell>
@@ -421,12 +428,17 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
               </p>
             ) : null}
             {testResult ? (
-              <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">{testResult}</p>
+              <p className={`rounded-lg border px-4 py-3 text-sm font-medium ${envBadgeCls}`}>{testResult}</p>
             ) : null}
             {dgiiToken ? (
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="font-medium">Token DGII (prueba)</span>
+                  <span className="font-medium">
+                    Token DGII (prueba) ·{" "}
+                    <span className={isProduction ? "text-amber-700" : "text-emerald-700"}>
+                      {isProduction ? "PRODUCCIÓN" : "CERTIFICACIÓN"}
+                    </span>
+                  </span>
                   <button
                     type="button"
                     onClick={() => void navigator.clipboard.writeText(dgiiToken)}

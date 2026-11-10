@@ -19,13 +19,14 @@ import { submitAcecfToDgii } from "../commercial-approvals/acecfSubmission.servi
 import type { AcecfDgiiSendResult } from "../commercial-approvals/acecfDgiiResponse";
 import { dgiiAuthService } from "./dgiiAuth.service";
 import { paso4SeedUrlFromAuthBase, paso4ValidateSeedUrlFromAuthBase } from "../utils/dgiiPaso4Urls";
+import { companyHasCertificateRecord } from "../utils/companyCertificateStorage";
 
 const makeMockTrackId = () => `MOCK-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
 
 const CACHE_SKEW_MS = 60_000;
 const DEFAULT_TOKEN_TTL_MS = 25 * 60 * 1000;
 
-type TokenCacheEntry = { token: string; expiresAtMs: number };
+type TokenCacheEntry = { token: string; expiresAtMs: number; environment: string };
 const tokenCache = new Map<number, TokenCacheEntry>();
 
 const DGII_LOG_DIR = path.join(process.cwd(), "logs");
@@ -53,14 +54,33 @@ function hasPaso4SeedFlow(company: Company): boolean {
   return Boolean(paso4SeedUrlFromAuthBase(auth) && paso4ValidateSeedUrlFromAuthBase(auth));
 }
 
-export function resolveDgiiAuthUrl(company: Pick<Company, "dgiiAuthUrl">): string {
+export function resolveDgiiAuthUrl(
+  company: Pick<Company, "dgiiAuthUrl" | "dgiiProdAuthUrl" | "dgiiEnvironment">,
+): string {
+  if (company.dgiiEnvironment === "PRODUCCION") {
+    const prod = company.dgiiProdAuthUrl?.trim();
+    if (!prod) {
+      throw new DgiiEcfError(
+        "La empresa está en ambiente PRODUCCION pero no tiene configurada dgii_prod_auth_url. Configurala en Perfil de empresa (no reutiliza la URL de certificación).",
+        "MISSING_CREDENTIALS",
+        400,
+      );
+    }
+    return normalizeDgiiEcfUrl(prod);
+  }
   return normalizeDgiiEcfUrl(company.dgiiAuthUrl || DGII_ECF_SANDBOX_DEFAULTS.auth);
 }
 
 export function resolveDgiiReceptionUrl(
   company: Pick<
     Company,
-    "dgiiEcfReceiveUrl" | "dgiiReceptionUrl" | "dgiiEcfEndpoint" | "dgiiPaso4ReceptionUrl" | "dgiiPaso4EcfReceiveUrl"
+    | "dgiiEcfReceiveUrl"
+    | "dgiiReceptionUrl"
+    | "dgiiEcfEndpoint"
+    | "dgiiPaso4ReceptionUrl"
+    | "dgiiPaso4EcfReceiveUrl"
+    | "dgiiProdReceptionUrl"
+    | "dgiiEnvironment"
   >,
   profile: DgiiCertProfile = "paso2",
 ): string {
@@ -68,6 +88,17 @@ export function resolveDgiiReceptionUrl(
     return normalizeDgiiEcfUrl(
       company.dgiiPaso4EcfReceiveUrl?.trim() || company.dgiiPaso4ReceptionUrl?.trim() || "",
     );
+  }
+  if (company.dgiiEnvironment === "PRODUCCION") {
+    const prod = company.dgiiProdReceptionUrl?.trim();
+    if (!prod) {
+      throw new DgiiEcfError(
+        "La empresa está en ambiente PRODUCCION pero no tiene configurada dgii_prod_reception_url. Configurala en Perfil de empresa (no reutiliza la URL de certificación).",
+        "MISSING_CREDENTIALS",
+        400,
+      );
+    }
+    return normalizeDgiiEcfUrl(prod);
   }
   return normalizeDgiiEcfUrl(
     company.dgiiEcfReceiveUrl?.trim() ||
@@ -89,13 +120,29 @@ export type ResolveDgiiConsultUrlOptions = {
 export function resolveDgiiConsultUrl(
   company: Pick<
     Company,
-    "dgiiStatusUrl" | "dgiiTrackUrl" | "dgiiConsultUrl" | "dgiiPaso4ConsultUrl"
+    "dgiiStatusUrl" | "dgiiTrackUrl" | "dgiiConsultUrl" | "dgiiPaso4ConsultUrl" | "dgiiProdConsultUrl" | "dgiiEnvironment"
   >,
   options?: ResolveDgiiConsultUrlOptions,
 ): string {
   const preferPaso4 =
     options?.certProfile === "paso4" ||
     (!company.dgiiConsultUrl?.trim() && Boolean(company.dgiiPaso4ConsultUrl?.trim()));
+
+  if (!preferPaso4 && company.dgiiEnvironment === "PRODUCCION") {
+    const prod = company.dgiiProdConsultUrl?.trim();
+    if (!prod) {
+      throw new DgiiEcfError(
+        "La empresa está en ambiente PRODUCCION pero no tiene configurada dgii_prod_consult_url. Configurala en Perfil de empresa (no reutiliza la URL de certificación).",
+        "MISSING_CREDENTIALS",
+        400,
+      );
+    }
+    const url = normalizeDgiiEcfUrl(prod).replace(/\/+$/, "");
+    if (/\/api\/Consultas\/estado$/i.test(url)) {
+      return url.replace(/\/api\/Consultas\/estado$/i, DGII_CONSULT_ESTADO_PATH);
+    }
+    return `${url}${DGII_CONSULT_ESTADO_PATH}`;
+  }
 
   const candidates = preferPaso4
     ? [
@@ -121,6 +168,16 @@ export function resolveDgiiConsultUrl(
 
 function tenantHasPasswordAuth(company: Pick<Company, "dgiiUsername" | "dgiiPassword">): boolean {
   return Boolean(company.dgiiUsername?.trim() && company.dgiiPassword && company.dgiiPassword.length > 0);
+}
+
+/** Semilla/validación explícitas para el ambiente activo (certificación o producción, nunca mezcladas). */
+function tenantHasSeedUrlsForActiveEnvironment(
+  company: Pick<Company, "dgiiEnvironment" | "dgiiSeedUrl" | "dgiiValidateSeedUrl" | "dgiiProdSeedUrl" | "dgiiProdValidateSeedUrl">,
+): boolean {
+  if (company.dgiiEnvironment === "PRODUCCION") {
+    return Boolean(company.dgiiProdSeedUrl?.trim() && company.dgiiProdValidateSeedUrl?.trim());
+  }
+  return Boolean(company.dgiiSeedUrl?.trim() && company.dgiiValidateSeedUrl?.trim());
 }
 
 function parseJwtExpMs(token: string): number | null {
@@ -243,8 +300,9 @@ export async function authenticateDgii(company: Company): Promise<string> {
     );
   }
 
+  const activeEnv = company.dgiiEnvironment ?? "CERTIFICACION";
   const cached = tokenCache.get(company.id);
-  if (cached && Date.now() < cached.expiresAtMs - CACHE_SKEW_MS) {
+  if (cached && cached.environment === activeEnv && Date.now() < cached.expiresAtMs - CACHE_SKEW_MS) {
     return cached.token;
   }
 
@@ -304,7 +362,7 @@ export async function authenticateDgii(company: Company): Promise<string> {
   }
 
   const expMs = parseJwtExpMs(token) ?? Date.now() + DEFAULT_TOKEN_TTL_MS;
-  tokenCache.set(company.id, { token, expiresAtMs: expMs });
+  tokenCache.set(company.id, { token, expiresAtMs: expMs, environment: activeEnv });
   return token;
 }
 
@@ -366,7 +424,13 @@ export async function submitSignedEcfWithTenantConfig(
   }
 
   // Nuevo flujo DGII: semilla + validar semilla + bearer token (Paso 2 / perfil estándar).
-  if (company.dgiiSeedUrl?.trim() && company.dgiiValidateSeedUrl?.trim()) {
+  // Si hay certificado cargado, dgiiAuthService.getToken() resuelve semilla/validación con
+  // los defaults de sandbox aunque dgii_seed_url/dgii_validate_seed_url no estén seteados
+  // explícitamente (misma lógica que usa "Probar conexión").
+  if (
+    companyHasCertificateRecord(company) ||
+    tenantHasSeedUrlsForActiveEnvironment(company)
+  ) {
     appendDgiiLog(`[send] company=${company.id} mode=seed-flow profile=paso2`);
     const token = await dgiiAuthService.getToken(company.id);
     const reception = resolveDgiiReceptionUrl(company, "paso2");
@@ -406,12 +470,21 @@ export async function submitSignedEcfWithTenantConfig(
   });
 }
 
-export function resolveDgiiRfceReceptionUrl(company: Company): string {
-  const explicit = (company as unknown as Record<string, unknown>)["dgiiRfceReceptionUrl"];
-  if (typeof explicit === "string" && explicit.trim()) {
-    return normalizeDgiiEcfUrl(explicit.trim());
+export function resolveDgiiRfceReceptionUrl(
+  company: Pick<Company, "dgiiEcfEndpoint" | "dgiiProdConsumerSummaryUrl" | "dgiiEnvironment">,
+): string {
+  if (company.dgiiEnvironment === "PRODUCCION") {
+    const prod = company.dgiiProdConsumerSummaryUrl?.trim();
+    if (!prod) {
+      throw new DgiiEcfError(
+        "La empresa está en ambiente PRODUCCION pero no tiene configurada dgii_prod_consumer_summary_url. Configurala en Perfil de empresa (no reutiliza la URL de certificación).",
+        "MISSING_CREDENTIALS",
+        400,
+      );
+    }
+    return normalizeDgiiEcfUrl(prod);
   }
-  return DGII_ECF_SANDBOX_DEFAULTS.consumerSummaryReception;
+  return normalizeDgiiEcfUrl(company.dgiiEcfEndpoint?.trim() || DGII_ECF_SANDBOX_DEFAULTS.consumerSummaryReception);
 }
 
 /** Submit signed RFCE XML to the consumer summary reception endpoint.
@@ -427,7 +500,10 @@ export async function submitSignedRfceWithTenantConfig(
   const rfceGlobal = readGlobalDgiiBearerToken();
   if (rfceGlobal) {
     token = rfceGlobal;
-  } else if (company.dgiiSeedUrl?.trim() && company.dgiiValidateSeedUrl?.trim()) {
+  } else if (
+    companyHasCertificateRecord(company) ||
+    tenantHasSeedUrlsForActiveEnvironment(company)
+  ) {
     token = await dgiiAuthService.getToken(company.id);
   } else if (tenantHasPasswordAuth(company)) {
     token = await authenticateDgii(company);
@@ -444,8 +520,19 @@ export async function submitSignedRfceWithTenantConfig(
 
 /** URL de recepción ACECF (aprobación comercial). */
 export function resolveDgiiCommercialApprovalUrl(
-  company: Pick<Company, "dgiiCommercialApprovalUrl">,
+  company: Pick<Company, "dgiiCommercialApprovalUrl" | "dgiiProdCommercialApprovalUrl" | "dgiiEnvironment">,
 ): string {
+  if (company.dgiiEnvironment === "PRODUCCION") {
+    const prod = company.dgiiProdCommercialApprovalUrl?.trim();
+    if (!prod) {
+      throw new DgiiEcfError(
+        "La empresa está en ambiente PRODUCCION pero no tiene configurada dgii_prod_commercial_approval_url. Configurala en Perfil de empresa (no reutiliza la URL de certificación).",
+        "MISSING_CREDENTIALS",
+        400,
+      );
+    }
+    return normalizeDgiiEcfUrl(prod);
+  }
   return normalizeDgiiEcfUrl(
     company.dgiiCommercialApprovalUrl?.trim() || DGII_ECF_SANDBOX_DEFAULTS.commercialApprovalReception || "",
   );
@@ -469,7 +556,10 @@ export async function submitSignedAcecfWithTenantConfig(
   const acecfGlobal = readGlobalDgiiBearerToken();
   if (acecfGlobal) {
     token = acecfGlobal;
-  } else if (company.dgiiSeedUrl?.trim() && company.dgiiValidateSeedUrl?.trim()) {
+  } else if (
+    companyHasCertificateRecord(company) ||
+    tenantHasSeedUrlsForActiveEnvironment(company)
+  ) {
     token = await dgiiAuthService.getToken(company.id);
   } else if (tenantHasPasswordAuth(company)) {
     token = await authenticateDgii(company);
@@ -523,7 +613,10 @@ export async function consultDgiiTrackId(
       if (tok) h.Authorization = `Bearer ${tok}`;
       return h;
     }
-    if (company.dgiiSeedUrl?.trim() && company.dgiiValidateSeedUrl?.trim()) {
+    if (
+      companyHasCertificateRecord(company) ||
+      tenantHasSeedUrlsForActiveEnvironment(company)
+    ) {
       h.Authorization = `Bearer ${await dgiiAuthService.getToken(company.id)}`;
     } else if (usePasswordAuth) {
       h.Authorization = `Bearer ${await authenticateDgii(company)}`;

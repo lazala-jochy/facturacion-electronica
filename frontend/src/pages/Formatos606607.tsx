@@ -218,7 +218,7 @@ export default function Formatos606607() {
         )}
 
         {preview && (
-          <div className="rounded-lg border border-slate-100 bg-slate-50/80 p-4 text-sm text-slate-800">
+          <div className="rounded-lg border border-slate-100 bg-slate-50/80 p-4 text-sm text-slate-800 space-y-2">
             <p>
               <strong>Registros:</strong> {preview.registro_count}
               {preview.total_monto_facturado != null && (
@@ -233,7 +233,36 @@ export default function Formatos606607() {
                   · <strong>ITBIS:</strong> {money(preview.total_itbis)}
                 </>
               )}
+              {preview.fuentes_excluidas != null && preview.fuentes_excluidas.length > 0 && (
+                <>
+                  {" "}
+                  · <strong className="text-amber-700">Excluidos:</strong>{" "}
+                  <span className="text-amber-700">{preview.fuentes_excluidas.length}</span>
+                </>
+              )}
             </p>
+            {preview.registro_count === 0 &&
+              preview.fuentes_excluidas != null &&
+              preview.fuentes_excluidas.length > 0 && (
+                <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  El 607 salió en 0 porque los e-CF de este periodo están excluidos (ver motivos abajo) — no
+                  es un error de generación del archivo.
+                </p>
+              )}
+            {preview.fuentes_excluidas != null && preview.fuentes_excluidas.length > 0 && (
+              <details className="text-xs text-slate-600">
+                <summary className="cursor-pointer font-medium text-amber-800">
+                  Ver por qué se excluyeron {preview.fuentes_excluidas.length} e-CF del 607
+                </summary>
+                <ul className="mt-2 space-y-1 list-disc pl-4">
+                  {preview.fuentes_excluidas.map((f) => (
+                    <li key={f.cotizacion_id}>
+                      #{f.number} {f.client_name} ({money(f.total)}) — {f.exclude_reason}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
           </div>
         )}
 

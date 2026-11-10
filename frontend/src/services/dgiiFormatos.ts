@@ -7,6 +7,10 @@ export type FormatoPreview = {
   total_monto_facturado: number;
   total_itbis?: number;
   lines_preview?: unknown[];
+  /** Solo 607: e-CF aceptados por DGII en el periodo que sí entran en el TXT. */
+  fuentes_incluidas?: Fuente607Cotizacion[];
+  /** Solo 607: e-CF del periodo que se excluyeron del TXT, con el motivo (ej. consumo < RD$250,000 → va en RFCE). */
+  fuentes_excluidas?: Fuente607Cotizacion[];
 };
 
 export type Fuente607Cotizacion = {

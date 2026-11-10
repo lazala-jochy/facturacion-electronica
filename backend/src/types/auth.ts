@@ -55,6 +55,14 @@ export type UpdateCompanyBody = {
   dgii_track_url?: string;
   dgii_status_url?: string;
   dgii_environment?: "CERTIFICACION" | "PRODUCCION";
+  /** Producción e-CF (Paso 2) — exclusivas; nunca se mezclan con las de certificación arriba. */
+  dgii_prod_auth_url?: string;
+  dgii_prod_seed_url?: string;
+  dgii_prod_validate_seed_url?: string;
+  dgii_prod_reception_url?: string;
+  dgii_prod_consult_url?: string;
+  dgii_prod_commercial_approval_url?: string;
+  dgii_prod_consumer_summary_url?: string;
   /** Paso 4 — simulación e-CF (solo estos campos; no afectan Paso 2). */
   dgii_paso4_auth_url?: string;
   dgii_paso4_reception_url?: string;

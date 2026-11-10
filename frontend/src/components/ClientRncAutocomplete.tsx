@@ -58,6 +58,12 @@ export default function ClientRncAutocomplete({
           .slice(0, 8)
       : [];
 
+  const findExactMatch = (raw: string): ClientListItem | undefined => {
+    const d = raw.replace(/\D/g, "");
+    if (!d) return undefined;
+    return clients.find((c) => c.rnc_cedula.replace(/\D/g, "") === d);
+  };
+
   const handleSelect = (client: ClientListItem) => {
     onSelect(client);
     setOpen(false);
@@ -69,8 +75,19 @@ export default function ClientRncAutocomplete({
         className={className}
         value={value}
         onChange={(e) => {
-          onChange(e.target.value);
+          const next = e.target.value;
+          onChange(next);
           setOpen(true);
+          // RNC/cédula completo y coincide exacto con un cliente ya guardado: autocompleta sin click.
+          const exact = findExactMatch(next);
+          if (exact) {
+            onSelect(exact);
+            setOpen(false);
+          }
+        }}
+        onBlur={() => {
+          const exact = findExactMatch(value);
+          if (exact) onSelect(exact);
         }}
         onFocus={() => setOpen(true)}
         required={required}
