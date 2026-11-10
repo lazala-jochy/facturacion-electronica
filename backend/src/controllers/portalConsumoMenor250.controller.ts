@@ -9,6 +9,7 @@ import {
   companyHasCertificateRecord,
   loadDecryptedPkcs12ForCompany,
 } from "../utils/companyCertificateStorage";
+import { getUploadsRoot } from "../utils/uploadsRoot";
 
 // Módulo aislado — no usa ecfExcelBatchRunner ni xmlBuilder principal.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -173,7 +174,7 @@ export const exportPortalConsumoMenor250Handler: RequestHandler = async (req, re
       return;
     }
 
-    const uploadsRoot = path.join(process.cwd(), "uploads");
+    const uploadsRoot = getUploadsRoot();
     let signingFromPkcs12Buffer: { p12Buffer: Buffer; passphrase: string };
     try {
       const pkcs12 = await loadDecryptedPkcs12ForCompany(companyRow, uploadsRoot, encryptionSecret);

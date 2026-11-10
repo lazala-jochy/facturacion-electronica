@@ -16,16 +16,27 @@ import {
   ECF_TIPO_REQUIERE_REFERENCIA,
   isConsumoMenor250Rfce,
 } from "../config/ecfTipos";
+import {
+  BIEN_O_SERVICIO_OPTIONS,
+  DEFAULT_UNIDAD_MEDIDA,
+  UNIDAD_MEDIDA_OPTIONS,
+} from "../config/unidadesMedida";
 
 type ItemRow = CotizacionItemDraft & { key: string };
 
 const newRow = (): ItemRow => ({
   key: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
   quantity: 1,
-  unit: "Servicio",
+  unit: DEFAULT_UNIDAD_MEDIDA,
+  item_type: "servicio",
   description: "",
   unit_price: 0,
 });
+
+const unitOptionsFor = (currentUnit: string) =>
+  UNIDAD_MEDIDA_OPTIONS.some((o) => o.value === currentUnit)
+    ? UNIDAD_MEDIDA_OPTIONS
+    : [{ value: currentUnit, label: currentUnit }, ...UNIDAD_MEDIDA_OPTIONS];
 
 export default function CotizacionEdit() {
   const { id } = useParams();
@@ -61,15 +72,14 @@ export default function CotizacionEdit() {
   const [clientRnc, setClientRnc] = useState("");
   const [clientPhone, setClientPhone] = useState("");
   const [clientEmail, setClientEmail] = useState("");
-  const [paymentTerms, setPaymentTerms] = useState("50% avance");
   const [paymentMethod, setPaymentMethod] = useState("Efectivo");
-  const [accountManager, setAccountManager] = useState("");
   const [comment, setComment] = useState("");
   const [ecfTipo, setEcfTipo] = useState(DEFAULT_ECF_TIPO);
   const [ecfReferenceNcf, setEcfReferenceNcf] = useState("");
   const [items, setItems] = useState<ItemRow[]>(() => [newRow()]);
   const [calcMode, setCalcMode] = useState<"auto" | "manual">("auto");
   const [manualSubtotal, setManualSubtotal] = useState(0);
+  const [manualItbisRate, setManualItbisRate] = useState(18);
   const [manualItbis, setManualItbis] = useState(0);
   const [manualTotal, setManualTotal] = useState(0);
   const [exento, setExento] = useState(false);
@@ -97,10 +107,17 @@ export default function CotizacionEdit() {
   useEffect(() => {
     if (calcMode === "manual") {
       setManualSubtotal(Number(totals.subtotal.toFixed(2)));
-      setManualItbis(Number(totals.itbis.toFixed(2)));
-      setManualTotal(Number(totals.total.toFixed(2)));
     }
-  }, [calcMode, totals.subtotal, totals.itbis, totals.total]);
+  }, [calcMode, totals.subtotal]);
+
+  useEffect(() => {
+    if (calcMode !== "manual") return;
+    const rate = Number.isFinite(manualItbisRate) ? Math.max(0, manualItbisRate) : 0;
+    const subtotal = Number.isFinite(manualSubtotal) ? Math.max(0, manualSubtotal) : 0;
+    const itbis = Number(((subtotal * rate) / 100).toFixed(2));
+    setManualItbis(itbis);
+    setManualTotal(Number((subtotal + itbis).toFixed(2)));
+  }, [calcMode, manualSubtotal, manualItbisRate]);
 
   useEffect(() => {
     const load = async () => {
@@ -118,9 +135,7 @@ export default function CotizacionEdit() {
         setClientRnc(c.client.rnc_cedula);
         setClientPhone(c.client.phone ?? "");
         setClientEmail(c.client.email ?? "");
-        setPaymentTerms(c.payment_terms ?? "50% avance");
         setPaymentMethod(c.payment_method ?? "Efectivo");
-        setAccountManager(c.account_manager ?? "");
         setComment(c.comment ?? "");
         setEcfTipo(c.ecf_tipo?.trim() || DEFAULT_ECF_TIPO);
         setEcfReferenceNcf(c.ecf_reference_ncf?.trim() ?? "");
@@ -130,15 +145,18 @@ export default function CotizacionEdit() {
                 key: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
                 quantity: it.quantity,
                 unit: it.unit,
+                item_type: it.item_type === "bien" ? ("bien" as const) : ("servicio" as const),
                 description: it.description,
                 unit_price: it.unit_price,
               }))
             : [newRow()];
         setItems(mappedItems);
         setCalcMode("manual");
-        setManualSubtotal(Number((c.subtotal ?? 0).toFixed(2)));
-        setManualItbis(Number((c.itbis ?? 0).toFixed(2)));
-        setManualTotal(Number((c.total ?? 0).toFixed(2)));
+        const loadedSubtotal = Number((c.subtotal ?? 0).toFixed(2));
+        const loadedItbis = Number((c.itbis ?? 0).toFixed(2));
+        const loadedRate = loadedSubtotal > 0 ? Math.round((loadedItbis / loadedSubtotal) * 100) : 18;
+        setManualSubtotal(loadedSubtotal);
+        setManualItbisRate(Number.isFinite(loadedRate) && loadedRate >= 0 ? loadedRate : 18);
         setExento(Boolean(c.exento));
       } catch (err) {
         setError(err instanceof Error ? err.message : "No se pudo cargar la cotización.");
@@ -165,10 +183,6 @@ export default function CotizacionEdit() {
       setError("Nombre y RNC o cedula del cliente son obligatorios.");
       return;
     }
-    if (!paymentTerms.trim() || !accountManager.trim()) {
-      setError("Condiciones de pago y ejecutivo de cuentas son obligatorios.");
-      return;
-    }
     if (clientPhone.trim() && !isValidPhone(clientPhone)) {
       setError("El telefono del cliente debe tener formato xxx-xxx-xxxx.");
       return;
@@ -187,6 +201,7 @@ export default function CotizacionEdit() {
     const payloadItems: CotizacionItemDraft[] = items.map((it) => ({
       quantity: Number(it.quantity) || 0,
       unit: it.unit.trim() || "Unidad",
+      item_type: it.item_type === "bien" ? "bien" : "servicio",
       description: it.description.trim() || "Concepto",
       unit_price: Number(it.unit_price) || 0,
     }));
@@ -203,9 +218,7 @@ export default function CotizacionEdit() {
           email: clientEmail.trim() || undefined,
         },
         cotizacion: {
-          payment_terms: paymentTerms.trim(),
           payment_method: paymentMethod,
-          account_manager: accountManager.trim(),
           comment: comment.trim() || undefined,
           ecf_tipo: ecfTipo,
           ecf_reference_ncf:
@@ -282,10 +295,6 @@ export default function CotizacionEdit() {
                   setClientAddress(c.address ?? "");
                   setClientPhone(c.phone ?? "");
                   setClientEmail(c.email ?? "");
-                  const lastAccountManager = c.cotizaciones.find((cot) =>
-                    cot.account_manager?.trim(),
-                  )?.account_manager;
-                  if (lastAccountManager?.trim()) setAccountManager(lastAccountManager.trim());
                 }}
               />
               {ecfTipo === "31" && (
@@ -336,13 +345,11 @@ export default function CotizacionEdit() {
                   />
                 </div>
               )}
-              <input className="w-full rounded border border-slate-300 px-2 py-1.5 text-xs sm:text-sm" value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} required />
               <select className="w-full rounded border border-slate-300 px-2 py-1.5 text-xs sm:text-sm" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
                 <option value="Efectivo">Efectivo</option>
                 <option value="Cheque">Cheque</option>
                 <option value="Depósito">Depósito</option>
               </select>
-              <input className="w-full rounded border border-slate-300 px-2 py-1.5 text-xs sm:text-sm" value={accountManager} onChange={(e) => setAccountManager(e.target.value)} required />
               <textarea className="w-full rounded border border-slate-300 px-2 py-1.5 text-xs sm:text-sm" rows={3} value={comment} onChange={(e) => setComment(e.target.value)} />
             </div>
           </div>
@@ -354,12 +361,53 @@ export default function CotizacionEdit() {
             </div>
             <div className="overflow-x-auto border border-slate-300">
               <table className="w-full text-xs sm:text-sm border-collapse">
+                <thead>
+                  <tr className="bg-slate-200 text-left font-semibold uppercase text-slate-700">
+                    <th className="border border-slate-300 px-1 sm:px-2 py-2 w-8">#</th>
+                    <th className="border border-slate-300 px-1 sm:px-2 py-2 min-w-[4rem]">Cant.</th>
+                    <th className="border border-slate-300 px-1 sm:px-2 py-2 min-w-[8rem]">Unidad de medida</th>
+                    <th className="border border-slate-300 px-1 sm:px-2 py-2 min-w-[7rem]">Bien o servicio</th>
+                    <th className="border border-slate-300 px-1 sm:px-2 py-2 min-w-[8rem]">Descripción</th>
+                    <th className="border border-slate-300 px-1 sm:px-2 py-2 text-right min-w-[5rem]">P. unitario</th>
+                    <th className="border border-slate-300 px-1 sm:px-2 py-2 text-right min-w-[5rem]">Valor</th>
+                    <th className="border border-slate-300 px-1 sm:px-2 py-2 w-10" />
+                  </tr>
+                </thead>
                 <tbody>
                   {items.map((row, idx) => (
                     <tr key={row.key} className="bg-white">
                       <td className="border border-slate-200 px-2 py-1 text-center text-slate-500 text-xs">{idx + 1}</td>
                       <td className="border border-slate-200 p-1"><input type="number" min={0} step="any" className="w-full rounded border border-slate-200 px-1 py-0.5 text-xs" value={row.quantity} onChange={(e) => updateItem(row.key, { quantity: Number(e.target.value) })} /></td>
-                      <td className="border border-slate-200 p-1"><input className="w-full rounded border border-slate-200 px-1 py-0.5 text-xs" value={row.unit} onChange={(e) => updateItem(row.key, { unit: e.target.value })} /></td>
+                      <td className="border border-slate-200 p-1">
+                        <select
+                          className="w-full rounded border border-slate-200 px-1 py-0.5 text-xs"
+                          value={row.unit}
+                          onChange={(e) => updateItem(row.key, { unit: e.target.value })}
+                        >
+                          {unitOptionsFor(row.unit).map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="border border-slate-200 p-1">
+                        <select
+                          className="w-full rounded border border-slate-200 px-1 py-0.5 text-xs"
+                          value={row.item_type}
+                          onChange={(e) =>
+                            updateItem(row.key, {
+                              item_type: e.target.value === "bien" ? "bien" : "servicio",
+                            })
+                          }
+                        >
+                          {BIEN_O_SERVICIO_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
                       <td className="border border-slate-200 p-1"><input className="w-full rounded border border-slate-200 px-1 py-0.5 text-xs" value={row.description} onChange={(e) => updateItem(row.key, { description: e.target.value })} /></td>
                       <td className="border border-slate-200 p-1"><input type="number" min={0} step="0.01" className="w-full rounded border border-slate-200 px-1 py-0.5 text-right text-xs" value={row.unit_price} onChange={(e) => updateItem(row.key, { unit_price: Number(e.target.value) })} /></td>
                       <td className="border border-slate-200 px-2 py-1 text-right font-mono text-slate-800 text-xs">{itemLineTotalValue(row.quantity, row.unit_price).toFixed(2)}</td>
@@ -384,7 +432,22 @@ export default function CotizacionEdit() {
                   </select>
                 </div>
                 <div className="flex justify-between"><span className="text-slate-600">Subtotal</span>{calcMode === "manual" ? <input type="number" step="0.01" min={0} value={manualSubtotal} onChange={(e) => setManualSubtotal(Number(e.target.value))} className="w-32 rounded border border-slate-300 px-2 py-1 text-right font-mono text-xs" /> : <span className="font-mono font-medium">RD$ {totals.subtotal.toFixed(2)}</span>}</div>
-                <div className="flex justify-between"><span className="text-slate-600">ITBIS (18%)</span>{exento ? <span className="font-mono font-medium">RD$ 0.00</span> : calcMode === "manual" ? <input type="number" step="0.01" min={0} value={manualItbis} onChange={(e) => setManualItbis(Number(e.target.value))} className="w-32 rounded border border-slate-300 px-2 py-1 text-right font-mono text-xs" /> : <span className="font-mono font-medium">RD$ {totals.itbis.toFixed(2)}</span>}</div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-600">{calcMode === "manual" ? "ITBIS" : "ITBIS (18%)"}</span>
+                  {exento ? (
+                    <span className="font-mono font-medium">RD$ 0.00</span>
+                  ) : calcMode === "manual" ? (
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1">
+                        <input type="number" step="1" min={0} max={100} value={manualItbisRate} onChange={(e) => setManualItbisRate(Number(e.target.value))} className="w-14 rounded border border-slate-300 px-1 py-1 text-right font-mono text-xs" />
+                        <span className="text-xs text-slate-500">%</span>
+                      </div>
+                      <span className="w-20 text-right font-mono font-medium">RD$ {manualItbis.toFixed(2)}</span>
+                    </div>
+                  ) : (
+                    <span className="font-mono font-medium">RD$ {totals.itbis.toFixed(2)}</span>
+                  )}
+                </div>
                 <div className="flex justify-between border-t border-slate-300 pt-2 font-semibold text-slate-900"><span>Total</span>{exento ? <span className="font-mono">RD$ {displayTotals.total.toFixed(2)}</span> : calcMode === "manual" ? <input type="number" step="0.01" min={0} value={manualTotal} onChange={(e) => setManualTotal(Number(e.target.value))} className="w-32 rounded border border-slate-300 px-2 py-1 text-right font-mono text-xs" /> : <span className="font-mono">RD$ {totals.total.toFixed(2)}</span>}</div>
               </div>
             </div>

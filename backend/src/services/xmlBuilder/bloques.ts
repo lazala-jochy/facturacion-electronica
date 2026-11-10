@@ -284,7 +284,7 @@ export function appendDetallesItemsExportacion46(root: XMLBuilder, payload: EcfP
     line.ele("IndicadorFacturacion").txt("3");
     line.ele("NombreItem").txt(item.description.trim());
     line.ele("IndicadorBienoServicio").txt(
-      indicadorBienServicio(item.unit, item.description),
+      indicadorBienServicio(item.unit, item.description, item.indicadorBienServicio),
     );
     line.ele("CantidadItem").txt(qty(item.quantity));
     line.ele("UnidadMedida").txt(mapUnidadMedidaDgii(item.unit));
@@ -303,7 +303,7 @@ export function appendDetallesItemsGubernamental45(root: XMLBuilder, payload: Ec
     line.ele("IndicadorFacturacion").txt(item.indicadorFacturacion ?? "1");
     line.ele("NombreItem").txt(item.description.trim());
     line.ele("IndicadorBienoServicio").txt(
-      indicadorBienServicio(item.unit, item.description),
+      indicadorBienServicio(item.unit, item.description, item.indicadorBienServicio),
     );
     line.ele("CantidadItem").txt(qty(item.quantity));
     line.ele("UnidadMedida").txt(mapUnidadMedidaDgii(item.unit));
@@ -398,7 +398,7 @@ export function appendDetallesItemsCompras41(root: XMLBuilder, payload: EcfPaylo
     ret.ele("MontoISRRetenido").txt(money(isrPerLine[idx]));
     ret.up();
     line.ele("NombreItem").txt(item.description.trim());
-    line.ele("IndicadorBienoServicio").txt(indicadorBienServicio(item.unit, item.description));
+    line.ele("IndicadorBienoServicio").txt(indicadorBienServicio(item.unit, item.description, item.indicadorBienServicio));
     line.ele("CantidadItem").txt(qty(item.quantity));
     line.ele("UnidadMedida").txt(mapUnidadMedidaDgii(item.unit));
     line.ele("PrecioUnitarioItem").txt(unitPrice4(item.unitPrice));
@@ -459,7 +459,7 @@ export function appendDetallesItemsRegimenEspecial44(root: XMLBuilder, payload: 
     line.ele("IndicadorFacturacion").txt("4");
     line.ele("NombreItem").txt(item.description.trim());
     line.ele("IndicadorBienoServicio").txt(
-      indicadorBienServicio(item.unit, item.description),
+      indicadorBienServicio(item.unit, item.description, item.indicadorBienServicio),
     );
     line.ele("CantidadItem").txt(qty(item.quantity));
     line.ele("UnidadMedida").txt(mapUnidadMedidaDgii(item.unit));
@@ -497,7 +497,7 @@ export function appendDetallesItems(
     line.ele("NumeroLinea").txt(String(item.itemNumber));
     line.ele("IndicadorFacturacion").txt(indicadorFacturacion);
     line.ele("NombreItem").txt(item.description.trim());
-    line.ele("IndicadorBienoServicio").txt(indicadorBienServicio(item.unit, item.description));
+    line.ele("IndicadorBienoServicio").txt(indicadorBienServicio(item.unit, item.description, item.indicadorBienServicio));
     line.ele("CantidadItem").txt(qty(item.quantity));
     line.ele("UnidadMedida").txt(mapUnidadMedidaDgii(item.unit));
     line.ele("PrecioUnitarioItem").txt(money(item.unitPrice));

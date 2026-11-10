@@ -134,6 +134,24 @@ const killStaleBackend = (pidFile: string) => {
   fs.rmSync(pidFile, { force: true });
 };
 
+/**
+ * Versiones previas guardaban los logos dentro de `backend-runtime/uploads`,
+ * que vive en los recursos de la app y se reemplaza en cada actualizacion.
+ * Si ese directorio legado todavia existe (instalacion que esta actualizando)
+ * y el nuevo (persistente, en userData) esta vacio, copiamos el contenido una
+ * sola vez para no perder el logo ya subido.
+ */
+const migrateLegacyUploads = (legacyDir: string, targetDir: string) => {
+  if (!fs.existsSync(legacyDir)) return;
+  const alreadyMigrated = fs.existsSync(targetDir) && fs.readdirSync(targetDir).length > 0;
+  if (alreadyMigrated) return;
+  try {
+    fs.cpSync(legacyDir, targetDir, { recursive: true });
+  } catch (error) {
+    log.error("No se pudo migrar uploads legados a userData.", error);
+  }
+};
+
 function startBackend() {
   if (!app.isPackaged) {
     return;
@@ -146,10 +164,15 @@ function startBackend() {
   const dbPath = path.join(dbDir, "facturacion.db");
   const databaseUrl = pathToFileURL(dbPath).href;
   const pidFile = path.join(userDataPath, "backend.pid");
+  const uploadsDir = path.join(userDataPath, "uploads");
 
   if (!fs.existsSync(dbDir)) {
     fs.mkdirSync(dbDir, { recursive: true });
   }
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+  migrateLegacyUploads(path.join(backendRuntime, "uploads"), uploadsDir);
 
   killStaleBackend(pidFile);
 
@@ -163,6 +186,7 @@ function startBackend() {
       NODE_ENV: "production",
       PORT: String(BACKEND_PORT),
       DATABASE_URL: databaseUrl,
+      UPLOADS_DIR: uploadsDir,
       ...(fs.existsSync(ecfTestAssets) ? { ECF_TEST_ASSETS_DIR: ecfTestAssets } : {}),
     },
     stdio: "inherit",

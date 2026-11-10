@@ -1,10 +1,10 @@
 import type { Company } from "@prisma/client";
-import path from "node:path";
 import { assertCertificateEncryptionSecret } from "../utils/companyCertificateCrypto";
 import {
   companyHasCertificateRecord,
   loadDecryptedPkcs12ForCompany,
 } from "../utils/companyCertificateStorage";
+import { getUploadsRoot } from "../utils/uploadsRoot";
 
 export type CompanySigningMaterial = {
   p12Buffer: Buffer;
@@ -16,7 +16,7 @@ export async function loadCompanySigningMaterial(
     Company,
     "id" | "certificateSalt" | "certificateEncPath" | "certificatePasswordEnc" | "certificateKeyphrase"
   >,
-  uploadsRoot = path.join(process.cwd(), "uploads"),
+  uploadsRoot = getUploadsRoot(),
 ): Promise<CompanySigningMaterial | null> {
   if (!companyHasCertificateRecord(company)) return null;
   const encryptionSecret = assertCertificateEncryptionSecret(

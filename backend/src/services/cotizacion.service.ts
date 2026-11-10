@@ -19,6 +19,7 @@ import { validateCotizacionEcfBusiness } from "./ecfTipoHandlers";
 export type IncomingItem = {
   quantity: number;
   unit: string;
+  item_type?: string;
   description: string;
   unit_price: number;
 };
@@ -32,9 +33,9 @@ export type CreateClientWithCotizacionInput = {
     email?: string | null;
   };
   cotizacion: {
-    payment_terms: string;
+    payment_terms?: string | null;
     payment_method?: string | null;
-    account_manager: string;
+    account_manager?: string | null;
     comment?: string | null;
     document_title?: string | null;
     fiscal_legend?: string | null;
@@ -274,12 +275,16 @@ const nextCotizacionNumber = async (
   return (agg._max.number ?? 0) + 1;
 };
 
+const normalizeItemType = (value: string | undefined): string =>
+  value?.trim().toLowerCase() === "bien" ? "bien" : "servicio";
+
 const normalizeIncomingItems = (
   items: IncomingItem[] | undefined,
 ): Array<{
   itemNumber: number;
   quantity: number;
   unit: string;
+  itemType: string;
   description: string;
   unitPrice: number;
   totalValue: number;
@@ -291,6 +296,7 @@ const normalizeIncomingItems = (
           {
             quantity: 1,
             unit: "Servicio",
+            item_type: "servicio",
             description: "Servicio / concepto (editar)",
             unit_price: 0,
           },
@@ -300,11 +306,13 @@ const normalizeIncomingItems = (
     const quantity = Number.isFinite(row.quantity) ? row.quantity : 0;
     const unitPrice = Number.isFinite(row.unit_price) ? row.unit_price : 0;
     const unit = (row.unit ?? "").trim() || "Unidad";
+    const itemType = normalizeItemType(row.item_type);
     const description = (row.description ?? "").trim() || "Item";
     const totalValue = itemLineTotalValue(quantity, unitPrice);
     return {
       quantity,
       unit,
+      itemType,
       description,
       unitPrice,
       totalValue,
@@ -365,14 +373,6 @@ export const cotizacionService = {
         message: bizErr.join(" "),
       };
     }
-    if (!paymentTerms || !accountManager) {
-      return {
-        ok: false as const,
-        status: 400,
-        message: "Condiciones de pago y ejecutivo de cuentas son obligatorios.",
-      };
-    }
-
     const lines = normalizeIncomingItems(input.items);
     const lineAmountErr = validateLinesHavePositiveAmount(lines);
     if (lineAmountErr) {
@@ -482,6 +482,7 @@ export const cotizacionService = {
             itemNumber: line.itemNumber,
             quantity: line.quantity,
             unit: line.unit,
+            itemType: line.itemType,
             description: line.description,
             unitPrice: line.unitPrice,
             totalValue: line.totalValue,
@@ -604,14 +605,6 @@ export const cotizacionService = {
       }
     }
 
-    if (!paymentTerms || !accountManager) {
-      return {
-        ok: false as const,
-        status: 400,
-        message: "Condiciones de pago y ejecutivo de cuentas son obligatorios.",
-      };
-    }
-
     const lines = normalizeIncomingItems(input.items);
     const lineAmountErr = validateLinesHavePositiveAmount(lines);
     if (lineAmountErr) {
@@ -714,6 +707,7 @@ export const cotizacionService = {
             itemNumber: line.itemNumber,
             quantity: line.quantity,
             unit: line.unit,
+            itemType: line.itemType,
             description: line.description,
             unitPrice: line.unitPrice,
             totalValue: line.totalValue,

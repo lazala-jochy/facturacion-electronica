@@ -6,6 +6,7 @@ import { dgiiAuthService } from "../services/dgiiAuth.service";
 import type { ForgotPasswordBody, RegisterBody, ResetPasswordBody, UpdateCompanyBody } from "../types/auth";
 import { isAllowedLogoMime } from "../utils/companyLogo";
 import { validateCertificateMulterFile } from "../utils/companyCertificateUpload";
+import { getUploadsRoot } from "../utils/uploadsRoot";
 
 const pickStr = (b: Record<string, unknown>, k: string): string | undefined =>
   typeof b[k] === "string" ? (b[k] as string) : undefined;
@@ -91,7 +92,7 @@ export const register: RequestHandler = async (req, res) => {
     }
     if (logoCandidate && !logoCandidate.buffer.length) logoCandidate = undefined;
 
-    const uploadsRoot = path.join(process.cwd(), "uploads");
+    const uploadsRoot = getUploadsRoot();
     const body = req.body as RegisterBody & { certificate_password?: string };
     const certificatePassword = pickStr(
       (req.body as Record<string, unknown>) ?? {},
@@ -214,7 +215,7 @@ export const updateCompany: RequestHandler = async (req, res) => {
     if (certificateMulter) certificateMulter = validateCertificateMulterFile(certificateMulter);
 
     const body = updateCompanyBodyFromReq(req);
-    const uploadsRoot = path.join(process.cwd(), "uploads");
+    const uploadsRoot = getUploadsRoot();
     const clearLogo = wantsClearLogo(req) && !logoCandidate?.buffer?.length;
     const clearCert = wantsClearCertificate(req) && !certificateMulter?.buffer?.length;
 

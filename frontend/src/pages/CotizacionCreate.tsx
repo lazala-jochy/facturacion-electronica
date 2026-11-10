@@ -18,16 +18,27 @@ import {
   ECF_TIPO_REQUIERE_REFERENCIA,
   isConsumoMenor250Rfce,
 } from "../config/ecfTipos";
+import {
+  BIEN_O_SERVICIO_OPTIONS,
+  DEFAULT_UNIDAD_MEDIDA,
+  UNIDAD_MEDIDA_OPTIONS,
+} from "../config/unidadesMedida";
 
 type ItemRow = CotizacionItemDraft & { key: string };
 
 const newRow = (): ItemRow => ({
   key: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
   quantity: 1,
-  unit: "Servicio",
+  unit: DEFAULT_UNIDAD_MEDIDA,
+  item_type: "servicio",
   description: "",
   unit_price: 0,
 });
+
+const unitOptionsFor = (currentUnit: string) =>
+  UNIDAD_MEDIDA_OPTIONS.some((o) => o.value === currentUnit)
+    ? UNIDAD_MEDIDA_OPTIONS
+    : [{ value: currentUnit, label: currentUnit }, ...UNIDAD_MEDIDA_OPTIONS];
 
 export default function CotizacionCreate() {
   const session = useMemo<AuthSession | null>(() => {
@@ -61,15 +72,14 @@ export default function CotizacionCreate() {
   const [clientRnc, setClientRnc] = useState("");
   const [clientPhone, setClientPhone] = useState("");
   const [clientEmail, setClientEmail] = useState("");
-  const [paymentTerms, setPaymentTerms] = useState("50% avance");
   const [paymentMethod, setPaymentMethod] = useState("Efectivo");
-  const [accountManager, setAccountManager] = useState("");
   const [comment, setComment] = useState("");
   const [ecfTipo, setEcfTipo] = useState(DEFAULT_ECF_TIPO);
   const [ecfReferenceNcf, setEcfReferenceNcf] = useState("");
   const [items, setItems] = useState<ItemRow[]>(() => [newRow()]);
   const [calcMode, setCalcMode] = useState<"auto" | "manual">("auto");
   const [manualSubtotal, setManualSubtotal] = useState(0);
+  const [manualItbisRate, setManualItbisRate] = useState(18);
   const [manualItbis, setManualItbis] = useState(0);
   const [manualTotal, setManualTotal] = useState(0);
   const [exento, setExento] = useState(false);
@@ -102,10 +112,17 @@ export default function CotizacionCreate() {
   useEffect(() => {
     if (calcMode === "manual") {
       setManualSubtotal(Number(totals.subtotal.toFixed(2)));
-      setManualItbis(Number(totals.itbis.toFixed(2)));
-      setManualTotal(Number(totals.total.toFixed(2)));
     }
-  }, [calcMode, totals.subtotal, totals.itbis, totals.total]);
+  }, [calcMode, totals.subtotal]);
+
+  useEffect(() => {
+    if (calcMode !== "manual") return;
+    const rate = Number.isFinite(manualItbisRate) ? Math.max(0, manualItbisRate) : 0;
+    const subtotal = Number.isFinite(manualSubtotal) ? Math.max(0, manualSubtotal) : 0;
+    const itbis = Number(((subtotal * rate) / 100).toFixed(2));
+    setManualItbis(itbis);
+    setManualTotal(Number((subtotal + itbis).toFixed(2)));
+  }, [calcMode, manualSubtotal, manualItbisRate]);
 
   const today = new Date().toLocaleDateString("es-DO", {
     day: "2-digit",
@@ -132,10 +149,6 @@ export default function CotizacionCreate() {
       setError("Nombre y RNC o cedula del cliente son obligatorios.");
       return;
     }
-    if (!paymentTerms.trim() || !accountManager.trim()) {
-      setError("Condiciones de pago y ejecutivo de cuentas son obligatorios.");
-      return;
-    }
     if (clientPhone.trim() && !isValidPhone(clientPhone)) {
       setError("El telefono del cliente debe tener formato xxx-xxx-xxxx.");
       return;
@@ -154,6 +167,7 @@ export default function CotizacionCreate() {
     const payloadItems: CotizacionItemDraft[] = items.map((it) => ({
       quantity: Number(it.quantity) || 0,
       unit: it.unit.trim() || "Unidad",
+      item_type: it.item_type === "bien" ? "bien" : "servicio",
       description: it.description.trim() || "Concepto",
       unit_price: Number(it.unit_price) || 0,
     }));
@@ -170,9 +184,7 @@ export default function CotizacionCreate() {
           email: clientEmail.trim() || undefined,
         },
         cotizacion: {
-          payment_terms: paymentTerms.trim(),
           payment_method: paymentMethod,
-          account_manager: accountManager.trim(),
           comment: comment.trim() || undefined,
           ecf_tipo: ecfTipo,
           ecf_reference_ncf:
@@ -323,10 +335,6 @@ export default function CotizacionCreate() {
                 setClientAddress(c.address ?? "");
                 setClientPhone(c.phone ?? "");
                 setClientEmail(c.email ?? "");
-                const lastAccountManager = c.cotizaciones.find((cot) =>
-                  cot.account_manager?.trim(),
-                )?.account_manager;
-                if (lastAccountManager?.trim()) setAccountManager(lastAccountManager.trim());
               }}
             />
             {ecfTipo === "31" && (
@@ -421,17 +429,6 @@ export default function CotizacionCreate() {
             )}
             <div>
               <label className="text-xs font-medium text-slate-600">
-                Condiciones de pago
-              </label>
-              <input
-                className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                value={paymentTerms}
-                onChange={(e) => setPaymentTerms(e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-slate-600">
                 Forma de pago
               </label>
               <select
@@ -443,18 +440,6 @@ export default function CotizacionCreate() {
                 <option value="Cheque">Cheque</option>
                 <option value="Depósito">Depósito</option>
               </select>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-slate-600">
-                Ejecutivo de cuentas
-              </label>
-              <input
-                className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                value={accountManager}
-                onChange={(e) => setAccountManager(e.target.value)}
-                placeholder="Nombre del ejecutivo"
-                required
-              />
             </div>
             <div>
               <label className="text-xs font-medium text-slate-600">
@@ -489,7 +474,8 @@ export default function CotizacionCreate() {
                 <tr className="bg-slate-200 text-left font-semibold uppercase text-slate-700">
                   <th className="border border-slate-300 px-1 sm:px-2 py-2 w-8">#</th>
                   <th className="border border-slate-300 px-1 sm:px-2 py-2 min-w-[4rem]">Cant.</th>
-                  <th className="border border-slate-300 px-1 sm:px-2 py-2 min-w-[4rem]">Unidad</th>
+                  <th className="border border-slate-300 px-1 sm:px-2 py-2 min-w-[8rem]">Unidad de medida</th>
+                  <th className="border border-slate-300 px-1 sm:px-2 py-2 min-w-[7rem]">Bien o servicio</th>
                   <th className="border border-slate-300 px-1 sm:px-2 py-2 min-w-[8rem]">Descripción</th>
                   <th className="border border-slate-300 px-1 sm:px-2 py-2 text-right min-w-[5rem]">
                     P. unitario
@@ -521,13 +507,36 @@ export default function CotizacionCreate() {
                       />
                     </td>
                     <td className="border border-slate-200 p-0.5 sm:p-1">
-                      <input
+                      <select
                         className="w-full rounded border border-slate-200 px-1 py-0.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
                         value={row.unit}
                         onChange={(e) =>
                           updateItem(row.key, { unit: e.target.value })
                         }
-                      />
+                      >
+                        {unitOptionsFor(row.unit).map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="border border-slate-200 p-0.5 sm:p-1">
+                      <select
+                        className="w-full rounded border border-slate-200 px-1 py-0.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        value={row.item_type}
+                        onChange={(e) =>
+                          updateItem(row.key, {
+                            item_type: e.target.value === "bien" ? "bien" : "servicio",
+                          })
+                        }
+                      >
+                        {BIEN_O_SERVICIO_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
                     </td>
                     <td className="border border-slate-200 p-0.5 sm:p-1">
                       <input
@@ -613,19 +622,30 @@ export default function CotizacionCreate() {
                   </span>
                 )}
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600">ITBIS (18%)</span>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-600">
+                  {calcMode === "manual" ? "ITBIS" : "ITBIS (18%)"}
+                </span>
                 {exento ? (
                   <span className="font-mono font-medium">RD$ 0.00</span>
                 ) : calcMode === "manual" ? (
-                  <input
-                    type="number"
-                    step="0.01"
-                    min={0}
-                    value={manualItbis}
-                    onChange={(e) => setManualItbis(Number(e.target.value))}
-                    className="w-32 rounded border border-slate-300 px-2 py-1 text-right font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  />
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        step="1"
+                        min={0}
+                        max={100}
+                        value={manualItbisRate}
+                        onChange={(e) => setManualItbisRate(Number(e.target.value))}
+                        className="w-14 rounded border border-slate-300 px-1 py-1 text-right font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      />
+                      <span className="text-xs text-slate-500">%</span>
+                    </div>
+                    <span className="w-20 text-right font-mono font-medium">
+                      RD$ {manualItbis.toFixed(2)}
+                    </span>
+                  </div>
                 ) : (
                   <span className="font-mono font-medium">
                     RD$ {totals.itbis.toFixed(2)}

@@ -6,7 +6,6 @@ type CotizacionForPdf = {
   createdAt: Date;
   paymentTerms: string;
   paymentMethod: string | null;
-  accountManager: string;
   comment: string | null;
   documentTitle: string;
   fiscalLegend: string;
@@ -88,10 +87,12 @@ export const buildCotizacionPdfBuffer = (
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    doc.font("Helvetica-Bold").fontSize(12).text(issuerPersonName || cotizacion.accountManager, {
-      align: "center",
-    });
-    doc.moveDown(0.15);
+    if (issuerPersonName?.trim()) {
+      doc.font("Helvetica-Bold").fontSize(12).text(issuerPersonName, {
+        align: "center",
+      });
+      doc.moveDown(0.15);
+    }
     doc.font("Helvetica-Bold").fontSize(18).text(cotizacion.company.name, {
       align: "center",
     });
@@ -226,15 +227,13 @@ export const buildCotizacionPdfBuffer = (
 
     doc.moveDown(0.3);
     doc.font("Helvetica").fontSize(10.5);
-    doc.text(`Condiciones: ${cotizacion.paymentTerms}`, summaryLeftX, doc.y, {
-      width: summaryWidth,
-      align: "left",
-    });
+    if (cotizacion.paymentTerms.trim()) {
+      doc.text(`Condiciones: ${cotizacion.paymentTerms}`, summaryLeftX, doc.y, {
+        width: summaryWidth,
+        align: "left",
+      });
+    }
     doc.text(`Forma de pago: ${cotizacion.paymentMethod || "-"}`, summaryLeftX, doc.y, {
-      width: summaryWidth,
-      align: "left",
-    });
-    doc.text(`Ejecutivo: ${cotizacion.accountManager}`, summaryLeftX, doc.y, {
       width: summaryWidth,
       align: "left",
     });

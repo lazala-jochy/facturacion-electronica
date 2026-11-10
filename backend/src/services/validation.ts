@@ -25,6 +25,8 @@ type EcfItem = {
   unit: string;
   unitPrice: number;
   totalValue: number;
+  /** DGII IndicadorBienoServicio: 1=bien, 2=servicio. Si falta, se infiere de unit/description. */
+  indicadorBienServicio?: "1" | "2";
   /** e-CF 45: 1=gravado ITBIS 18%, 2=gravado ITBIS 16% (muestra E450000000002). */
   indicadorFacturacion?: "1" | "2";
   /** e-CF 46: código interno del ítem (TablaCodigosItem). */

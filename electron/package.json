@@ -1,6 +1,6 @@
 {
   "name": "facturacion-electronica-rd",
-  "version": "1.1.11",
+  "version": "1.1.12",
   "main": "dist/main.js",
   "scripts": {
     "compile": "tsc",
@@ -96,7 +96,7 @@
       "extraResources": [
         {
           "from": "../backend/dotnet/DgiiXmlSigner/publish/win-x64/DgiiXmlSigner.exe",
-          "to": "dotnet-signer/DgiiXmlSigner.exe"
+          "to": "backend-runtime/dotnet-signer/DgiiXmlSigner.exe"
         }
       ]
     },
@@ -110,7 +110,7 @@
       "extraResources": [
         {
           "from": "../backend/dotnet/DgiiXmlSigner/publish/osx-x64/DgiiXmlSigner",
-          "to": "dotnet-signer/DgiiXmlSigner"
+          "to": "backend-runtime/dotnet-signer/DgiiXmlSigner"
         }
       ]
     },

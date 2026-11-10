@@ -12,6 +12,7 @@ import {
   loadDecryptedPkcs12ForCompany,
 } from "../utils/companyCertificateStorage";
 import { generateRiPdfsForBatchOutput } from "../services/ecfRepresentacionImpresa.service";
+import { getUploadsRoot } from "../utils/uploadsRoot";
 
 type EcfBatchRunner = (opts: {
   assetsDir: string;
@@ -446,7 +447,7 @@ export const runExcelBatchToDesktopHandler: RequestHandler = async (req, res, ne
       return;
     }
 
-    const uploadsRoot = path.join(process.cwd(), "uploads");
+    const uploadsRoot = getUploadsRoot();
 
     let signingFromPkcs12Buffer: { p12Buffer: Buffer; passphrase: string };
     try {

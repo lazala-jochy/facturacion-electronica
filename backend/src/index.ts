@@ -10,6 +10,7 @@ import { buildRouter } from "./routes";
 import { prisma } from "./prisma";
 import { startDgiiSubmitRetryWorker } from "./services/dgiiSubmitQueue.service";
 import { startEcfGatewayConnectorWorker } from "./services/ecfGatewayConnector.service";
+import { getUploadsRoot } from "./utils/uploadsRoot";
 
 const PORT = Number(process.env.PORT ?? 3001);
 
@@ -112,7 +113,7 @@ const bootstrap = async () => {
   const companyCount = await prisma.company.count();
   console.log("Backend ready. Companies:", companyCount);
 
-  const uploadsRoot = path.join(process.cwd(), "uploads");
+  const uploadsRoot = getUploadsRoot();
   await fs.mkdir(path.join(uploadsRoot, "companies"), { recursive: true });
 
   const app = express();

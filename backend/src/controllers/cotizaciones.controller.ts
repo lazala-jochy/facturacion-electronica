@@ -16,6 +16,7 @@ import {
 } from "../services/ecfConsumoRfce.service";
 import { ensureRepresentacionImpresaPdfForCotizacion } from "../services/ecfRepresentacionImpresa.service";
 import { companyHasCertificateRecord } from "../utils/companyCertificateStorage";
+import { getUploadsRoot } from "../utils/uploadsRoot";
 import { parseDgiiCertProfile } from "../types/dgiiCertProfile";
 import {
   formatDgiiResponseFullMessage,
@@ -44,8 +45,7 @@ const trySignDraftEcfAfterWrite = async (
   if (!companyRow || !companyHasCertificateRecord(companyRow)) {
     return { status: "skipped" };
   }
-  const pathMod = await import("node:path");
-  const uploadsRoot = pathMod.join(process.cwd(), "uploads");
+  const uploadsRoot = getUploadsRoot();
   const out = await ecfService.signAndStoreDraftForCotizacion(cotizacionId, companyId, {
     uploadsRoot,
     certificateEncryptionSecret: certificateEncryptionSecret?.trim() || undefined,
@@ -120,6 +120,7 @@ const serializeCotizacion = (
     item_number: i.itemNumber,
     quantity: i.quantity,
     unit: i.unit,
+    item_type: i.itemType,
     description: i.description,
     unit_price: i.unitPrice,
     total_value: i.totalValue,
@@ -152,6 +153,7 @@ export const createClientWithCotizacion: RequestHandler = async (req, res) => {
         return {
           quantity: Number(r.quantity ?? 0),
           unit: String(r.unit ?? ""),
+          item_type: typeof r.item_type === "string" ? r.item_type : undefined,
           description: String(r.description ?? ""),
           unit_price: Number(r.unit_price ?? r.unitPrice ?? 0),
         };
@@ -350,6 +352,7 @@ export const updateCotizacionById: RequestHandler = async (req, res) => {
         return {
           quantity: Number(r.quantity ?? 0),
           unit: String(r.unit ?? ""),
+          item_type: typeof r.item_type === "string" ? r.item_type : undefined,
           description: String(r.description ?? ""),
           unit_price: Number(r.unit_price ?? r.unitPrice ?? 0),
         };
@@ -507,8 +510,7 @@ export const downloadRepresentacionImpresaEcf: RequestHandler = async (req, res)
     return;
   }
 
-  const pathMod = await import("node:path");
-  const uploadsRoot = pathMod.join(process.cwd(), "uploads");
+  const uploadsRoot = getUploadsRoot();
   const out = await ensureRepresentacionImpresaPdfForCotizacion(id, companyId, uploadsRoot);
   if (!out.ok) {
     res.status(out.status).json({ message: out.message });
@@ -578,8 +580,7 @@ export const signEcfXmlByCotizacion: RequestHandler = async (req, res) => {
     return;
   }
 
-  const pathJoin = await import("node:path");
-  const uploadsRoot = pathJoin.join(process.cwd(), "uploads");
+  const uploadsRoot = getUploadsRoot();
 
   const certificateEncryptionSecret =
     pickStr((req.body as Record<string, unknown>) ?? {}, "certificate_encryption_secret") ?? "";
@@ -634,8 +635,7 @@ export const buildConsumoMenor250PackByCotizacion: RequestHandler = async (req, 
     return;
   }
 
-  const pathJoin = await import("node:path");
-  const uploadsRoot = pathJoin.join(process.cwd(), "uploads");
+  const uploadsRoot = getUploadsRoot();
 
   const certificateEncryptionSecret =
     pickStr((req.body as Record<string, unknown>) ?? {}, "certificate_encryption_secret") ?? "";
@@ -760,8 +760,7 @@ export const submitRfceByCotizacion: RequestHandler = async (req, res) => {
     return;
   }
 
-  const pathJoin = await import("node:path");
-  const uploadsRoot = pathJoin.join(process.cwd(), "uploads");
+  const uploadsRoot = getUploadsRoot();
   const certificateEncryptionSecret =
     pickStr((req.body as Record<string, unknown>) ?? {}, "certificate_encryption_secret") ?? "";
 
@@ -821,8 +820,7 @@ export const submitEcfByCotizacion: RequestHandler = async (req, res) => {
     return;
   }
 
-  const pathJoin = await import("node:path");
-  const uploadsRoot = pathJoin.join(process.cwd(), "uploads");
+  const uploadsRoot = getUploadsRoot();
 
   const certificateEncryptionSecret =
     pickStr((req.body as Record<string, unknown>) ?? {}, "certificate_encryption_secret") ?? "";
@@ -921,8 +919,7 @@ export const retryQueuedDgiiSubmitByCotizacion: RequestHandler = async (req, res
     return;
   }
 
-  const pathJoin = await import("node:path");
-  const uploadsRoot = pathJoin.join(process.cwd(), "uploads");
+  const uploadsRoot = getUploadsRoot();
   const certificateEncryptionSecret =
     pickStr((req.body as Record<string, unknown>) ?? {}, "certificate_encryption_secret") ?? "";
 

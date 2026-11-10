@@ -3,6 +3,7 @@ import { apiFetch, authenticatedFetch, ApiError, readAuthSessionFromStorage } fr
 export type CotizacionItemDraft = {
   quantity: number;
   unit: string;
+  item_type: "bien" | "servicio";
   description: string;
   unit_price: number;
 };
@@ -71,6 +72,7 @@ export type CotizacionDetail = {
     item_number: number;
     quantity: number;
     unit: string;
+    item_type?: "bien" | "servicio";
     description: string;
     unit_price: number;
     total_value: number;
@@ -86,9 +88,9 @@ export type CreateClientWithCotizacionPayload = {
     email?: string;
   };
   cotizacion: {
-    payment_terms: string;
+    payment_terms?: string;
     payment_method?: string;
-    account_manager: string;
+    account_manager?: string;
     comment?: string;
     ecf_tipo?: string;
     ecf_reference_ncf?: string;

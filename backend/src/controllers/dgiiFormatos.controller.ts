@@ -15,8 +15,9 @@ import {
   prepareFormatoEnvio,
   previewFormato,
 } from "../services/dgiiFormato606607.service";
+import { getUploadsRoot } from "../utils/uploadsRoot";
 
-const uploadsRoot = () => path.join(process.cwd(), "uploads");
+const uploadsRoot = () => getUploadsRoot();
 
 const serializeCompra606 = (c: Compra606) => ({
   id: c.id,

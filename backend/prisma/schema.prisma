@@ -227,6 +227,8 @@ model CotizacionItem {
   itemNumber   Int        @map("item_number")
   quantity     Float
   unit         String
+  /// "bien" | "servicio" (DGII IndicadorBienoServicio: 1=bien, 2=servicio).
+  itemType     String     @default("servicio") @map("item_type")
   description  String
   unitPrice    Float      @map("unit_price")
   totalValue   Float      @map("total_value")

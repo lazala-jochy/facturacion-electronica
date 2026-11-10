@@ -11,6 +11,7 @@ import { assertCertificateEncryptionSecret } from "../utils/companyCertificateCr
 import { loadDecryptedPkcs12ForCompany } from "../utils/companyCertificateStorage";
 import type { DgiiCertProfile } from "../types/dgiiCertProfile";
 import { paso4SeedUrlFromAuthBase, paso4ValidateSeedUrlFromAuthBase } from "../utils/dgiiPaso4Urls";
+import { getUploadsRoot } from "../utils/uploadsRoot";
 
 const LOG_DIR = path.join(process.cwd(), "logs");
 const LOG_FILE = path.join(LOG_DIR, "dgii.log");
@@ -186,7 +187,7 @@ function xmlEscape(raw: string): string {
 async function signSeedWithCompanyCertificate(
   company: Company,
 ): Promise<(seedXml: string, mode: SignatureMode) => Promise<string>> {
-  const uploadsRoot = path.join(process.cwd(), "uploads");
+  const uploadsRoot = getUploadsRoot();
   const encryptionSecret = assertCertificateEncryptionSecret(company.certificateKeyphrase ?? "");
   const loaded = await loadDecryptedPkcs12ForCompany(company, uploadsRoot, encryptionSecret);
   if (!loaded) {
@@ -415,7 +416,7 @@ export const dgiiAuthService = {
         }
       | undefined;
     try {
-      const uploadsRoot = path.join(process.cwd(), "uploads");
+      const uploadsRoot = getUploadsRoot();
       const encryptionSecret = assertCertificateEncryptionSecret(company.certificateKeyphrase ?? "");
       const loaded = await loadDecryptedPkcs12ForCompany(company, uploadsRoot, encryptionSecret);
       if (loaded) {

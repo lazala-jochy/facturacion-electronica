@@ -65,6 +65,7 @@ const toPayload = (cotizacion: CotizacionWithRelations): EcfPayload => {
       description: item.description,
       quantity: item.quantity,
       unit: item.unit,
+      indicadorBienServicio: item.itemType === "bien" ? "1" : "2",
       unitPrice: item.unitPrice,
       totalValue: item.totalValue,
     })),
