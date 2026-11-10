@@ -102,7 +102,6 @@
     },
     "mac": {
       "icon": "assets/default.png",
-      "identity": "-",
       "target": [
         "dmg",
         "zip"
