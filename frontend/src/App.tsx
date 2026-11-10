@@ -60,7 +60,13 @@ function App() {
     const onInvalidated = () => setSession(null);
     const onUpdated = (e: Event) => {
       const next = (e as CustomEvent<AuthSession>).detail;
-      if (next?.token && next?.user && next?.company) setSession(next);
+      if (next?.token && next?.user && next?.company) {
+        setSession(next);
+        // El refresh token rota en cada renovación silenciosa; si no se sincroniza acá, la
+        // cuenta guardada para el selector de "iniciar rápido" queda con un token viejo e
+        // inválido y fuerza a reingresar la contraseña aunque la sesión real siga viva.
+        upsertSavedAccount(next);
+      }
     };
     window.addEventListener(AUTH_SESSION_INVALIDATED, onInvalidated);
     window.addEventListener(AUTH_SESSION_UPDATED, onUpdated);
