@@ -10,7 +10,7 @@
     "build": "npm run build:all && dotenv -e .env -- electron-builder --publish never",
     "release": "sh scripts/release-all.sh always",
     "release:dry": "sh scripts/release-all.sh never",
-    "dist:win": "npm run build:all && electron-builder --win nsis",
+    "dist:win": "npm run build:all && npm --prefix ../backend run fetch:win-engine && electron-builder --win nsis",
     "dist:dir": "npm run build:all && electron-builder --dir"
   },
   "keywords": [],
@@ -102,7 +102,9 @@
             "!.bin/tsserver",
             "!.bin/ts-node-dev",
             "!.bin/tsnd",
-            "!.prisma/client/libquery_engine-darwin*"
+            "!.prisma/client/libquery_engine-darwin*",
+            "!@prisma/engines/schema-engine-darwin",
+            "!@prisma/engines/libquery_engine-darwin*"
           ]
         },
         {
@@ -131,7 +133,8 @@
             "!.bin/tsserver",
             "!.bin/ts-node-dev",
             "!.bin/tsnd",
-            "!.prisma/client/query_engine-windows*"
+            "!.prisma/client/query_engine-windows*",
+            "!@prisma/engines/schema-engine-windows.exe"
           ]
         },
         {

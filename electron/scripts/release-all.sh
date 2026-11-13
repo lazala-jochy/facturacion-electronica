@@ -26,6 +26,10 @@ dotnet publish "$DOTNET_SIGNER_DIR" -c Release -r osx-x64 --self-contained true 
   -o "$DOTNET_SIGNER_DIR/publish/osx-x64"
 
 echo ""
+echo "=== Motor de migraciones de Prisma para Windows (evita que el cliente lo descargue en el primer arranque) ==="
+npm --prefix ../backend run fetch:win-engine
+
+echo ""
 echo "=== Windows (NSIS .exe) ==="
 CSC_IDENTITY_AUTO_DISCOVERY=false dotenv -e .env -- electron-builder --win nsis --publish "$PUBLISH"
 
