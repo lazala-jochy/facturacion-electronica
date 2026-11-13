@@ -1,6 +1,6 @@
 {
   "name": "facturacion-electronica-rd",
-  "version": "1.1.18",
+  "version": "1.1.19",
   "main": "dist/main.js",
   "scripts": {
     "compile": "tsc",
@@ -72,10 +72,6 @@
         "to": "backend-runtime/package-lock.json"
       },
       {
-        "from": "../backend/node_modules",
-        "to": "backend-runtime/node_modules"
-      },
-      {
         "from": "../backend/prisma",
         "to": "backend-runtime/prisma"
       },
@@ -95,6 +91,21 @@
       ],
       "extraResources": [
         {
+          "from": "../backend/node_modules",
+          "to": "backend-runtime/node_modules",
+          "filter": [
+            "**/*",
+            "!typescript/**",
+            "!ts-node-dev/**",
+            "!@types/**",
+            "!.bin/tsc",
+            "!.bin/tsserver",
+            "!.bin/ts-node-dev",
+            "!.bin/tsnd",
+            "!.prisma/client/libquery_engine-darwin*"
+          ]
+        },
+        {
           "from": "../backend/dotnet/DgiiXmlSigner/publish/win-x64/DgiiXmlSigner.exe",
           "to": "backend-runtime/dotnet-signer/DgiiXmlSigner.exe"
         }
@@ -108,6 +119,21 @@
         "zip"
       ],
       "extraResources": [
+        {
+          "from": "../backend/node_modules",
+          "to": "backend-runtime/node_modules",
+          "filter": [
+            "**/*",
+            "!typescript/**",
+            "!ts-node-dev/**",
+            "!@types/**",
+            "!.bin/tsc",
+            "!.bin/tsserver",
+            "!.bin/ts-node-dev",
+            "!.bin/tsnd",
+            "!.prisma/client/query_engine-windows*"
+          ]
+        },
         {
           "from": "../backend/dotnet/DgiiXmlSigner/publish/osx-x64/DgiiXmlSigner",
           "to": "backend-runtime/dotnet-signer/DgiiXmlSigner"
