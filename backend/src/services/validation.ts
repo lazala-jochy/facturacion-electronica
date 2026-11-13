@@ -58,10 +58,12 @@ export type EcfPayload = {
   /** e-CF 41: totales de retención en encabezado (opcional). */
   totalItbisRetenido?: number;
   totalIsrRetencion?: number;
-  /** e-CF 46: pago a crédito (muestra E460000000001). */
-  tipoPago?: "1" | "2";
-  formaPago?: "1" | "2";
-  /** DD-MM-YYYY */
+  /** Tipo de pago DGII: 1=Contado, 2=Crédito, 3=Gratuito. */
+  tipoPago?: "1" | "2" | "3";
+  /** Forma de pago DGII (TablaFormasPago): 1=Efectivo, 2=Cheque/Transferencia/Depósito,
+   *  3=Tarjeta, 4=Venta a crédito, 5=Bonos, 6=Permuta, 7=Nota de crédito, 8=Otras. */
+  formaPago?: "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8";
+  /** DD-MM-YYYY. Solo aplica (y es obligatorio) si tipoPago = "2". */
   fechaLimitePago?: string;
   terminoPago?: string;
 };
@@ -172,6 +174,6 @@ export type RfcePayload = {
   itbis: number;
   total: number;
   exento?: boolean;
-  tipoPago?: "1" | "2";
+  tipoPago?: "1" | "2" | "3";
   codigoSeguridadeCF: string;
 };

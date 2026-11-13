@@ -73,6 +73,8 @@ export default function CotizacionEdit() {
   const [clientPhone, setClientPhone] = useState("");
   const [clientEmail, setClientEmail] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("Efectivo");
+  const [creditDueDate, setCreditDueDate] = useState("");
+  const [issueDateIso, setIssueDateIso] = useState(() => new Date().toISOString().slice(0, 10));
   const [comment, setComment] = useState("");
   const [ecfTipo, setEcfTipo] = useState(DEFAULT_ECF_TIPO);
   const [ecfReferenceNcf, setEcfReferenceNcf] = useState("");
@@ -136,6 +138,8 @@ export default function CotizacionEdit() {
         setClientPhone(c.client.phone ?? "");
         setClientEmail(c.client.email ?? "");
         setPaymentMethod(c.payment_method ?? "Efectivo");
+        setCreditDueDate(c.fecha_limite_pago?.slice(0, 10) ?? "");
+        if (c.created_at) setIssueDateIso(c.created_at.slice(0, 10));
         setComment(c.comment ?? "");
         setEcfTipo(c.ecf_tipo?.trim() || DEFAULT_ECF_TIPO);
         setEcfReferenceNcf(c.ecf_reference_ncf?.trim() ?? "");
@@ -167,6 +171,8 @@ export default function CotizacionEdit() {
     void load();
   }, [cotizacionId]);
 
+  const isCredito = paymentMethod === "Crédito";
+
   const updateItem = (key: string, patch: Partial<CotizacionItemDraft>) => {
     setItems((prev) => prev.map((row) => (row.key === key ? { ...row, ...patch } : row)));
   };
@@ -185,6 +191,10 @@ export default function CotizacionEdit() {
     }
     if (clientPhone.trim() && !isValidPhone(clientPhone)) {
       setError("El telefono del cliente debe tener formato xxx-xxx-xxxx.");
+      return;
+    }
+    if (isCredito && (!creditDueDate || creditDueDate < issueDateIso)) {
+      setError("Indique la fecha límite de pago (igual o posterior a la fecha de emisión) para una venta a crédito.");
       return;
     }
     if (
@@ -219,6 +229,7 @@ export default function CotizacionEdit() {
         },
         cotizacion: {
           payment_method: paymentMethod,
+          fecha_limite_pago: isCredito ? creditDueDate : undefined,
           comment: comment.trim() || undefined,
           ecf_tipo: ecfTipo,
           ecf_reference_ncf:
@@ -345,11 +356,36 @@ export default function CotizacionEdit() {
                   />
                 </div>
               )}
-              <select className="w-full rounded border border-slate-300 px-2 py-1.5 text-xs sm:text-sm" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+              <select
+                className="w-full rounded border border-slate-300 px-2 py-1.5 text-xs sm:text-sm"
+                value={paymentMethod}
+                onChange={(e) => {
+                  setPaymentMethod(e.target.value);
+                  if (e.target.value !== "Crédito") setCreditDueDate("");
+                }}
+              >
                 <option value="Efectivo">Efectivo</option>
                 <option value="Cheque">Cheque</option>
                 <option value="Depósito">Depósito</option>
+                <option value="Crédito">Crédito</option>
               </select>
+              {isCredito && (
+                <div>
+                  <label className="text-xs font-medium text-slate-600">Fecha límite de pago</label>
+                  <input
+                    type="date"
+                    className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-xs sm:text-sm"
+                    value={creditDueDate}
+                    min={issueDateIso}
+                    onChange={(e) => setCreditDueDate(e.target.value)}
+                    required
+                  />
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Debe ser igual o posterior a la fecha de emisión. Se envía a la DGII como
+                    FechaLimitePago del e-CF.
+                  </p>
+                </div>
+              )}
               <textarea className="w-full rounded border border-slate-300 px-2 py-1.5 text-xs sm:text-sm" rows={3} value={comment} onChange={(e) => setComment(e.target.value)} />
             </div>
           </div>

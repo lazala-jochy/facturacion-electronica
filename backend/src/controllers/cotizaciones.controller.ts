@@ -63,6 +63,7 @@ const serializeCotizacion = (
   company_id: c.companyId,
   payment_terms: c.paymentTerms,
   payment_method: c.paymentMethod,
+  fecha_limite_pago: c.fechaLimitePago?.toISOString().slice(0, 10) ?? null,
   account_manager: c.accountManager,
   comment: c.comment,
   document_title: c.documentTitle,
@@ -188,6 +189,8 @@ export const createClientWithCotizacion: RequestHandler = async (req, res) => {
         typeof cot.payment_terms === "string" ? cot.payment_terms : "",
       payment_method:
         typeof cot.payment_method === "string" ? cot.payment_method : undefined,
+      fecha_limite_pago:
+        typeof cot.fecha_limite_pago === "string" ? cot.fecha_limite_pago : undefined,
       account_manager:
         typeof cot.account_manager === "string" ? cot.account_manager : "",
       comment: typeof cot.comment === "string" ? cot.comment : undefined,
@@ -266,6 +269,7 @@ export const listCotizaciones: RequestHandler = async (req, res) => {
       company_id: c.companyId,
       payment_terms: c.paymentTerms,
       payment_method: c.paymentMethod,
+      fecha_limite_pago: c.fechaLimitePago?.toISOString().slice(0, 10) ?? null,
       account_manager: c.accountManager,
       comment: c.comment,
       ecf_tipo: c.ecfTipo,
@@ -371,6 +375,8 @@ export const updateCotizacionById: RequestHandler = async (req, res) => {
       payment_terms: typeof cot.payment_terms === "string" ? cot.payment_terms : "",
       payment_method:
         typeof cot.payment_method === "string" ? cot.payment_method : undefined,
+      fecha_limite_pago:
+        typeof cot.fecha_limite_pago === "string" ? cot.fecha_limite_pago : undefined,
       account_manager:
         typeof cot.account_manager === "string" ? cot.account_manager : "",
       comment: typeof cot.comment === "string" ? cot.comment : undefined,

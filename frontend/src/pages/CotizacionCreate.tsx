@@ -73,6 +73,7 @@ export default function CotizacionCreate() {
   const [clientPhone, setClientPhone] = useState("");
   const [clientEmail, setClientEmail] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("Efectivo");
+  const [creditDueDate, setCreditDueDate] = useState("");
   const [comment, setComment] = useState("");
   const [ecfTipo, setEcfTipo] = useState(DEFAULT_ECF_TIPO);
   const [ecfReferenceNcf, setEcfReferenceNcf] = useState("");
@@ -129,6 +130,8 @@ export default function CotizacionCreate() {
     month: "short",
     year: "numeric",
   });
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const isCredito = paymentMethod === "Crédito";
 
   const updateItem = (key: string, patch: Partial<CotizacionItemDraft>) => {
     setItems((prev) =>
@@ -151,6 +154,10 @@ export default function CotizacionCreate() {
     }
     if (clientPhone.trim() && !isValidPhone(clientPhone)) {
       setError("El telefono del cliente debe tener formato xxx-xxx-xxxx.");
+      return;
+    }
+    if (isCredito && (!creditDueDate || creditDueDate < todayIso)) {
+      setError("Indique la fecha límite de pago (igual o posterior a hoy) para una venta a crédito.");
       return;
     }
     if (
@@ -185,6 +192,7 @@ export default function CotizacionCreate() {
         },
         cotizacion: {
           payment_method: paymentMethod,
+          fecha_limite_pago: isCredito ? creditDueDate : undefined,
           comment: comment.trim() || undefined,
           ecf_tipo: ecfTipo,
           ecf_reference_ncf:
@@ -211,6 +219,7 @@ export default function CotizacionCreate() {
       setClientPhone("");
       setClientEmail("");
       setPaymentMethod("Efectivo");
+      setCreditDueDate("");
       setEcfTipo(DEFAULT_ECF_TIPO);
       setEcfReferenceNcf("");
       setComment("");
@@ -434,13 +443,36 @@ export default function CotizacionCreate() {
               <select
                 className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                 value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value)}
+                onChange={(e) => {
+                  setPaymentMethod(e.target.value);
+                  if (e.target.value !== "Crédito") setCreditDueDate("");
+                }}
               >
                 <option value="Efectivo">Efectivo</option>
                 <option value="Cheque">Cheque</option>
                 <option value="Depósito">Depósito</option>
+                <option value="Crédito">Crédito</option>
               </select>
             </div>
+            {isCredito && (
+              <div>
+                <label className="text-xs font-medium text-slate-600">
+                  Fecha límite de pago
+                </label>
+                <input
+                  type="date"
+                  className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  value={creditDueDate}
+                  min={todayIso}
+                  onChange={(e) => setCreditDueDate(e.target.value)}
+                  required
+                />
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Debe ser igual o posterior a hoy (fecha de emisión). Se envía a la DGII como
+                  FechaLimitePago del e-CF.
+                </p>
+              </div>
+            )}
             <div>
               <label className="text-xs font-medium text-slate-600">
                 Comentario contable (opc.)

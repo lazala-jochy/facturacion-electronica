@@ -21,12 +21,25 @@ import {
 } from "./common";
 import type { XMLBuilder } from "xmlbuilder2/lib/interfaces";
 
-/** Cierre común IdDoc: TipoPago + TablaFormasPago (una forma). */
+/**
+ * Cierre común IdDoc: TipoPago (+ FechaLimitePago/TerminoPago si es crédito) + TablaFormasPago.
+ * FechaLimitePago es condicional: solo aplica (y es obligatorio) cuando TipoPago = "2" (crédito),
+ * según el formato oficial e-CF v1.0 de la DGII.
+ */
 export function appendIdDocTipoPagoYFormas(idDoc: XMLBuilder, payload: EcfPayload): void {
-  idDoc.ele("TipoPago").txt("1");
+  const tipoPago = payload.tipoPago ?? "1";
+  idDoc.ele("TipoPago").txt(tipoPago);
+  if (tipoPago === "2") {
+    idDoc
+      .ele("FechaLimitePago")
+      .txt(payload.fechaLimitePago ?? fechaLimitePagoDesdeEmision(payload.issueDate));
+    if (payload.terminoPago?.trim()) {
+      idDoc.ele("TerminoPago").txt(payload.terminoPago.trim());
+    }
+  }
   const tabFormas = idDoc.ele("TablaFormasPago");
   const forma = tabFormas.ele("FormaDePago");
-  forma.ele("FormaPago").txt("1");
+  forma.ele("FormaPago").txt(payload.formaPago ?? "1");
   forma.ele("MontoPago").txt(money(payload.total));
   tabFormas.up();
 }

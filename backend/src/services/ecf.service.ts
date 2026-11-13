@@ -7,6 +7,7 @@ import { finalizeDgiiSubmissionAfterReception } from "./dgiiSubmissionFinalize.s
 import { signXmlWithP12Buffer } from "./signer";
 import { validateEcfPayload, type EcfPayload } from "./validation";
 import { buildEcfXml } from "./xmlBuilder";
+import { fechaEmisionDdMmYyyy } from "./xmlBuilder/common";
 import { assertCertificateEncryptionSecret } from "../utils/companyCertificateCrypto";
 import { buildEcfNumber } from "../utils/ecfTipo";
 import { refinePayloadForEcfTipo } from "./ecfTipoHandlers";
@@ -23,6 +24,7 @@ import { mapDgiiRawBodyToCotizacionEstado } from "../utils/dgiiEstadoRecepcion";
 import { isDgiiSequenceRejection } from "../utils/dgiiRejection";
 import {
   ensureCotizacionSeqAdvancedAfterSequenceReject,
+  isPaymentMethodCredito,
   persistCotizacionAfterDgiiSubmission,
   validateCotizacionDgiiResubmit,
 } from "./cotizacion.service";
@@ -33,6 +35,21 @@ import { queueFailedDgiiSubmit } from "./dgiiSubmitQueue.service";
 const contactFromClient = (phone?: string | null, email?: string | null) => {
   if (phone?.trim() && email?.trim()) return `${phone.trim()} | ${email.trim()}`;
   return phone?.trim() || email?.trim() || undefined;
+};
+
+/**
+ * Mapea payment_method (texto libre del formulario) a los códigos oficiales e-CF DGII:
+ * TipoPago (1=Contado, 2=Crédito) y FormaPago dentro de TablaFormasPago (tabla propia del
+ * e-CF, distinta de los códigos 01-07 de la norma 06-18/07-18 usados en dgiiFormato606607.ts).
+ */
+const mapPaymentMethodToEcf = (
+  paymentMethod: string | null,
+): Pick<EcfPayload, "tipoPago" | "formaPago"> => {
+  if (isPaymentMethodCredito(paymentMethod)) return { tipoPago: "2", formaPago: "4" };
+  const pm = paymentMethod?.trim().toLowerCase() ?? "";
+  if (/tarjeta/.test(pm)) return { tipoPago: "1", formaPago: "3" };
+  if (/cheque|dep[oó]sito|transferencia/.test(pm)) return { tipoPago: "1", formaPago: "2" };
+  return { tipoPago: "1", formaPago: "1" };
 };
 
 type CotizacionWithRelations = Prisma.CotizacionGetPayload<{
@@ -75,6 +92,10 @@ const toPayload = (cotizacion: CotizacionWithRelations): EcfPayload => {
     exento: cotizacion.exento,
     ecfTipo: cotizacion.ecfTipo,
     referenceEncf: cotizacion.ecfReferenceNcf?.trim() || undefined,
+    ...mapPaymentMethodToEcf(cotizacion.paymentMethod),
+    fechaLimitePago: cotizacion.fechaLimitePago
+      ? fechaEmisionDdMmYyyy(cotizacion.fechaLimitePago)
+      : undefined,
   };
   return refinePayloadForEcfTipo(base, cotizacion);
 };

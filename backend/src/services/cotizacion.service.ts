@@ -35,6 +35,8 @@ export type CreateClientWithCotizacionInput = {
   cotizacion: {
     payment_terms?: string | null;
     payment_method?: string | null;
+    /** Solo si payment_method = "Crédito". Fecha AAAA-MM-DD; debe ser >= fecha de emisión. */
+    fecha_limite_pago?: string | null;
     account_manager?: string | null;
     comment?: string | null;
     document_title?: string | null;
@@ -58,6 +60,55 @@ const trimOrNull = (v: string | undefined | null) => {
 };
 const toDocDigits = (value: string) => value.replace(/\D/g, "");
 const round2 = (value: number) => Math.round(value * 100) / 100;
+
+export const isPaymentMethodCredito = (paymentMethod: string | null | undefined): boolean =>
+  /cr[eé]dito/i.test(paymentMethod?.trim() ?? "");
+
+/** Trunca a medianoche *local* (mismo huso que usa fechaEmisionDdMmYyyy al formatear el XML). */
+const localDateOnly = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+/**
+ * Regla DGII (FechaLimitePago): solo aplica si payment_method es Crédito, y debe ser
+ * >= fecha de emisión. `issueDateFloor` es la fecha de emisión real (createdAt existente en
+ * update, o "ahora" en create, ya que ese será el createdAt del nuevo registro). Se construye
+ * en hora local (no UTC) para que coincida exacto con lo que el usuario escribió al formatearse
+ * luego en el XML (que también usa getters locales).
+ */
+const parseFechaLimitePago = (
+  paymentMethod: string | null,
+  raw: string | null | undefined,
+  issueDateFloor: Date,
+): { ok: true; value: Date | null } | { ok: false; message: string } => {
+  if (!isPaymentMethodCredito(paymentMethod)) {
+    return { ok: true, value: null };
+  }
+  const trimmed = raw?.trim() ?? "";
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (!m) {
+    return {
+      ok: false,
+      message: trimmed
+        ? "Fecha límite de pago inválida (use AAAA-MM-DD)."
+        : "Indique la fecha límite de pago para una venta a crédito.",
+    };
+  }
+  const [, y, mo, da] = m;
+  const parsed = new Date(Number(y), Number(mo) - 1, Number(da));
+  if (
+    parsed.getFullYear() !== Number(y) ||
+    parsed.getMonth() !== Number(mo) - 1 ||
+    parsed.getDate() !== Number(da)
+  ) {
+    return { ok: false, message: "Fecha límite de pago inválida (use AAAA-MM-DD)." };
+  }
+  if (parsed.getTime() < localDateOnly(issueDateFloor).getTime()) {
+    return {
+      ok: false,
+      message: "La fecha límite de pago debe ser igual o posterior a la fecha de emisión.",
+    };
+  }
+  return { ok: true, value: parsed };
+};
 
 /** Error name (no subclass) para detectar límite DGII sin acoplar mensajes en distintos idiomas. */
 export const ECF_NCF_SEQ_EXCEEDED_ERROR_NAME = "EcfNcfSeqExceededError";
@@ -357,6 +408,15 @@ export const cotizacionService = {
     }
     const paymentTerms = input.cotizacion.payment_terms?.trim() ?? "";
     const paymentMethod = trimOrNull(input.cotizacion.payment_method ?? undefined);
+    const fechaLimitePagoParsed = parseFechaLimitePago(
+      paymentMethod,
+      input.cotizacion.fecha_limite_pago,
+      new Date(),
+    );
+    if (!fechaLimitePagoParsed.ok) {
+      return { ok: false as const, status: 400, message: fechaLimitePagoParsed.message };
+    }
+    const fechaLimitePago = fechaLimitePagoParsed.value;
     const accountManager = input.cotizacion.account_manager?.trim() ?? "";
     const comment = trimOrNull(input.cotizacion.comment ?? undefined);
     const documentTitle =
@@ -463,6 +523,7 @@ export const cotizacionService = {
           fiscalLegend,
           paymentTerms,
           paymentMethod,
+          fechaLimitePago,
           accountManager,
           comment,
           ecfTipo,
@@ -576,6 +637,15 @@ export const cotizacionService = {
     }
     const paymentTerms = input.cotizacion.payment_terms?.trim() ?? "";
     const paymentMethod = trimOrNull(input.cotizacion.payment_method ?? undefined);
+    const fechaLimitePagoParsed = parseFechaLimitePago(
+      paymentMethod,
+      input.cotizacion.fecha_limite_pago,
+      existing.createdAt,
+    );
+    if (!fechaLimitePagoParsed.ok) {
+      return { ok: false as const, status: 400, message: fechaLimitePagoParsed.message };
+    }
+    const fechaLimitePago = fechaLimitePagoParsed.value;
     const accountManager = input.cotizacion.account_manager?.trim() ?? "";
     const comment = trimOrNull(input.cotizacion.comment ?? undefined);
     const documentTitle =
@@ -676,6 +746,7 @@ export const cotizacionService = {
         data: {
           paymentTerms,
           paymentMethod,
+          fechaLimitePago,
           accountManager,
           comment,
           documentTitle,

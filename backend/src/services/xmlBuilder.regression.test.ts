@@ -61,6 +61,89 @@ test("XML e-CF DGII: raíz ECF, Totales con ITBIS1=18, DetallesItems, FechaHoraF
   assert.match(xml, /<ProvinciaComprador>010000<\/ProvinciaComprador>/);
 });
 
+test("XML e-CF 31 a crédito: TipoPago=2, FechaLimitePago antes de TablaFormasPago, FormaPago=4", () => {
+  const issueDate = new Date("2026-06-15T12:00:00.000Z");
+  const p: EcfPayload = {
+    ecfNumber: "E310000000099",
+    issueDate,
+    issuer: {
+      rnc: "131880738",
+      name: "ACME",
+      address: "Calle 1",
+      phone: "809-555-0000",
+      email: "a@b.com",
+    },
+    buyer: {
+      name: "Cliente",
+      rncCedula: "40212345678",
+      address: null,
+      contact: null,
+    },
+    items: [
+      {
+        itemNumber: 1,
+        description: "Item",
+        quantity: 1,
+        unit: "43",
+        unitPrice: 100,
+        totalValue: 100,
+      },
+    ],
+    subtotal: 100,
+    itbis: 18,
+    total: 118,
+    tipoPago: "2",
+    formaPago: "4",
+    fechaLimitePago: "15-07-2026",
+  };
+  const xml = buildEcfXml(p);
+  assert.match(
+    xml,
+    /<TipoPago>2<\/TipoPago>\s*<FechaLimitePago>15-07-2026<\/FechaLimitePago>\s*<TablaFormasPago>/,
+    "FechaLimitePago solo aplica/se muestra cuando TipoPago=2 (crédito), justo antes de TablaFormasPago",
+  );
+  assert.match(xml, /<FormaPago>4<\/FormaPago>\s*<MontoPago>118\.00<\/MontoPago>/);
+  assert.doesNotMatch(xml, /<TerminoPago>/, "TerminoPago es opcional; se omite si no se envía");
+});
+
+test("XML e-CF 31 de contado: sin FechaLimitePago, TipoPago=1 por defecto", () => {
+  const issueDate = new Date("2026-06-15T12:00:00.000Z");
+  const p: EcfPayload = {
+    ecfNumber: "E310000000098",
+    issueDate,
+    issuer: {
+      rnc: "131880738",
+      name: "ACME",
+      address: "Calle 1",
+      phone: "809-555-0000",
+      email: "a@b.com",
+    },
+    buyer: {
+      name: "Cliente",
+      rncCedula: "40212345678",
+      address: null,
+      contact: null,
+    },
+    items: [
+      {
+        itemNumber: 1,
+        description: "Item",
+        quantity: 1,
+        unit: "43",
+        unitPrice: 100,
+        totalValue: 100,
+      },
+    ],
+    subtotal: 100,
+    itbis: 18,
+    total: 118,
+  };
+  const xml = buildEcfXml(p);
+  assert.match(xml, /<TipoPago>1<\/TipoPago>\s*<TablaFormasPago>/);
+  assert.doesNotMatch(xml, /<FechaLimitePago>/);
+  assert.match(xml, /<FormaPago>1<\/FormaPago>/);
+});
+
 test("Comprador XSD: ContactoComprador antes que DireccionComprador; Municipio/Provincia al final", () => {
   const issueDate = new Date("2024-06-15T12:00:00.000Z");
   const p: EcfPayload = {

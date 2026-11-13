@@ -6,6 +6,7 @@ type CotizacionForPdf = {
   createdAt: Date;
   paymentTerms: string;
   paymentMethod: string | null;
+  fechaLimitePago?: Date | null;
   comment: string | null;
   documentTitle: string;
   fiscalLegend: string;
@@ -237,6 +238,14 @@ export const buildCotizacionPdfBuffer = (
       width: summaryWidth,
       align: "left",
     });
+    if (cotizacion.fechaLimitePago) {
+      doc.text(
+        `Fecha límite de pago: ${cotizacion.fechaLimitePago.toLocaleDateString("es-DO")}`,
+        summaryLeftX,
+        doc.y,
+        { width: summaryWidth, align: "left" },
+      );
+    }
     if (cotizacion.comment?.trim()) {
       doc.text(`Comentario: ${cotizacion.comment.trim()}`, summaryLeftX, doc.y, {
         width: summaryWidth,

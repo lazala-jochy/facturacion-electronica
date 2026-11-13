@@ -192,6 +192,8 @@ model Cotizacion {
   fiscalLegend   String           @default("Sin valor fiscal") @map("fiscal_legend")
   paymentTerms   String           @map("payment_terms")
   paymentMethod  String?          @map("payment_method")
+  // Solo para payment_method = Crédito. Debe ser >= fecha de emisión (regla DGII FechaLimitePago).
+  fechaLimitePago DateTime?       @map("fecha_limite_pago")
   accountManager String           @map("account_manager")
   comment        String?          @map("comment")
   subtotal       Float

@@ -1856,6 +1856,12 @@ export default function Clients() {
                     <span className="font-semibold">Forma de pago:</span>{" "}
                     {detail.payment_method ?? "-"}
                   </p>
+                  {detail.payment_method === "Crédito" && detail.fecha_limite_pago && (
+                    <p>
+                      <span className="font-semibold">Fecha límite de pago:</span>{" "}
+                      {formatDate(detail.fecha_limite_pago)}
+                    </p>
+                  )}
                   <p>
                     <span className="font-semibold">Condiciones:</span>{" "}
                     {detail.payment_terms ?? "-"}

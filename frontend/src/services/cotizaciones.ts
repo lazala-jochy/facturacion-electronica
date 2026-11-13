@@ -15,6 +15,7 @@ export type CotizacionListItem = {
   company_id: number;
   payment_terms: string;
   payment_method?: string | null;
+  fecha_limite_pago?: string | null;
   account_manager: string;
   comment?: string | null;
   subtotal: number;
@@ -42,6 +43,7 @@ export type CotizacionDetail = {
   created_at?: string;
   payment_terms?: string;
   payment_method?: string | null;
+  fecha_limite_pago?: string | null;
   account_manager?: string;
   comment?: string | null;
   subtotal?: number;
@@ -90,6 +92,7 @@ export type CreateClientWithCotizacionPayload = {
   cotizacion: {
     payment_terms?: string;
     payment_method?: string;
+    fecha_limite_pago?: string;
     account_manager?: string;
     comment?: string;
     ecf_tipo?: string;
