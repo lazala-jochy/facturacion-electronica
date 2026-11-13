@@ -93,8 +93,19 @@ ipcMain.handle("acecf-pick-excel-file", async (event) => {
   return { path: filePath, name: path.basename(filePath) };
 });
 
+/**
+ * 30s de margen: en Windows, una primera corrida que tiene que aplicar todas
+ * las migraciones de Prisma (o un antivirus escaneando node_modules) puede
+ * tardar bastante mas que los 6s que se usaban antes, y el usuario solo veia
+ * "Backend no respondio a tiempo" sin pista de si fue timeout real o un
+ * crash del proceso.
+ */
 const waitForBackend = async () => {
-  for (let attempt = 0; attempt < 30; attempt += 1) {
+  const maxAttempts = 150;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    if (backendProcess && backendProcess.exitCode !== null) {
+      throw new Error(`El proceso del backend termino inesperadamente (codigo ${backendProcess.exitCode}).`);
+    }
     try {
       const response = await fetch(`http://127.0.0.1:${BACKEND_PORT}/health`);
       if (response.ok) return;
@@ -103,7 +114,7 @@ const waitForBackend = async () => {
     }
     await wait(200);
   }
-  throw new Error("Backend no respondio a tiempo.");
+  throw new Error(`Backend no respondio a tiempo (${(maxAttempts * 200) / 1000}s).`);
 };
 
 const isPidAlive = (pid: number): boolean => {
@@ -189,13 +200,17 @@ function startBackend() {
       UPLOADS_DIR: uploadsDir,
       ...(fs.existsSync(ecfTestAssets) ? { ECF_TEST_ASSETS_DIR: ecfTestAssets } : {}),
     },
-    stdio: "inherit",
+    stdio: ["ignore", "pipe", "pipe"],
   });
+
+  backendProcess.stdout?.on("data", (chunk: Buffer) => log.info(`[backend] ${chunk.toString().trimEnd()}`));
+  backendProcess.stderr?.on("data", (chunk: Buffer) => log.error(`[backend] ${chunk.toString().trimEnd()}`));
 
   if (backendProcess.pid) {
     fs.writeFileSync(pidFile, String(backendProcess.pid));
   }
-  backendProcess.on("exit", () => {
+  backendProcess.on("exit", (code) => {
+    log.info(`[backend] proceso terminado, codigo ${code}`);
     fs.rmSync(pidFile, { force: true });
   });
 }
