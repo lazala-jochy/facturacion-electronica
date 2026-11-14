@@ -4,7 +4,7 @@ import type { Company } from "@prisma/client";
 
 type PdfDoc = InstanceType<typeof PDFDocument>;
 import { buildConsultaTimbreQrUrl } from "./ecfConsultaTimbreQr";
-import { resolveCompanyLogoAbsolutePath } from "./companyLogo";
+import { resolveCompanyLogoImage } from "./companyLogo";
 import { codigoSeguridadParaConsultaTimbre } from "./ecfXmlExtract";
 import {
   parseRepresentacionImpresaData,
@@ -91,7 +91,7 @@ const drawAccentRule = (doc: PdfDoc, y: number) => {
 const drawHeaderBlock = (
   doc: PdfDoc,
   data: RepresentacionImpresaData,
-  logoPath: string | null,
+  logoPath: string | Buffer | null,
 ) => {
   const pageW = doc.page.width;
   const left = doc.page.margins.left;
@@ -252,7 +252,7 @@ const cellText = (
 const drawItemsTable = (
   doc: PdfDoc,
   data: RepresentacionImpresaData,
-  logoPath: string | null,
+  logoPath: string | Buffer | null,
 ) => {
   const left = doc.page.margins.left;
   const right = doc.page.width - doc.page.margins.right;
@@ -424,9 +424,9 @@ export const buildRepresentacionImpresaPdfBuffer = async (
     errorCorrectionLevel: "H",
   });
 
-  let logoPath: string | null = null;
+  let logoPath: string | Buffer | null = null;
   if (input.uploadsRoot && input.company.id != null) {
-    logoPath = await resolveCompanyLogoAbsolutePath(
+    logoPath = await resolveCompanyLogoImage(
       input.uploadsRoot,
       input.company.id,
       input.company.logoUrl,

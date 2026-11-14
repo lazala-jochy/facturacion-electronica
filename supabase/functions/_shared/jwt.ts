@@ -20,3 +20,9 @@ export const signSessionToken = (claims: SessionClaims): string =>
     getSecret(),
     { expiresIn: Deno.env.get("JWT_ACCESS_EXPIRES_IN") ?? "1h" },
   );
+
+/** Verifica un access token emitido por signSessionToken (o por el backend local, misma JWT_SECRET). */
+export const verifySessionToken = (token: string): SessionClaims => {
+  const decoded = jwt.verify(token, getSecret()) as { sub: string; companyId: number; email: string };
+  return { sub: Number(decoded.sub), companyId: decoded.companyId, email: decoded.email };
+};

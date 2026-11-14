@@ -39,6 +39,8 @@ export type UpdateCompanyBody = {
   regime?: string;
   full_name?: string;
   cedula?: string;
+  /** Correo de inicio de sesion del usuario (distinto al correo de contacto de la empresa). */
+  login_email?: string;
   /** URL del endpoint DGII (e-CF). Vacío deja de usar valor por empresa. */
   dgii_ecf_endpoint?: string;
   /** Clave de cifrado del certificado guardada en perfil (se valida contra el .p12 si ya hay certificado). */

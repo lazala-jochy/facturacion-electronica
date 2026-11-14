@@ -108,6 +108,7 @@ const btnGhost =
 export default function CompanyProfile({ session, onProfileUpdated }: Props) {
   const [fullName, setFullName] = useState(session.user.full_name);
   const [cedula, setCedula] = useState(session.user.cedula);
+  const [loginEmail, setLoginEmail] = useState(session.user.email);
   const [name, setName] = useState(session.company.name);
   const [rnc, setRnc] = useState(session.company.rnc);
   const [address, setAddress] = useState(session.company.address);
@@ -250,6 +251,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
         const fd = new FormData();
         fd.append("full_name", fullName.trim());
         fd.append("cedula", cedulaDigits(cedula));
+        fd.append("login_email", loginEmail.trim());
         fd.append("name", name.trim());
         fd.append("rnc", rnc.trim());
         fd.append("address", address.trim());
@@ -288,6 +290,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
           body: JSON.stringify({
             full_name: fullName.trim(),
             cedula: cedulaDigits(cedula),
+            login_email: loginEmail.trim(),
             name: name.trim(),
             rnc: rnc.trim(),
             address: address.trim(),
@@ -309,6 +312,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
       }
 
       onProfileUpdated(res.user, res.company);
+      setLoginEmail(res.user.email);
       if (logoObjectUrl) URL.revokeObjectURL(logoObjectUrl);
       setLogoObjectUrl(null);
       setLogoFile(null);
@@ -553,6 +557,18 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
                   required
                 />
               </Field>
+              <div className="sm:col-span-2">
+                <Field label="Correo de inicio de sesión" htmlFor="prof-login-email">
+                  <input
+                    id="prof-login-email"
+                    type="email"
+                    className={inputCls}
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    required
+                  />
+                </Field>
+              </div>
             </div>
           </section>
 

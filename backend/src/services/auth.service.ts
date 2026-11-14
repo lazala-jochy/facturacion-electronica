@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "crypto";
-import type { Company, User } from "@prisma/client";
+import { Prisma, type Company, type User } from "@prisma/client";
 import { prisma } from "../prisma";
 import type {
   ForgotPasswordBody,
@@ -21,7 +21,11 @@ import {
   loadDecryptedPkcs12ForCompany,
   removeStoredCompanyCertificate,
 } from "../utils/companyCertificateStorage";
-import { removeUploadedCompanyLogoFiles, saveCompanyLogoFile } from "../utils/companyLogo";
+import {
+  removeCompanyLogoFromBucket,
+  uploadCompanyLogoToBucket,
+  saveCompanyLogoFile,
+} from "../utils/companyLogo";
 import { normalizeEmail } from "../utils/email";
 import { hashPassword, verifyPassword } from "../utils/password";
 import { signSessionToken } from "../utils/jwt";
@@ -478,6 +482,8 @@ export const authService = {
       uploadsRoot?: string;
       clearLogo?: boolean;
       clearCertificate?: boolean;
+      /** Access token de la sesion que llama, para pedir la URL firmada de subida del logo. */
+      accessToken?: string;
     },
   ): Promise<UpdateCompanyOk | AuthErr> {
     const existingCompany = await prisma.company.findUnique({ where: { id: companyId } });
@@ -499,6 +505,8 @@ export const authService = {
       body.cedula !== undefined
         ? (body.cedula ?? "").replace(/\D/g, "")
         : existingUser.cedula;
+    const loginEmail =
+      body.login_email !== undefined ? normalizeEmail(body.login_email) : existingUser.email;
     const email =
       body.email !== undefined
         ? body.email
@@ -782,6 +790,9 @@ export const authService = {
     if (!isValidCedula(cedula)) {
       return { ok: false, status: 400, message: "La cedula debe tener 11 digitos." };
     }
+    if (body.login_email !== undefined && !isValidEmailFormat(loginEmail)) {
+      return { ok: false, status: 400, message: "El correo de inicio de sesión no es válido." };
+    }
 
     const existingRnc = await prisma.company.findUnique({ where: { rnc } });
     if (existingRnc && existingRnc.id !== companyId) {
@@ -791,56 +802,86 @@ export const authService = {
     if (existingCedula && existingCedula.id !== userId) {
       return { ok: false, status: 409, message: "Ya existe una cuenta con esa cedula." };
     }
+    if (body.login_email !== undefined) {
+      const existingLoginEmail = await prisma.user.findUnique({ where: { email: loginEmail } });
+      if (existingLoginEmail && existingLoginEmail.id !== userId) {
+        return { ok: false, status: 409, message: "Ya existe una cuenta con ese correo." };
+      }
+    }
 
-    const { company, user } = await prisma.$transaction(async (tx) => {
-      const companyRow = await tx.company.update({
-        where: { id: companyId },
-        data: {
-          name,
-          rnc,
-          address,
-          phone: phone || null,
-          email: email || null,
-          regime: regime || "Régimen general",
-          ...(dgiiEcfEndpointUpdate ?? {}),
-          ...dgiiTenantMerge,
-          ...(hasPaso4InBody ? dgiiPaso4Merge : {}),
-          ...ecfGatewayMerge,
-        },
-      });
-      const userRow = await tx.user.update({
-        where: { id: userId },
-        data: {
-          fullName,
-          cedula,
-        },
-      });
-      return { company: companyRow, user: userRow };
-    });
+    let company: Company;
+    let user: User;
+    try {
+      ({ company, user } = await prisma.$transaction(async (tx) => {
+        const companyRow = await tx.company.update({
+          where: { id: companyId },
+          data: {
+            name,
+            rnc,
+            address,
+            phone: phone || null,
+            email: email || null,
+            regime: regime || "Régimen general",
+            ...(dgiiEcfEndpointUpdate ?? {}),
+            ...dgiiTenantMerge,
+            ...(hasPaso4InBody ? dgiiPaso4Merge : {}),
+            ...ecfGatewayMerge,
+          },
+        });
+        const userRow = await tx.user.update({
+          where: { id: userId },
+          data: {
+            fullName,
+            cedula,
+            email: loginEmail,
+          },
+        });
+        return { company: companyRow, user: userRow };
+      }));
+    } catch (e) {
+      // Los checks de unicidad arriba (RNC/cedula/correo) corren bajo el rol de
+      // Postgres de ESTA empresa: RLS les oculta las filas de otros tenants, asi
+      // que una colision con OTRA empresa solo se detecta aqui, en el UNIQUE
+      // constraint real (global, no sujeto a RLS). Bajo el pooler en modo
+      // transaccion `meta.target` suele venir vacio, asi que el mensaje se
+      // arma por `modelName` en vez del nombre exacto de columna.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+        const target = Array.isArray(e.meta?.target) ? e.meta.target.join(",") : String(e.meta?.target ?? "");
+        const message = target.includes("email")
+          ? "Ya existe una cuenta con ese correo."
+          : target.includes("cedula")
+            ? "Ya existe una cuenta con esa cedula."
+            : target.includes("rnc")
+              ? "Ya existe una empresa registrada con ese RNC."
+              : e.meta?.modelName === "User"
+                ? "Ya existe una cuenta con esa cedula o ese correo."
+                : e.meta?.modelName === "Company"
+                  ? "Ya existe una empresa registrada con ese RNC."
+                  : "Ya existe un registro con ese valor.";
+        return { ok: false, status: 409, message };
+      }
+      throw e;
+    }
 
     let companyOut = company;
     const uploadsRoot = opts?.uploadsRoot;
     const file = opts?.logoFile;
-    if (file?.buffer?.length && uploadsRoot) {
+    if (file?.buffer?.length && opts?.accessToken) {
       try {
-        const relative = await saveCompanyLogoFile(
-          uploadsRoot,
-          companyId,
-          file.buffer,
-          file.mimetype,
-        );
-        if (relative) {
+        const publicUrl = await uploadCompanyLogoToBucket(opts.accessToken, file.buffer, file.mimetype);
+        if (publicUrl) {
           companyOut = await prisma.company.update({
             where: { id: companyId },
-            data: { logoUrl: relative },
+            data: { logoUrl: publicUrl },
           });
         }
       } catch (e) {
-        console.error("No se pudo actualizar el logo de la empresa.", e);
+        const msg = e instanceof Error ? e.message : "No se pudo subir el logo.";
+        return { ok: false, status: 502, message: msg };
       }
-    } else if (opts?.clearLogo && uploadsRoot) {
+    } else if (opts?.clearLogo && opts?.accessToken) {
       try {
-        await removeUploadedCompanyLogoFiles(uploadsRoot, companyId);
+        await removeCompanyLogoFromBucket(opts.accessToken);
         companyOut = await prisma.company.update({
           where: { id: companyId },
           data: { logoUrl: null },

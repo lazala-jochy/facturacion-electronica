@@ -36,6 +36,7 @@ const updateCompanyBodyFromReq = (req: Request): UpdateCompanyBody => {
     regime: pickStr(b, "regime"),
     full_name: pickStr(b, "full_name"),
     cedula: pickStr(b, "cedula"),
+    login_email: pickStr(b, "login_email"),
     dgii_ecf_endpoint: pickStr(b, "dgii_ecf_endpoint"),
     certificate_keyphrase: pickStr(b, "certificate_keyphrase"),
     dgii_username: pickStr(b, "dgii_username"),
@@ -156,6 +157,8 @@ export const updateCompany: RequestHandler = async (req, res) => {
       "certificate_encryption_secret",
     );
 
+    const accessToken = /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? "")?.[1];
+
     const result = await authService.updateCompany(auth.companyId, auth.userId, body, {
       logoFile: logoFile?.buffer?.length ? logoFile : undefined,
       certificateFile: certificateMulter?.buffer?.length ? certificateMulter : undefined,
@@ -164,6 +167,7 @@ export const updateCompany: RequestHandler = async (req, res) => {
       uploadsRoot,
       clearLogo,
       clearCertificate: clearCert,
+      accessToken,
     });
     if (!result.ok) {
       res.status(result.status).json({ message: result.message });
