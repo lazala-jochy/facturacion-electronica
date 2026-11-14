@@ -1,6 +1,6 @@
 {
   "name": "facturacion-electronica-rd",
-  "version": "1.1.19",
+  "version": "2.1.1",
   "main": "dist/main.js",
   "scripts": {
     "compile": "tsc",
@@ -104,7 +104,9 @@
             "!.bin/tsnd",
             "!.prisma/client/libquery_engine-darwin*",
             "!@prisma/engines/schema-engine-darwin",
-            "!@prisma/engines/libquery_engine-darwin*"
+            "!@prisma/engines/libquery_engine-darwin*",
+            "!@napi-rs/canvas-darwin-x64/**",
+            "!@napi-rs/canvas-darwin-arm64/**"
           ]
         },
         {
@@ -134,7 +136,8 @@
             "!.bin/ts-node-dev",
             "!.bin/tsnd",
             "!.prisma/client/query_engine-windows*",
-            "!@prisma/engines/schema-engine-windows.exe"
+            "!@prisma/engines/schema-engine-windows.exe",
+            "!@napi-rs/canvas-win32-x64-msvc/**"
           ]
         },
         {

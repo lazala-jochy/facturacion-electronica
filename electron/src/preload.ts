@@ -24,4 +24,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("update-status", listener);
     return () => ipcRenderer.removeListener("update-status", listener);
   },
+  /** Tras login/registro: persiste el DATABASE_URL + appSecretsKey de esta empresa y (re)arranca el backend local con ellos. */
+  completeAuth: (companyId: number, databaseUrl: string, appSecretsKey: string) =>
+    ipcRenderer.invoke("auth:complete", { companyId, databaseUrl, appSecretsKey }) as Promise<
+      { ok: true } | { ok: false; message: string }
+    >,
+  /** Reanuda el backend para una empresa con credencial ya guardada (sesion restaurada, cambio de cuenta). */
+  resumeBackend: (companyId: number) =>
+    ipcRenderer.invoke("auth:resume", companyId) as Promise<
+      { ok: true } | { ok: false; message: string }
+    >,
+  /** Fuerza a guardar en disco YA el localStorage (ver cerrar sesion) -- sin esto un kill justo despues del logout puede perderlo. */
+  flushStorage: () => ipcRenderer.invoke("app:flush-storage") as Promise<{ ok: true }>,
 });

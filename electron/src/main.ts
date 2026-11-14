@@ -1,13 +1,13 @@
-import { app, BrowserWindow, dialog, ipcMain, type OpenDialogOptions } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, safeStorage, session, type OpenDialogOptions } from "electron";
 import path from "path";
 import { spawn, type ChildProcess } from "child_process";
-import { pathToFileURL } from "url";
 import fs from "fs";
 import { autoUpdater } from "electron-updater";
 import log from "electron-log";
 
 let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess | null = null;
+let currentBackendCompanyId: number | null = null;
 const BACKEND_PORT = 3001;
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -163,23 +163,68 @@ const migrateLegacyUploads = (legacyDir: string, targetDir: string) => {
   }
 };
 
-function startBackend() {
+/**
+ * Credenciales de Postgres por empresa (DATABASE_URL del rol dedicado que
+ * devuelve la Edge Function de login/registro), cifradas con el keychain del
+ * SO via safeStorage -- nunca en localStorage del renderer. Una empresa =
+ * un archivo; permite "cuentas guardadas" sin mezclar roles de Postgres.
+ */
+const credentialsDir = (): string => {
+  const dir = path.join(app.getPath("userData"), "db-credentials");
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  return dir;
+};
+
+const credentialPath = (companyId: number): string =>
+  path.join(credentialsDir(), `${companyId}.enc`);
+
+type StoredCredential = { databaseUrl: string; appSecretsKey: string };
+
+const saveDbCredential = (companyId: number, credential: StoredCredential): void => {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error("El cifrado seguro del sistema operativo no esta disponible en este equipo.");
+  }
+  fs.writeFileSync(credentialPath(companyId), safeStorage.encryptString(JSON.stringify(credential)));
+};
+
+const loadDbCredential = (companyId: number): StoredCredential | null => {
+  const file = credentialPath(companyId);
+  if (!fs.existsSync(file)) return null;
+  if (!safeStorage.isEncryptionAvailable()) return null;
+  try {
+    return JSON.parse(safeStorage.decryptString(fs.readFileSync(file))) as StoredCredential;
+  } catch (error) {
+    log.error(`No se pudo descifrar la credencial de la empresa ${companyId}.`, error);
+    return null;
+  }
+};
+
+/**
+ * Arranca (o reinicia, si ya corria para otra empresa) el backend local con
+ * el DATABASE_URL del rol de Postgres dedicado de `companyId`. Las
+ * migraciones ya NO corren aca -- se aplican una vez por release contra
+ * Supabase (ver backend/src/index.ts).
+ */
+const startBackendForCompany = async (companyId: number, credential: StoredCredential): Promise<void> => {
   if (!app.isPackaged) {
+    // En dev, el backend corre aparte (`npm run dev`) contra el DATABASE_URL de su .env.
     return;
+  }
+  if (backendProcess && currentBackendCompanyId === companyId) {
+    return; // ya corriendo para esta empresa, nada que hacer
+  }
+  if (backendProcess) {
+    backendProcess.kill();
+    backendProcess = null;
+    currentBackendCompanyId = null;
   }
 
   const backendRuntime = path.join(process.resourcesPath, "backend-runtime");
   const backendEntry = path.join(backendRuntime, "dist", "index.js");
   const userDataPath = app.getPath("userData");
-  const dbDir = path.join(userDataPath, "db");
-  const dbPath = path.join(dbDir, "facturacion.db");
-  const databaseUrl = pathToFileURL(dbPath).href;
   const pidFile = path.join(userDataPath, "backend.pid");
   const uploadsDir = path.join(userDataPath, "uploads");
 
-  if (!fs.existsSync(dbDir)) {
-    fs.mkdirSync(dbDir, { recursive: true });
-  }
   if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
   }
@@ -196,12 +241,14 @@ function startBackend() {
       ELECTRON_RUN_AS_NODE: "1",
       NODE_ENV: "production",
       PORT: String(BACKEND_PORT),
-      DATABASE_URL: databaseUrl,
+      DATABASE_URL: credential.databaseUrl,
+      APP_SECRETS_KEY: credential.appSecretsKey,
       UPLOADS_DIR: uploadsDir,
       ...(fs.existsSync(ecfTestAssets) ? { ECF_TEST_ASSETS_DIR: ecfTestAssets } : {}),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
+  currentBackendCompanyId = companyId;
 
   backendProcess.stdout?.on("data", (chunk: Buffer) => log.info(`[backend] ${chunk.toString().trimEnd()}`));
   backendProcess.stderr?.on("data", (chunk: Buffer) => log.error(`[backend] ${chunk.toString().trimEnd()}`));
@@ -212,8 +259,61 @@ function startBackend() {
   backendProcess.on("exit", (code) => {
     log.info(`[backend] proceso terminado, codigo ${code}`);
     fs.rmSync(pidFile, { force: true });
+    currentBackendCompanyId = null;
   });
-}
+
+  await waitForBackend();
+};
+
+ipcMain.handle(
+  "auth:complete",
+  async (
+    _event,
+    { companyId, databaseUrl, appSecretsKey }: { companyId: number; databaseUrl: string; appSecretsKey: string },
+  ) => {
+    // En dev, el backend corre aparte (`npm run dev`) con su propio .env -- no hay
+    // nada que guardar/arrancar aqui, y no toda esa infraestructura tiene por que
+    // existir en una maquina de desarrollo.
+    if (!app.isPackaged) return { ok: true as const };
+    try {
+      const credential = { databaseUrl, appSecretsKey };
+      saveDbCredential(companyId, credential);
+      await startBackendForCompany(companyId, credential);
+      return { ok: true as const };
+    } catch (error) {
+      log.error("[auth:complete] fallo al iniciar el backend.", error);
+      return { ok: false as const, message: error instanceof Error ? error.message : String(error) };
+    }
+  },
+);
+
+ipcMain.handle("auth:resume", async (_event, companyId: number) => {
+  if (!app.isPackaged) return { ok: true as const };
+
+  const credential = loadDbCredential(companyId);
+  if (!credential) {
+    return { ok: false as const, message: "No hay credenciales guardadas para esta empresa." };
+  }
+  try {
+    await startBackendForCompany(companyId, credential);
+    return { ok: true as const };
+  } catch (error) {
+    log.error("[auth:resume] fallo al reanudar el backend.", error);
+    return { ok: false as const, message: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+/**
+ * El renderer borra la sesion de localStorage al cerrar sesion, pero esa
+ * escritura no se garantiza en disco de inmediato (Chromium la agenda en
+ * segundo plano) -- si el proceso se mata (crash, kill -9, corte de luz)
+ * justo despues, el logout puede no haber llegado a persistirse y la app
+ * reabre con la sesion vieja. flushStorageData() fuerza la escritura ya.
+ */
+ipcMain.handle("app:flush-storage", () => {
+  session.defaultSession.flushStorageData();
+  return { ok: true as const };
+});
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -360,10 +460,10 @@ app.whenReady().then(async () => {
     if (process.platform === "darwin") {
       app.dock?.setIcon(getAppIconPath());
     }
-    startBackend();
-    if (app.isPackaged) {
-      await waitForBackend();
-    }
+    // El backend ya no arranca aqui: necesita el DATABASE_URL del rol de
+    // Postgres de una empresa, que solo se conoce tras login/registro (o al
+    // reanudar una sesion guardada) -- ver ipcMain "auth:complete"/"auth:resume"
+    // y frontend/src/services/api.ts.
     createWindow();
     setupAutoUpdater();
     if (isProduction) {
@@ -393,5 +493,15 @@ app.on("window-all-closed", () => {
   }
   if (process.platform !== "darwin") {
     app.quit();
+  }
+});
+
+// Cmd+Q / "Salir" del dock no siempre pasa por "window-all-closed" antes de
+// terminar el proceso -- sin esto, el backend (un proceso hijo aparte) queda
+// huerfano corriendo en segundo plano tras cerrar la app.
+app.on("before-quit", () => {
+  if (backendProcess) {
+    backendProcess.kill();
+    backendProcess = null;
   }
 });
