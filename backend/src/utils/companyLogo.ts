@@ -89,6 +89,16 @@ export async function removeUploadedCompanyLogoFiles(
  * Devuelve la URL publica a guardar en Company.logoUrl, o null si no hay
  * como llegar al servicio (deja el logo anterior intacto).
  */
+/** Error al pedir/usar la URL firmada de subida; `status` conserva el código HTTP real (401 = token vencido). */
+export class LogoUploadError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "LogoUploadError";
+    this.status = status;
+  }
+}
+
 export async function uploadCompanyLogoToBucket(
   accessToken: string,
   buffer: Buffer,
@@ -109,7 +119,10 @@ export async function uploadCompanyLogoToBucket(
   });
   if (!signRes.ok) {
     const detail = await signRes.text().catch(() => "");
-    throw new Error(`No se pudo preparar la subida del logo (${signRes.status}). ${detail}`);
+    throw new LogoUploadError(
+      `No se pudo preparar la subida del logo (${signRes.status}). ${detail}`,
+      signRes.status,
+    );
   }
   const { signedUrl, publicUrl } = (await signRes.json()) as {
     signedUrl: string;

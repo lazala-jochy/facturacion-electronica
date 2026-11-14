@@ -22,6 +22,7 @@ import {
   removeStoredCompanyCertificate,
 } from "../utils/companyCertificateStorage";
 import {
+  LogoUploadError,
   removeCompanyLogoFromBucket,
   uploadCompanyLogoToBucket,
   saveCompanyLogoFile,
@@ -876,6 +877,12 @@ export const authService = {
           });
         }
       } catch (e) {
+        // 401 del signer (token vencido mientras se usaba esta pantalla) se
+        // propaga tal cual para que el frontend lo trate como el resto de
+        // 401: refresca la sesion y reintenta solo, en vez de ver un error.
+        if (e instanceof LogoUploadError && e.status === 401) {
+          return { ok: false, status: 401, message: "Sesion expirada. Vuelve a intentar." };
+        }
         const msg = e instanceof Error ? e.message : "No se pudo subir el logo.";
         return { ok: false, status: 502, message: msg };
       }
