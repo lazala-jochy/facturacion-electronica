@@ -4,7 +4,6 @@ import cors from "cors";
 import express from "express";
 import fs from "fs/promises";
 import multer from "multer";
-import { execFileSync } from "child_process";
 import path from "path";
 import { buildRouter } from "./routes";
 import { prisma } from "./prisma";
@@ -14,102 +13,11 @@ import { getUploadsRoot } from "./utils/uploadsRoot";
 
 const PORT = Number(process.env.PORT ?? 3001);
 
-const runPrismaCli = (runtimeRoot: string, prismaCli: string, args: string[]) =>
-  execFileSync(process.execPath, [prismaCli, ...args], {
-    cwd: runtimeRoot,
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      ELECTRON_RUN_AS_NODE: "1",
-    },
-  });
-
-/**
- * Un rename de migracion ya desplegada (ej. corregir su orden) hace que
- * `_prisma_migrations` no la reconozca como aplicada en bases de datos
- * existentes: `migrate deploy` intenta reaplicarla y falla con "duplicate
- * column name" (P3018, la primera vez) o con P3009 (reintentos, porque la
- * corrida anterior ya quedo registrada como fallida).
- */
-const extractFailedMigrationName = (output: string): string | null => {
-  const alreadyFailed = output.match(/`([^`]+)`\s+migration started at[\s\S]*?failed/);
-  if (alreadyFailed) return alreadyFailed[1];
-  if (/duplicate column name/i.test(output)) {
-    const inline = output.match(/Migration name:\s*(\S+)/);
-    if (inline) return inline[1];
-  }
-  return null;
-};
-
-const failedDueToColumnAlreadyApplied = async (migrationName: string, output: string) => {
-  if (/duplicate column name/i.test(output)) return true;
-  try {
-    const rows = await prisma.$queryRawUnsafe<{ logs: string | null }[]>(
-      `SELECT logs FROM _prisma_migrations WHERE migration_name = ? ORDER BY started_at DESC LIMIT 1`,
-      migrationName,
-    );
-    return /duplicate column name/i.test(rows[0]?.logs ?? "");
-  } catch {
-    return false;
-  }
-};
-
-const MAX_RECOVERY_ATTEMPTS = 10;
-
-const maybeMigrate = async () => {
-  if (process.env.AUTO_MIGRATE === "false") return;
-  const runtimeRoot = path.join(__dirname, "..");
-  const prismaCli = path.join(runtimeRoot, "node_modules", "prisma", "build", "index.js");
-  const schemaPath = path.join(runtimeRoot, "prisma", "schema.prisma");
-  const deployArgs = ["migrate", "deploy", "--schema", schemaPath];
-
-  // Puede haber mas de una migracion renombrada sin resolver acumulada en el
-  // historial de una misma base de datos; cada resolve solo desbloquea la
-  // siguiente, asi que hay que reintentar en bucle hasta que no queden mas.
-  for (let attempt = 0; attempt < MAX_RECOVERY_ATTEMPTS; attempt += 1) {
-    try {
-      console.log(runPrismaCli(runtimeRoot, prismaCli, deployArgs));
-      return;
-    } catch (error) {
-      const output = [
-        (error as { stdout?: string }).stdout ?? "",
-        (error as { stderr?: string }).stderr ?? "",
-        error instanceof Error ? error.message : String(error),
-      ].join("\n");
-      console.error(output);
-
-      const migrationName = extractFailedMigrationName(output);
-      const recoverable = migrationName && (await failedDueToColumnAlreadyApplied(migrationName, output));
-      if (!migrationName || !recoverable) {
-        console.error("No se pudo aplicar migraciones Prisma en el arranque.", error);
-        throw error;
-      }
-
-      console.warn(
-        `Migracion "${migrationName}" ya estaba aplicada en esta base de datos (columna duplicada). Marcandola como aplicada y reintentando...`,
-      );
-      try {
-        runPrismaCli(runtimeRoot, prismaCli, [
-          "migrate",
-          "resolve",
-          "--applied",
-          migrationName,
-          "--schema",
-          schemaPath,
-        ]);
-      } catch (recoveryError) {
-        console.error("No se pudo recuperar automaticamente de la migracion duplicada.", recoveryError);
-        throw recoveryError;
-      }
-    }
-  }
-  throw new Error(
-    `Se alcanzo el limite de ${MAX_RECOVERY_ATTEMPTS} intentos de auto-recuperacion de migraciones.`,
-  );
-};
+// Las migraciones ya no corren en la maquina del cliente: viven en Supabase
+// (un solo proyecto) y se aplican una vez por release con `prisma migrate
+// deploy` contra ese proyecto, no en cada arranque del backend empaquetado.
 
 const bootstrap = async () => {
-  await maybeMigrate();
   const companyCount = await prisma.company.count();
   console.log("Backend ready. Companies:", companyCount);
 

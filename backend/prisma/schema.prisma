@@ -1,10 +1,14 @@
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 generator client {
   provider      = "prisma-client-js"
+  // El motor de consultas es por SO, no por datasource -- sin esto Prisma
+  // solo genera el nativo del host (Mac) y el instalador de Windows queda
+  // sin motor valido (o con uno viejo de antes de pasar a Postgres).
   binaryTargets = ["native", "windows"]
 }
 
@@ -23,7 +27,8 @@ model Company {
   // URL servicio DGII e-CF (legacy: recepción directa sin flujo token).
   dgiiEcfEndpoint            String?      @map("dgii_ecf_endpoint")
   dgiiUsername               String?      @map("dgii_username")
-  dgiiPassword               String?      @map("dgii_password")
+  // Cifrado con APP_SECRETS_KEY (ver companyCertificateCrypto.ts); ya no texto plano.
+  dgiiPasswordEnc            String?      @map("dgii_password_enc")
   dgiiAuthUrl                String?      @map("dgii_auth_url")
   dgiiReceptionUrl           String?      @map("dgii_reception_url")
   dgiiConsultUrl             String?      @map("dgii_consult_url")
@@ -63,8 +68,8 @@ model Company {
   // dgii_environment actual, el token se descarta y se vuelve a autenticar (evita reusar un token
   // de certificación en producción o viceversa tras cambiar de ambiente).
   tokenCacheEnvironment      String?      @map("token_cache_environment")
-  // Clave de cifrado del .p12 (texto en BD; misma que usás al guardar el certificado).
-  certificateKeyphrase       String?      @map("certificate_keyphrase")
+  // Clave de cifrado del .p12. Cifrada con APP_SECRETS_KEY (ver companyCertificateCrypto.ts); ya no texto plano.
+  certificateKeyphraseEnc    String?      @map("certificate_keyphrase_enc")
   createdAt                DateTime     @default(now()) @map("created_at")
   users        User[]
   clients      Client[]
@@ -143,11 +148,15 @@ model RefreshToken {
   tokenHash String   @unique @map("token_hash")
   userId    Int      @map("user_id")
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Denormalizado desde User.companyId: permite una politica RLS directa
+  // (company_id = current_tenant_company_id()) en vez de una subconsulta.
+  companyId Int      @map("company_id")
   expiresAt DateTime @map("expires_at")
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([userId])
   @@index([expiresAt])
+  @@index([companyId])
   @@map("refresh_tokens")
 }
 
@@ -156,10 +165,13 @@ model PasswordResetToken {
   tokenHash String   @unique @map("token_hash")
   userId    Int      @map("user_id")
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Denormalizado desde User.companyId, mismo motivo que en RefreshToken.
+  companyId Int      @map("company_id")
   expiresAt DateTime @map("expires_at")
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([userId])
+  @@index([companyId])
   @@map("password_reset_tokens")
 }
 
@@ -239,6 +251,8 @@ model Cotizacion {
 model CotizacionItem {
   id           Int        @id @default(autoincrement())
   cotizacionId Int        @map("cotizacion_id")
+  // Denormalizado desde Cotizacion.companyId, mismo motivo que en RefreshToken.
+  companyId    Int        @map("company_id")
   itemNumber   Int        @map("item_number")
   quantity     Float
   unit         String
@@ -250,5 +264,6 @@ model CotizacionItem {
   cotizacion   Cotizacion @relation(fields: [cotizacionId], references: [id], onDelete: Cascade)
 
   @@index([cotizacionId])
+  @@index([companyId])
   @@map("cotizacion_items")
 }

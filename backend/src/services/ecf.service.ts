@@ -8,7 +8,7 @@ import { signXmlWithP12Buffer } from "./signer";
 import { validateEcfPayload, type EcfPayload } from "./validation";
 import { buildEcfXml } from "./xmlBuilder";
 import { fechaEmisionDdMmYyyy } from "./xmlBuilder/common";
-import { assertCertificateEncryptionSecret } from "../utils/companyCertificateCrypto";
+import { assertCertificateEncryptionSecret, decryptCompanySecret, encryptCompanySecret } from "../utils/companyCertificateCrypto";
 import { buildEcfNumber } from "../utils/ecfTipo";
 import { refinePayloadForEcfTipo } from "./ecfTipoHandlers";
 import { persistRepresentacionImpresa } from "./ecfRepresentacionImpresa.service";
@@ -122,7 +122,9 @@ export async function resolveP12ForEcf(
 > {
   let companyRow = initialCompany;
   const secretRaw =
-    (options.certificateEncryptionSecret?.trim() || companyRow.certificateKeyphrase?.trim() || "") ?? "";
+    (options.certificateEncryptionSecret?.trim() ||
+      decryptCompanySecret(companyRow.certificateKeyphraseEnc)?.trim() ||
+      "") ?? "";
 
   if (options.oneShotCertificate?.buffer?.length) {
     const pwd = options.oneShotCertificate.password?.trim() ?? "";
@@ -159,7 +161,7 @@ export async function resolveP12ForEcf(
         certificateSalt: persisted.certificateSalt,
         certificateEncPath: persisted.certificateEncPath,
         certificatePasswordEnc: persisted.certificatePasswordEnc,
-        certificateKeyphrase: encSecret,
+        certificateKeyphraseEnc: encryptCompanySecret(encSecret),
       },
     });
     const reloaded = await prisma.company.findUnique({ where: { id: companyId } });

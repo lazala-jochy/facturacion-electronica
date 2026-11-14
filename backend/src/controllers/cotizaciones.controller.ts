@@ -7,6 +7,7 @@ import {
 import { generateDGIIData } from "../utils/dgii";
 import { buildCotizacionPdfBuffer } from "../utils/cotizacion-pdf";
 import { prisma } from "../prisma";
+import { decryptCompanySecret } from "../utils/companyCertificateCrypto";
 import { ecfService } from "../services/ecf.service";
 import {
   buildConsumoMenor250SignedPack,
@@ -166,7 +167,7 @@ export const createClientWithCotizacion: RequestHandler = async (req, res) => {
   if (companyRow && companyHasCertificateRecord(companyRow)) {
     const encOk =
       encFromBody.trim().length >= 8 ||
-      (companyRow.certificateKeyphrase?.trim()?.length ?? 0) >= 8;
+      (decryptCompanySecret(companyRow.certificateKeyphraseEnc)?.trim()?.length ?? 0) >= 8;
     if (!encOk) {
       res.status(400).json({
         message:
@@ -424,7 +425,7 @@ export const updateCotizacionById: RequestHandler = async (req, res) => {
     if (companyRow && companyHasCertificateRecord(companyRow)) {
       const encOk =
         encFromBody.trim().length >= 8 ||
-        (companyRow.certificateKeyphrase?.trim()?.length ?? 0) >= 8;
+        (decryptCompanySecret(companyRow.certificateKeyphraseEnc)?.trim()?.length ?? 0) >= 8;
       if (!encOk) {
         res.status(400).json({
           message:

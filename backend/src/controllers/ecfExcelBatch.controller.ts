@@ -6,7 +6,7 @@ import os from "os";
 import { prisma } from "../prisma";
 import { consultDgiiTrackId, submitSignedEcfWithTenantConfig, submitSignedRfceWithTenantConfig } from "../services/dgiiEcfApi.service";
 import { DgiiEcfError } from "../types/dgiiEcf";
-import { assertCertificateEncryptionSecret } from "../utils/companyCertificateCrypto";
+import { assertCertificateEncryptionSecret, decryptCompanySecret } from "../utils/companyCertificateCrypto";
 import {
   companyHasCertificateRecord,
   loadDecryptedPkcs12ForCompany,
@@ -413,7 +413,7 @@ export const runExcelBatchToDesktopHandler: RequestHandler = async (req, res, ne
         certificateSalt: true,
         certificateEncPath: true,
         certificatePasswordEnc: true,
-        certificateKeyphrase: true,
+        certificateKeyphraseEnc: true,
       },
     });
     if (!companyRow) {
@@ -433,9 +433,7 @@ export const runExcelBatchToDesktopHandler: RequestHandler = async (req, res, ne
     let encryptionSecret: string;
     try {
       encryptionSecret = assertCertificateEncryptionSecret(
-        typeof companyRow.certificateKeyphrase === "string"
-          ? companyRow.certificateKeyphrase
-          : "",
+        decryptCompanySecret(companyRow.certificateKeyphraseEnc) ?? "",
       );
     } catch (e) {
       res.status(400).json({

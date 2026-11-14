@@ -3,8 +3,6 @@
  * OCR (tesseract.js) para imágenes; texto embebido (pdf-parse) para PDFs con capa de texto.
  * Heurística best-effort: el resultado siempre se revisa/edita en el formulario antes de guardar.
  */
-import { createWorker } from "tesseract.js";
-import { PDFParse } from "pdf-parse";
 import { mapFormaPago606 } from "./dgiiFormato606607";
 
 export type CamposExtraidos606 = {
@@ -83,6 +81,7 @@ export const parseFacturaCompraTexto = (text: string): CamposExtraidos606 => {
 };
 
 export const extraerTextoDeImagen = async (buffer: Buffer): Promise<string> => {
+  const { createWorker } = await import("tesseract.js");
   const worker = await createWorker("spa");
   try {
     const {
@@ -95,6 +94,7 @@ export const extraerTextoDeImagen = async (buffer: Buffer): Promise<string> => {
 };
 
 export const extraerTextoDePdf = async (buffer: Buffer): Promise<string> => {
+  const { PDFParse } = await import("pdf-parse");
   const parser = new PDFParse({ data: buffer });
   try {
     const result = await parser.getText();

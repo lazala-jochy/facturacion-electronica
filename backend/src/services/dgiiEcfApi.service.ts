@@ -9,6 +9,7 @@ import type { Company } from "@prisma/client";
 import fs from "node:fs";
 import path from "node:path";
 import { DGII_ECF_SANDBOX_DEFAULTS, normalizeDgiiEcfUrl } from "../config/dgiiEcf.constants";
+import { decryptCompanySecret } from "../utils/companyCertificateCrypto";
 import { readGlobalDgiiBearerToken } from "../config/dgiiGlobalToken";
 import type { DgiiCertProfile } from "../types/dgiiCertProfile";
 import type { DgiiSubmissionResult } from "../types/dgiiEcf";
@@ -166,8 +167,8 @@ export function resolveDgiiConsultUrl(
   return `${url}${DGII_CONSULT_ESTADO_PATH}`;
 }
 
-function tenantHasPasswordAuth(company: Pick<Company, "dgiiUsername" | "dgiiPassword">): boolean {
-  return Boolean(company.dgiiUsername?.trim() && company.dgiiPassword && company.dgiiPassword.length > 0);
+function tenantHasPasswordAuth(company: Pick<Company, "dgiiUsername" | "dgiiPasswordEnc">): boolean {
+  return Boolean(company.dgiiUsername?.trim() && company.dgiiPasswordEnc && company.dgiiPasswordEnc.length > 0);
 }
 
 /** Semilla/validación explícitas para el ambiente activo (certificación o producción, nunca mezcladas). */
@@ -284,7 +285,7 @@ function looksLikeSwaggerHtml(contentType: string, rawText: string): boolean {
 function buildAuthRequestBody(company: Company): string {
   const rnc = rncDigits(company.rnc);
   const usuario = company.dgiiUsername!.trim();
-  const clave = company.dgiiPassword!;
+  const clave = decryptCompanySecret(company.dgiiPasswordEnc)!;
   return JSON.stringify({
     RNC: rnc,
     Usuario: usuario,

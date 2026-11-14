@@ -23,11 +23,11 @@ export const buildRouter = () => {
     res.json({ ok: true });
   });
 
-  router.post("/auth/register", authFormUpload, asyncHandler(authController.register));
-  router.post("/auth/login", asyncHandler(authController.login));
+  // register/login/forgot-password/reset-password viven en Supabase Edge
+  // Functions (supabase/functions/), no aqui: necesitan ver todas las
+  // empresas (buscar por email, crear el rol de Postgres dedicado) con una
+  // credencial admin que este backend local nunca tiene.
   router.post("/auth/refresh", asyncHandler(authController.refresh));
-  router.post("/auth/forgot-password", asyncHandler(authController.forgotPassword));
-  router.post("/auth/reset-password", asyncHandler(authController.resetPassword));
   router.get("/auth/me", requireAuth, asyncHandler(authController.me));
   router.put("/auth/company", requireAuth, authFormUpload, asyncHandler(authController.updateCompany));
   router.post("/auth/company/dgii/test", requireAuth, asyncHandler(authController.testDgiiConnection));

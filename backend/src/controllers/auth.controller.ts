@@ -3,7 +3,7 @@ import path from "path";
 import type { Express, Request, RequestHandler } from "express";
 import { authService } from "../services/auth.service";
 import { dgiiAuthService } from "../services/dgiiAuth.service";
-import type { ForgotPasswordBody, RegisterBody, ResetPasswordBody, UpdateCompanyBody } from "../types/auth";
+import type { UpdateCompanyBody } from "../types/auth";
 import { isAllowedLogoMime } from "../utils/companyLogo";
 import { validateCertificateMulterFile } from "../utils/companyCertificateUpload";
 import { getUploadsRoot } from "../utils/uploadsRoot";
@@ -81,73 +81,8 @@ const wantsClearCertificate = (req: Request): boolean => {
   return v === true || v === 1 || v === "1" || v === "true";
 };
 
-export const register: RequestHandler = async (req, res) => {
-  try {
-    const { logo: logoFileRaw, certificate: certRaw } = readAuthFiles(req);
-    let certificateFile = certRaw;
-    if (certificateFile) certificateFile = validateCertificateMulterFile(certificateFile);
-    let logoCandidate = logoFileRaw;
-    if (logoCandidate && logoCandidate.buffer.length && !isAllowedLogoMime(logoCandidate.mimetype)) {
-      res.status(400).json({
-        message: "El logo debe ser PNG, JPG, GIF o WebP de hasta 2 MB.",
-      });
-      return;
-    }
-    if (logoCandidate && logoCandidate.buffer.length > 2 * 1024 * 1024) {
-      res.status(400).json({ message: "El logo no puede superar 2 MB." });
-      return;
-    }
-    if (logoCandidate && !logoCandidate.buffer.length) logoCandidate = undefined;
-
-    const uploadsRoot = getUploadsRoot();
-    const body = req.body as RegisterBody & { certificate_password?: string };
-    const certificatePassword = pickStr(
-      (req.body as Record<string, unknown>) ?? {},
-      "certificate_password",
-    );
-    const certificateEncryptionSecret = pickStr(
-      (req.body as Record<string, unknown>) ?? {},
-      "certificate_encryption_secret",
-    );
-
-    const result = await authService.register(body, {
-      logoFile: logoCandidate?.buffer?.length ? logoCandidate : undefined,
-      certificateFile: certificateFile?.buffer?.length ? certificateFile : undefined,
-      certificatePassword,
-      certificateEncryptionSecret,
-      uploadsRoot,
-    });
-    if (!result.ok) {
-      res.status(result.status).json({ message: result.message });
-      return;
-    }
-    res.status(201).json({
-      message: "Cuenta creada correctamente.",
-      token: result.token,
-      refresh_token: result.refresh_token,
-      user: result.user,
-      company: result.company,
-    });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Solicitud inválida.";
-    res.status(400).json({ message: msg });
-  }
-};
-
-export const login: RequestHandler = async (req, res) => {
-  const result = await authService.login(req.body);
-  if (!result.ok) {
-    res.status(result.status).json({ message: result.message });
-    return;
-  }
-  res.json({
-    message: "Inicio de sesion exitoso.",
-    token: result.token,
-    refresh_token: result.refresh_token,
-    user: result.user,
-    company: result.company,
-  });
-};
+// register/login/forgot-password/reset-password viven en Supabase Edge
+// Functions (supabase/functions/) -- ver backend/src/routes/index.ts.
 
 export const refresh: RequestHandler = async (req, res) => {
   const result = await authService.refresh(req.body);
@@ -162,20 +97,6 @@ export const refresh: RequestHandler = async (req, res) => {
     user: result.user,
     company: result.company,
   });
-};
-
-export const forgotPassword: RequestHandler = async (req, res) => {
-  const result = await authService.requestPasswordReset(req.body as ForgotPasswordBody);
-  res.json(result);
-};
-
-export const resetPassword: RequestHandler = async (req, res) => {
-  const result = await authService.resetPasswordWithToken(req.body as ResetPasswordBody);
-  if (!result.ok) {
-    res.status(result.status).json({ message: result.message });
-    return;
-  }
-  res.json({ message: "Contraseña actualizada. Ya podés iniciar sesión." });
 };
 
 export const me: RequestHandler = async (req, res) => {

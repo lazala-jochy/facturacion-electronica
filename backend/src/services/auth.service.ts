@@ -11,6 +11,8 @@ import type {
 } from "../types/auth";
 import {
   assertCertificateEncryptionSecret,
+  decryptCompanySecret,
+  encryptCompanySecret,
   verifyPkcs12Password,
 } from "../utils/companyCertificateCrypto";
 import {
@@ -48,7 +50,6 @@ export type PublicCompany = Pick<
   | "logoUrl"
   | "dgiiEcfEndpoint"
   | "dgiiUsername"
-  | "dgiiPassword"
   | "dgiiAuthUrl"
   | "dgiiReceptionUrl"
   | "dgiiConsultUrl"
@@ -79,8 +80,10 @@ export type PublicCompany = Pick<
   | "ecfGatewayBaseUrl"
   | "ecfGatewayApiKey"
 > & {
+  /** Descifrado de dgiiPasswordEnc; mismo contrato externo que antes (texto plano). */
+  dgiiPassword: string | null;
   certificateConfigured: boolean;
-  /** Clave de cifrado del .p12 persistida (misma que al guardar el certificado). */
+  /** Clave de cifrado del .p12 persistida (misma que al guardar el certificado), descifrada de certificateKeyphraseEnc. */
   certificate_keyphrase: string | null;
   /** Nunca se expone el token en claro al frontend. */
   token_cached: boolean;
@@ -94,12 +97,12 @@ const REFRESH_TTL_MS = REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000;
 
 const hashOpaqueToken = (raw: string) => createHash("sha256").update(raw).digest("hex");
 
-const issueRefreshToken = async (userId: number): Promise<string> => {
+const issueRefreshToken = async (userId: number, companyId: number): Promise<string> => {
   const raw = randomBytes(32).toString("hex");
   const tokenHash = hashOpaqueToken(raw);
   const expiresAt = new Date(Date.now() + REFRESH_TTL_MS);
   await prisma.refreshToken.create({
-    data: { userId, tokenHash, expiresAt },
+    data: { userId, companyId, tokenHash, expiresAt },
   });
   return raw;
 };
@@ -110,7 +113,7 @@ const createSessionPair = async (user: User & { company: Company }) => {
     companyId: user.companyId,
     email: user.email,
   });
-  const refresh_token = await issueRefreshToken(user.id);
+  const refresh_token = await issueRefreshToken(user.id, user.companyId);
   return { token, refresh_token };
 };
 
@@ -161,7 +164,7 @@ const publicCompany = (c: Company): PublicCompany => ({
   logoUrl: c.logoUrl,
   dgiiEcfEndpoint: c.dgiiEcfEndpoint,
   dgiiUsername: c.dgiiUsername,
-  dgiiPassword: c.dgiiPassword,
+  dgiiPassword: decryptCompanySecret(c.dgiiPasswordEnc),
   dgiiAuthUrl: c.dgiiAuthUrl,
   dgiiReceptionUrl: c.dgiiReceptionUrl,
   dgiiConsultUrl: c.dgiiConsultUrl,
@@ -192,7 +195,7 @@ const publicCompany = (c: Company): PublicCompany => ({
   certificatePath: c.certificatePath,
   tokenExpiration: c.tokenExpiration,
   certificateConfigured: companyHasCertificateRecord(c),
-  certificate_keyphrase: c.certificateKeyphrase ?? null,
+  certificate_keyphrase: decryptCompanySecret(c.certificateKeyphraseEnc),
   token_cached: Boolean(
     c.tokenCache &&
       c.tokenExpiration &&
@@ -363,7 +366,7 @@ export const authService = {
             certificateSalt: persisted.certificateSalt,
             certificateEncPath: persisted.certificateEncPath,
             certificatePasswordEnc: persisted.certificatePasswordEnc,
-            certificateKeyphrase: encryptionSecret,
+            certificateKeyphraseEnc: encryptCompanySecret(encryptionSecret),
           },
         });
       } catch (e) {
@@ -522,7 +525,7 @@ export const authService = {
       Pick<
         Company,
         | "dgiiUsername"
-        | "dgiiPassword"
+        | "dgiiPasswordEnc"
         | "dgiiAuthUrl"
         | "dgiiReceptionUrl"
         | "dgiiConsultUrl"
@@ -549,7 +552,8 @@ export const authService = {
       dgiiTenantMerge.dgiiUsername = (body.dgii_username ?? "").trim() || null;
     }
     if (body.dgii_password !== undefined) {
-      dgiiTenantMerge.dgiiPassword = (body.dgii_password ?? "").trim() || null;
+      const rawDgiiPassword = (body.dgii_password ?? "").trim();
+      dgiiTenantMerge.dgiiPasswordEnc = rawDgiiPassword ? encryptCompanySecret(rawDgiiPassword) : null;
     }
     const parseTenantUrl = (raw: string | undefined, label: string): AuthErr | string | null => {
       const t = normalizeDgiiEcfUrl(raw);
@@ -880,7 +884,7 @@ export const authService = {
             certificateSalt: persisted.certificateSalt,
             certificateEncPath: persisted.certificateEncPath,
             certificatePasswordEnc: persisted.certificatePasswordEnc,
-            certificateKeyphrase: encryptionSecret,
+            certificateKeyphraseEnc: encryptCompanySecret(encryptionSecret),
           },
         });
       } catch (e) {
@@ -896,7 +900,7 @@ export const authService = {
             certificateSalt: null,
             certificateEncPath: null,
             certificatePasswordEnc: null,
-            certificateKeyphrase: null,
+            certificateKeyphraseEnc: null,
           },
         });
       } catch (e) {
@@ -960,7 +964,7 @@ export const authService = {
             certificateSalt: persisted.certificateSalt,
             certificateEncPath: persisted.certificateEncPath,
             certificatePasswordEnc: persisted.certificatePasswordEnc,
-            certificateKeyphrase: encryptionSecret,
+            certificateKeyphraseEnc: encryptCompanySecret(encryptionSecret),
           },
         });
       } catch (e) {
@@ -993,12 +997,12 @@ export const authService = {
         }
         companyOut = await prisma.company.update({
           where: { id: companyId },
-          data: { certificateKeyphrase: t },
+          data: { certificateKeyphraseEnc: encryptCompanySecret(t) },
         });
       } else if (t.length === 0 && !companyHasCertificateRecord(companyOut)) {
         companyOut = await prisma.company.update({
           where: { id: companyId },
-          data: { certificateKeyphrase: null },
+          data: { certificateKeyphraseEnc: null },
         });
       }
     }
@@ -1043,7 +1047,7 @@ export const authService = {
     await prisma.$transaction([
       prisma.passwordResetToken.deleteMany({ where: { userId: user.id } }),
       prisma.passwordResetToken.create({
-        data: { tokenHash, userId: user.id, expiresAt },
+        data: { tokenHash, userId: user.id, companyId: user.companyId, expiresAt },
       }),
     ]);
 

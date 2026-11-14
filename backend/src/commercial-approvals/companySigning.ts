@@ -1,5 +1,5 @@
 import type { Company } from "@prisma/client";
-import { assertCertificateEncryptionSecret } from "../utils/companyCertificateCrypto";
+import { assertCertificateEncryptionSecret, decryptCompanySecret } from "../utils/companyCertificateCrypto";
 import {
   companyHasCertificateRecord,
   loadDecryptedPkcs12ForCompany,
@@ -14,13 +14,13 @@ export type CompanySigningMaterial = {
 export async function loadCompanySigningMaterial(
   company: Pick<
     Company,
-    "id" | "certificateSalt" | "certificateEncPath" | "certificatePasswordEnc" | "certificateKeyphrase"
+    "id" | "certificateSalt" | "certificateEncPath" | "certificatePasswordEnc" | "certificateKeyphraseEnc"
   >,
   uploadsRoot = getUploadsRoot(),
 ): Promise<CompanySigningMaterial | null> {
   if (!companyHasCertificateRecord(company)) return null;
   const encryptionSecret = assertCertificateEncryptionSecret(
-    typeof company.certificateKeyphrase === "string" ? company.certificateKeyphrase : "",
+    decryptCompanySecret(company.certificateKeyphraseEnc) ?? "",
   );
   const loaded = await loadDecryptedPkcs12ForCompany(company, uploadsRoot, encryptionSecret);
   if (!loaded) return null;

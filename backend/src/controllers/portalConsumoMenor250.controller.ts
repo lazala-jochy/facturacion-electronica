@@ -4,7 +4,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { prisma } from "../prisma";
-import { assertCertificateEncryptionSecret } from "../utils/companyCertificateCrypto";
+import { assertCertificateEncryptionSecret, decryptCompanySecret } from "../utils/companyCertificateCrypto";
 import {
   companyHasCertificateRecord,
   loadDecryptedPkcs12ForCompany,
@@ -146,7 +146,7 @@ export const exportPortalConsumoMenor250Handler: RequestHandler = async (req, re
         certificateSalt: true,
         certificateEncPath: true,
         certificatePasswordEnc: true,
-        certificateKeyphrase: true,
+        certificateKeyphraseEnc: true,
       },
     });
     if (!companyRow) {
@@ -165,7 +165,7 @@ export const exportPortalConsumoMenor250Handler: RequestHandler = async (req, re
     let encryptionSecret: string;
     try {
       encryptionSecret = assertCertificateEncryptionSecret(
-        typeof companyRow.certificateKeyphrase === "string" ? companyRow.certificateKeyphrase : "",
+        decryptCompanySecret(companyRow.certificateKeyphraseEnc) ?? "",
       );
     } catch (e) {
       res.status(400).json({

@@ -540,6 +540,7 @@ export const cotizacionService = {
         await tx.cotizacionItem.create({
           data: {
             cotizacionId: cotizacion.id,
+            companyId,
             itemNumber: line.itemNumber,
             quantity: line.quantity,
             unit: line.unit,
@@ -775,6 +776,7 @@ export const cotizacionService = {
         await tx.cotizacionItem.create({
           data: {
             cotizacionId: id,
+            companyId,
             itemNumber: line.itemNumber,
             quantity: line.quantity,
             unit: line.unit,

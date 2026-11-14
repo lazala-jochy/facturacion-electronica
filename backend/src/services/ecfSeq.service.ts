@@ -19,6 +19,30 @@ const throwSeqExceeded = () => {
   throw err;
 };
 
+/**
+ * Bloquea la fila del contador antes de leer/asignar el siguiente e-NCF.
+ * En SQLite esto no hacia falta (un solo escritor a la vez); en Postgres,
+ * sin este lock dos requests concurrentes podrian leer el mismo lastSeq y
+ * asignar el mismo correlativo dos veces.
+ */
+const lockCounterRow = async (
+  tx: Prisma.TransactionClient,
+  companyId: number,
+  ecfTipo: string,
+): Promise<void> => {
+  const tipo = normalizeEcfTipo(ecfTipo);
+  await tx.$executeRaw`
+    INSERT INTO company_ecf_seq_counters (company_id, ecf_tipo, last_seq)
+    VALUES (${companyId}, ${tipo}, 0)
+    ON CONFLICT (company_id, ecf_tipo) DO NOTHING
+  `;
+  await tx.$queryRaw`
+    SELECT last_seq FROM company_ecf_seq_counters
+    WHERE company_id = ${companyId} AND ecf_tipo = ${tipo}
+    FOR UPDATE
+  `;
+};
+
 /** Último correlativo registrado: máximo entre contador de empresa y cotizaciones guardadas. */
 export const getLastEcfNcfSeq = async (
   tx: Prisma.TransactionClient,
@@ -50,6 +74,7 @@ export const markEcfNcfSeqUsed = async (
   if (!Number.isFinite(n) || n < 1) return;
 
   const tipo = normalizeEcfTipo(ecfTipo);
+  await lockCounterRow(tx, companyId, tipo);
   const last = await getLastEcfNcfSeq(tx, companyId, tipo);
   const nextLast = Math.max(last, n);
 
@@ -94,6 +119,7 @@ export const allocateNextAfterUsedSeq = async (
 ): Promise<number> => {
   const tipo = normalizeEcfTipo(ecfTipo);
   const used = Math.floor(usedSeq);
+  await lockCounterRow(tx, companyId, tipo);
   const last = await getLastEcfNcfSeq(tx, companyId, tipo);
   const start = nextEcfNcfSeqAfterUsed(last, used);
 

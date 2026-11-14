@@ -60,6 +60,42 @@ export function generateCertificateSalt(): Buffer {
   return randomBytes(SALT_BYTES);
 }
 
+/**
+ * Cifrado de secretos de empresa que el backend necesita leer sin una
+ * contraseña interactiva (dgiiPassword, certificateKeyphrase) — a diferencia
+ * del .p12, cuya clave la escribe el usuario cada vez. Usa una clave maestra
+ * de la app (alta entropía, no una contraseña humana) en vez de scrypt.
+ */
+const APP_SECRETS_KEY_LEN = 32;
+
+let cachedAppSecretsKey: Buffer | null = null;
+
+const getAppSecretsKey = (): Buffer => {
+  if (cachedAppSecretsKey) return cachedAppSecretsKey;
+  const raw = process.env.APP_SECRETS_KEY?.trim();
+  if (!raw) {
+    throw new Error(
+      "APP_SECRETS_KEY no esta configurada. Generar con: node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\"",
+    );
+  }
+  const key = Buffer.from(raw, "base64");
+  if (key.length !== APP_SECRETS_KEY_LEN) {
+    throw new Error(`APP_SECRETS_KEY debe decodificar a ${APP_SECRETS_KEY_LEN} bytes (base64).`);
+  }
+  cachedAppSecretsKey = key;
+  return key;
+};
+
+/** Cifra un secreto de empresa (dgiiPassword, certificateKeyphrase) para guardar en BD. */
+export const encryptCompanySecret = (plaintext: string): string =>
+  seal(getAppSecretsKey(), Buffer.from(plaintext, "utf8")).toString("base64");
+
+/** Descifra un secreto de empresa cifrado con encryptCompanySecret. Null-safe. */
+export const decryptCompanySecret = (ciphertextB64: string | null | undefined): string | null => {
+  if (!ciphertextB64) return null;
+  return open(getAppSecretsKey(), Buffer.from(ciphertextB64, "base64")).toString("utf8");
+};
+
 /** Valida contraseña .p12 leyendo el contenedor PKCS#12 desde buffer. */
 export const verifyPkcs12Password = (p12Buffer: Buffer, password: string): void => {
   try {
