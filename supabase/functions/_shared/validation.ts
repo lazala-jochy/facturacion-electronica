@@ -1,0 +1,7 @@
+// Mismas reglas que backend/src/utils/validation.ts.
+export const isValidRnc = (rnc: string) => /^[0-9]{9,11}$/.test(rnc);
+export const isValidCedula = (cedula: string) => /^[0-9]{11}$/.test(cedula);
+export const isValidPhoneFormat = (phone: string) => /^[0-9]{3}-[0-9]{3}-[0-9]{4}$/.test(phone);
+export const isValidEmailFormat = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+export const isValidPasswordLength = (password: string) => password.length >= 8;
+export const normalizeEmail = (email: string) => email.trim().toLowerCase();
