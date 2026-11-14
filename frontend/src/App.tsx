@@ -41,6 +41,37 @@ function App() {
   }, []);
 
   const [session, setSession] = useState<AuthSession | null>(initialSession);
+  // En Electron empaquetado, el backend local arranca con el DATABASE_URL del
+  // rol de Postgres de la empresa -- al restaurar una sesion guardada (o
+  // justo tras login/registro) hay que esperar a que ese proceso este listo
+  // antes de renderizar rutas que le pegan al backend. En dev/navegador no
+  // hay nada que esperar.
+  const [backendReady, setBackendReady] = useState<boolean>(
+    () => !window.electronAPI || !initialSession,
+  );
+
+  useEffect(() => {
+    if (!window.electronAPI || !session?.company?.id) {
+      setBackendReady(true);
+      return;
+    }
+    let cancelled = false;
+    setBackendReady(false);
+    window.electronAPI.resumeBackend(session.company.id).then((result) => {
+      if (cancelled) return;
+      if (result.ok) {
+        setBackendReady(true);
+        return;
+      }
+      // Credencial perdida/corrupta: no hay forma de usar esta sesion sin volver a loguear.
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+      setSession(null);
+      setBackendReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.company?.id]);
 
   useEffect(() => {
     if (!session?.company?.name) return;
@@ -85,6 +116,10 @@ function App() {
   const handleLogout = () => {
     setSession(null);
     localStorage.removeItem(AUTH_STORAGE_KEY);
+    // Si matan la app justo despues de cerrar sesion, sin esto el borrado de
+    // localStorage puede no haberse guardado en disco todavia y reabre con
+    // la sesion vieja.
+    void window.electronAPI?.flushStorage();
   };
 
   const handleProfileUpdated = (
@@ -111,6 +146,10 @@ function App() {
         </Routes>
       </RouterComponent>
     );
+  }
+
+  if (!backendReady) {
+    return <div style={{ padding: 24 }}>Iniciando…</div>;
   }
 
   const { company } = session;

@@ -72,12 +72,22 @@ const loginResponseToSession = (data: AuthLoginResponse): AuthSession => ({
   company: data.company,
 });
 
-/** Pide tokens nuevos a partir de un refresh_token dado, sin tocar localStorage (el caller decide). */
+/**
+ * Pide tokens nuevos a partir de un refresh_token dado, sin tocar localStorage (el caller decide).
+ * Si la cuenta es de otra empresa que la que tiene el backend local corriendo ahora mismo
+ * (cambio de cuenta guardada), primero hay que reanudarlo con el DATABASE_URL correcto -- de
+ * lo contrario /auth/refresh consultaria refresh_tokens bajo el rol de Postgres equivocado.
+ */
 export const refreshWithToken = async (
   refreshToken: string,
   fallbackUser: AuthUser,
   fallbackCompany: AuthCompany,
 ): Promise<AuthSession | null> => {
+  if (window.electronAPI) {
+    const resumed = await window.electronAPI.resumeBackend(fallbackCompany.id);
+    if (!resumed.ok) return null;
+  }
+
   let response: Response;
   try {
     response = await fetch(`${API_URL}/auth/refresh`, {
@@ -118,6 +128,10 @@ const refreshSessionFromServer = async (): Promise<AuthSession | null> => {
 
   const next = await refreshWithToken(session.refresh_token, session.user, session.company);
   if (!next) return null;
+
+  // Si el usuario cerro sesion MIENTRAS esta renovacion estaba en vuelo, no
+  // hay que resucitarla al terminar -- el logout gana.
+  if (!readAuthSessionFromStorage()) return null;
 
   persistAuthSession(next);
   return next;

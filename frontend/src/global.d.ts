@@ -22,6 +22,16 @@ declare global {
       checkForUpdates: () => Promise<{ ok: boolean; message?: string }>;
       /** Suscribe a eventos de estado del auto-updater; devuelve funcion para desuscribirse. */
       onUpdateStatus: (callback: (status: UpdateStatus) => void) => () => void;
+      /** Tras login/registro: guarda el DATABASE_URL + appSecretsKey de esa empresa y (re)arranca el backend local con ellos. */
+      completeAuth: (
+        companyId: number,
+        databaseUrl: string,
+        appSecretsKey: string,
+      ) => Promise<{ ok: true } | { ok: false; message: string }>;
+      /** Reanuda el backend para una empresa con credencial ya guardada (sesion restaurada, cambio de cuenta). */
+      resumeBackend: (companyId: number) => Promise<{ ok: true } | { ok: false; message: string }>;
+      /** Fuerza a guardar en disco YA el localStorage (ver cerrar sesion). */
+      flushStorage: () => Promise<{ ok: true }>;
     };
   }
 }
