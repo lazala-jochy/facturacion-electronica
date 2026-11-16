@@ -70,7 +70,10 @@ RUN npx prisma generate
 # ---------------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS runtime
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends openssl ca-certificates \
+    && apt-get install -y --no-install-recommends \
+       openssl \
+       ca-certificates \
+       libicu-dev \
     && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
@@ -96,6 +99,9 @@ COPY --from=frontend-build /app/frontend/dist ./public
 
 RUN mkdir -p /data/uploads/companies
 
+
 EXPOSE 3001
+
+COPY .env .env
 
 CMD ["node", "dist/index.js"]

@@ -31,6 +31,6 @@ backend/uploads/dgii-formatos/
 Thumbs.db
 .vscode/
 .idea/
-
+.env
 # Supabase CLI: estado local de la sesion/proyecto enlazado, no es codigo.
 supabase/.temp/
