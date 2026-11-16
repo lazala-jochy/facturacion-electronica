@@ -9,7 +9,10 @@ generator client {
   // El motor de consultas es por SO, no por datasource -- sin esto Prisma
   // solo genera el nativo del host (Mac) y el instalador de Windows queda
   // sin motor valido (o con uno viejo de antes de pasar a Postgres).
-  binaryTargets = ["native", "windows"]
+  // debian-openssl-3.0.x es explicito (no solo "native") porque la imagen Docker genera el
+  // cliente en un stage sin `openssl` instalado todavia -- Prisma no puede autodetectar la
+  // version de OpenSSL ahi y cae a 1.1.x, que no existe en bookworm (runtime real).
+  binaryTargets = ["native", "windows", "debian-openssl-3.0.x"]
 }
 
 model Company {

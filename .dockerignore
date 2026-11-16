@@ -1,0 +1,31 @@
+# Todo lo que no debe entrar al contexto de build de la imagen web.
+.git
+.DS_Store
+**/.DS_Store
+.claude
+
+node_modules
+**/node_modules
+
+# Electron no forma parte de la imagen web.
+electron
+
+# Supabase CLI / Edge Functions: no corren dentro de esta imagen.
+supabase
+
+# Builds locales viejos -- se regeneran dentro del Dockerfile.
+backend/dist
+frontend/dist
+backend/dotnet/DgiiXmlSigner/bin
+backend/dotnet/DgiiXmlSigner/obj
+backend/dotnet/DgiiXmlSigner/publish
+
+# Secretos y datos locales -- nunca deben quedar horneados en una capa de la imagen.
+backend/.env
+backend/dev.db
+backend/logs
+backend/uploads/*
+!backend/uploads/companies/.gitkeep
+uploads
+
+*.log

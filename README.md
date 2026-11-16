@@ -556,3 +556,65 @@ facturacion-electronica/
 - **Error al generar `.exe`**: ejecuta `npm install` dentro de `electron` y vuelve a correr `npm run dist:win`.
 - **Error de firma en macOS**: para distribucion publica necesitas certificado Apple Developer ID.
 
+---
+
+## 13) Despliegue web (Docker, sin Electron)
+
+El `Dockerfile` en la raíz arma backend + frontend en una sola imagen (un solo proceso Node
+sirviendo la SPA y la API) para quien prefiera correr esto como servicio web en vez de instalarlo
+como app de escritorio en cada PC. No usa SQLite ni Electron: habla con el mismo Postgres
+(Supabase) que usa hoy la build de escritorio.
+
+> **Importante**: este repo fue diseñado para vivir en la PC del contribuyente, de forma que el
+> certificado `.p12` y su contraseña nunca salen de ahí (ver [Arquitectura](#arquitectura)). Al
+> correrlo como servicio web con dominio propio, ese mismo material sensible —certificados DGII de
+> cada empresa, cifrados con `APP_SECRETS_KEY`— queda alcanzable por internet. Antes de exponerlo
+> públicamente:
+> - TLS siempre (Let's Encrypt vía Caddy/Traefik/nginx delante del contenedor; no sirvas HTTP plano).
+> - `APP_SECRETS_KEY` y `JWT_SECRET` únicos y robustos, nunca los de `backend/.env.example`.
+> - Si podés, restringí igual el acceso (VPN, IP allowlist) aunque tenga dominio público — es la
+>   diferencia entre "mi PC" y "cualquiera en internet" para datos fiscales.
+
+### Build
+
+```bash
+docker build -t facturacion-electronica:web .
+```
+
+El frontend se compila con `VITE_API_URL=/api` por default (mismo origen que el backend, sin
+CORS). Para apuntar a otro host:
+
+```bash
+docker build --build-arg VITE_API_URL=https://api.midominio.com -t facturacion-electronica:web .
+```
+
+### Run
+
+```bash
+cp .env.docker.example .env.docker   # completar DATABASE_URL, DIRECT_URL, APP_SECRETS_KEY, JWT_SECRET, etc.
+docker run --rm -p 3001:3001 \
+  --env-file .env.docker \
+  -v facturacion_uploads:/data/uploads \
+  facturacion-electronica:web
+```
+
+La app queda en `http://localhost:3001` (detrás de tu reverse proxy con TLS en producción). El
+volumen es solo para logos subidos localmente en instalaciones viejas; los nuevos logos ya se
+suben a Supabase Storage.
+
+### Migraciones
+
+Igual que con la build de escritorio, `prisma migrate deploy` **no** corre automáticamente al
+levantar el contenedor — se aplica una vez por release contra el proyecto de Supabase (ver sección
+3). El contenedor solo ejecuta `node dist/index.js`.
+
+### Qué resuelve la imagen que la build de escritorio no necesitaba
+
+- **Firmador DGII (.NET) para Linux**: `backend/dotnet/DgiiXmlSigner` solo tenía publish
+  empaquetado para `osx-x64` y `win-x64` (ver `electron/package.json`). El `Dockerfile` lo compila
+  también para `linux-x64` (`dotnet publish -r linux-x64 --self-contained`) en un stage aparte.
+- **Un solo origen para API + SPA**: rutas de React Router como `/clients` coinciden con endpoints
+  reales de la API (`GET /clients`). El backend monta la API bajo `/api` solo cuando
+  `SERVE_FRONTEND=true` (ver `backend/src/index.ts`) — así un refresh del navegador en esas rutas
+  no cae en el handler de la API. En Electron/dev nada cambió: la API sigue en la raíz.
+
