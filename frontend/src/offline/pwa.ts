@@ -7,19 +7,19 @@
  * una ruta relativa al sw.js -- y una recarga en una ruta anidada (ej. /cotizaciones/1/editar)
  * resolvería mal esa ruta relativa. Con rutas absolutas no importa desde qué URL se registre.
  *
- * Auto-actualiza sin preguntar: una vez que el navegador detecta un SW nuevo instalado, activa
- * y recarga solo. Es más seguro que dejar JS viejo dando vueltas (así se rompió el blank-screen
- * bug que se arregló en backend/src/index.ts -- la versión nueva precacheada siempre referencia
- * archivos que sí existen).
+ * El SW generado (vite.config.ts: skipWaiting+clientsClaim) activa y toma control de las
+ * pestañas abiertas apenas hay una versión nueva, sin esperar a que cierren todas las pestañas.
+ * Acá solo hace falta recargar la página cuando eso pasa, para que el JS ya cargado en memoria
+ * se actualice también (el SW nuevo controla los fetches, pero no reescribe la pestaña sola).
  */
 export function registerOfflineServiceWorker(): void {
   if (window.electronAPI || window.location.protocol === "file:") return;
   if (!("serviceWorker" in navigator)) return;
 
-  let refreshing = false;
+  let reloading = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (refreshing) return;
-    refreshing = true;
+    if (reloading) return;
+    reloading = true;
     window.location.reload();
   });
 
@@ -27,16 +27,8 @@ export function registerOfflineServiceWorker(): void {
     navigator.serviceWorker
       .register("/sw.js", { scope: "/" })
       .then((registration) => {
-        registration.addEventListener("updatefound", () => {
-          const installing = registration.installing;
-          installing?.addEventListener("statechange", () => {
-            if (installing.state === "installed" && navigator.serviceWorker.controller) {
-              // Hay una versión nueva instalada y en espera: la activa de una vez (el SW
-              // generado por Workbox escucha este mensaje y llama a skipWaiting()).
-              installing.postMessage({ type: "SKIP_WAITING" });
-            }
-          });
-        });
+        // Revisa si hay una versión nueva cada vez que vuelve la pestaña a primer plano
+        // (evita quedarse con JS viejo por días en un equipo que nunca cierra el navegador).
         document.addEventListener("visibilitychange", () => {
           if (document.visibilityState === "visible") void registration.update();
         });
