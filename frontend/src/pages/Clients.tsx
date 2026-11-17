@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { deleteClient, listClients, type ClientListItem } from "../services/clients";
+import { getCachedClients } from "../offline/cacheRefresh";
 import { ApiError, readAuthSessionFromStorage, refreshAuthSessionFromServer } from "../services/api";
 import {
   deleteCotizacion,
@@ -198,6 +199,7 @@ export default function Clients() {
   const [clients, setClients] = useState<ClientListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [listLoadError, setListLoadError] = useState("");
+  const [usingCachedClients, setUsingCachedClients] = useState(false);
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
   const [sendingEcfId, setSendingEcfId] = useState<number | null>(null);
   const [downloadError, setDownloadError] = useState<string>("");
@@ -287,13 +289,22 @@ export default function Clients() {
     }
   }, [company?.id, company?.certificate_keyphrase]);
 
-  useEffect(() => {
-    const fetchClients = async () => {
-      setListLoadError("");
-      try {
-        const { clients: loaded } = await listClients();
-        setClients(loaded);
-      } catch (error) {
+  const fetchClients = async () => {
+    setListLoadError("");
+    setLoading(true);
+    try {
+      const { clients: loaded } = await listClients();
+      setClients(loaded);
+      setUsingCachedClients(false);
+    } catch (error) {
+      // Sin conexión (o backend caído): se muestra el último cache guardado en el navegador en
+      // vez de dejar la lista vacía -- si no, no hay forma de trabajar offline (ver un cliente,
+      // elegirlo para una cotización, etc.).
+      const cached = await getCachedClients();
+      if (cached.length > 0) {
+        setClients(cached);
+        setUsingCachedClients(true);
+      } else {
         const msg =
           error instanceof ApiError
             ? error.message
@@ -303,12 +314,14 @@ export default function Clients() {
         setListLoadError(msg);
         setClients([]);
         console.error("Error al cargar clientes", error);
-      } finally {
-        setLoading(false);
       }
-    };
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    fetchClients();
+  useEffect(() => {
+    void fetchClients();
   }, []);
 
   const handleDownload = async (cotizacionId: number, clientName: string) => {
@@ -1114,6 +1127,12 @@ export default function Clients() {
             </div>
           </div>
         </div>
+        {usingCachedClients && !loading && (
+          <div className="px-6 sm:px-8 pt-4 text-xs font-medium text-amber-800 bg-amber-50 border-b border-amber-200 py-2">
+            Sin conexión — mostrando los clientes guardados en este dispositivo (puede no estar
+            al día).
+          </div>
+        )}
         {loading ? (
           <div className="p-6 sm:p-8 text-gray-500 text-center">
             Cargando clientes...
@@ -1127,20 +1146,7 @@ export default function Clients() {
             <button
               type="button"
               className="mt-4 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-800 hover:bg-indigo-100"
-              onClick={() => {
-                setLoading(true);
-                void listClients()
-                  .then(({ clients: loaded }) => {
-                    setClients(loaded);
-                    setListLoadError("");
-                  })
-                  .catch((error) => {
-                    setListLoadError(
-                      error instanceof Error ? error.message : "Error al cargar clientes.",
-                    );
-                  })
-                  .finally(() => setLoading(false));
-              }}
+              onClick={() => void fetchClients()}
             >
               Reintentar carga
             </button>

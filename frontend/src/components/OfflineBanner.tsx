@@ -5,10 +5,10 @@ import { readAuthSessionFromStorage } from "../services/api";
 import { listOfflineCotizaciones, retryOfflineCotizacion } from "../offline/offlineQueue";
 import type { OfflineCotizacion } from "../offline/db";
 
+/** El resumen y la lista de ventas pendientes vive en OfflinePendingSales; esto solo cubre el
+ * aviso de "sin conexión" y los errores permanentes (que necesitan una acción de reintentar). */
 export default function OfflineBanner() {
   const online = useOnlineStatus();
-  const [pending, setPending] = useState(0);
-  const [syncing, setSyncing] = useState(false);
   const [permanentErrors, setPermanentErrors] = useState<OfflineCotizacion[]>([]);
 
   const refreshErrorsList = async () => {
@@ -20,11 +20,7 @@ export default function OfflineBanner() {
 
   useEffect(() => {
     void refreshErrorsList();
-    return subscribeOfflineSync((info) => {
-      setPending(info.pending);
-      setSyncing(info.syncing);
-      void refreshErrorsList();
-    });
+    return subscribeOfflineSync(() => void refreshErrorsList());
   }, []);
 
   const handleRetry = async (localId: string) => {
@@ -32,7 +28,7 @@ export default function OfflineBanner() {
     void runOfflineSync();
   };
 
-  if (online && pending === 0) return null;
+  if (online && permanentErrors.length === 0) return null;
 
   return (
     <div className="mb-3 space-y-2">
@@ -40,13 +36,6 @@ export default function OfflineBanner() {
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-medium text-amber-900 flex items-center gap-2">
           <span className="inline-block h-2 w-2 rounded-full bg-amber-500" aria-hidden />
           Sin conexión — podés seguir trabajando; se sincroniza sola al volver internet.
-        </div>
-      )}
-      {pending > 0 && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-medium text-blue-900">
-          {syncing
-            ? `Sincronizando ventas pendientes… (${pending} en cola)`
-            : `${pending} venta${pending === 1 ? "" : "s"} guardada${pending === 1 ? "" : "s"} offline, pendiente${pending === 1 ? "" : "s"} de enviar.`}
         </div>
       )}
       {permanentErrors.length > 0 && (
