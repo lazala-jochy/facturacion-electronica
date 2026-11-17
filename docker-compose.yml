@@ -1,0 +1,62 @@
+services:
+  backend:
+    image: node:20-bookworm-slim
+    working_dir: /app/backend
+    command: sh -c "apt-get update -qq && apt-get install -y -qq openssl ca-certificates libicu-dev > /dev/null && npm install && npx prisma generate && npx prisma migrate deploy && echo 'Esperando firmador DGII .NET...' && until [ -x ./dotnet-signer/DgiiXmlSigner ]; do sleep 1; done && npx ts-node-dev src/index.ts"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      UPLOADS_DIR: /data/uploads
+      DATABASE_URL: ${DATABASE_URL}
+      DIRECT_URL: ${DIRECT_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      APP_SECRETS_KEY: ${APP_SECRETS_KEY:-}
+      SUPABASE_FUNCTIONS_URL: ${SUPABASE_FUNCTIONS_URL:-}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      ECF_GATEWAY_BASE_URL: ${ECF_GATEWAY_BASE_URL:-}
+      ECF_GATEWAY_API_KEY: ${ECF_GATEWAY_API_KEY:-}
+      ECF_GATEWAY_CONNECTOR: ${ECF_GATEWAY_CONNECTOR:-false}
+    volumes:
+      - ./backend:/app/backend
+      - backend_node_modules:/app/backend/node_modules
+      - backend_uploads:/data/uploads
+      - dotnet_out:/app/backend/dotnet-signer
+    ports:
+      - "${BACKEND_PORT:-3001}:3001"
+    depends_on:
+      - dotnet-signer
+
+  frontend:
+    image: node:20-bookworm-slim
+    working_dir: /app/frontend
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    environment:
+      VITE_API_URL: /api
+      VITE_SUPABASE_FUNCTIONS_URL: ${VITE_SUPABASE_FUNCTIONS_URL:-}
+      VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
+    volumes:
+      - ./frontend:/app/frontend
+      - frontend_node_modules:/app/frontend/node_modules
+    ports:
+      - "5173:5173"
+      - "24678:24678"
+    depends_on:
+      - backend
+
+  dotnet-signer:
+    image: mcr.microsoft.com/dotnet/sdk:10.0
+    working_dir: /src
+    command: sh -c "dotnet publish DgiiXmlSigner.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o /out && tail -f /dev/null"
+    volumes:
+      - ./backend/dotnet/DgiiXmlSigner:/src
+      - dotnet_out:/out
+
+volumes:
+  backend_node_modules:
+  frontend_node_modules:
+  backend_uploads:
+  dotnet_out:

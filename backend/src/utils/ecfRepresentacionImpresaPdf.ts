@@ -59,7 +59,8 @@ const unidadCorta = (row: RiItemRow): string => {
   if (!c) return row.unidadLabel || "—";
   const map: Record<string, string> = {
     "41": "CAJ",
-    "43": "PZA",
+    "34": "PZA",
+    "43": "UND",
     "48": "DOC",
     "12": "DOC",
     "23": "KG",

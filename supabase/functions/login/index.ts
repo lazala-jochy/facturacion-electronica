@@ -54,7 +54,10 @@ Deno.serve(async (req) => {
       const tokenHash = createHash("sha256").update(rawRefresh).digest("hex");
       const expiresAt = new Date(Date.now() + REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000);
 
-      await admin.query(`DELETE FROM refresh_tokens WHERE user_id = $1`, [user.id]);
+      // No se borran los refresh tokens existentes del usuario: loguearse de nuevo (otra
+      // pestaña, otro dispositivo, o tras perder el de "cuenta guardada") no debe invalidar
+      // sesiones ya activas en otros lados -- si no, la cuenta guardada queda muerta apenas
+      // el usuario vuelve a teclear su contraseña en cualquier lugar.
       await admin.query(
         `INSERT INTO refresh_tokens (token_hash, user_id, company_id, expires_at) VALUES ($1, $2, $3, $4)`,
         [tokenHash, user.id, user.company_id, expiresAt],

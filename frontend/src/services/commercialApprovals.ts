@@ -1,4 +1,4 @@
-import { apiFetch, authenticatedFetch, readAuthSessionFromStorage, ApiError } from "./api";
+import { apiFetch, authenticatedFetch, downloadZipFromPath, readAuthSessionFromStorage, ApiError } from "./api";
 
 export type CommercialApprovalResult = {
   ok: boolean;
@@ -76,7 +76,6 @@ export async function rejectCommercialApproval(
 export async function runCommercialApprovalBatch(body: {
   excel_path?: string;
   excel_file?: File;
-  desktop_parent_dir?: string;
 }): Promise<CommercialApprovalBatchRunResponse> {
   if (body.excel_file) {
     const session = readAuthSessionFromStorage();
@@ -84,9 +83,6 @@ export async function runCommercialApprovalBatch(body: {
 
     const fd = new FormData();
     fd.append("excel", body.excel_file);
-    if (body.desktop_parent_dir?.trim()) {
-      fd.append("desktop_parent_dir", body.desktop_parent_dir.trim());
-    }
 
     let response: Response;
     try {
@@ -124,10 +120,16 @@ export async function runCommercialApprovalBatch(body: {
     method: "POST",
     body: JSON.stringify({
       excel_path: body.excel_path.trim(),
-      desktop_parent_dir: body.desktop_parent_dir,
     }),
   });
 }
+
+/** Descarga como ZIP la carpeta de un lote ACECF generado (xml/, firmados/). */
+export const downloadCommercialApprovalBatchZip = (outputRoot: string): Promise<string> =>
+  downloadZipFromPath(
+    `/commercial-approvals/batch/download-zip?dir=${encodeURIComponent(outputRoot)}`,
+    "acecf-dgii.zip",
+  );
 
 export async function sendCommercialApprovalBatch(body: {
   out_signed_dir: string;

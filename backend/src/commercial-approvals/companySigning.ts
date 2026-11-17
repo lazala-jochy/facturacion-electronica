@@ -14,13 +14,18 @@ export type CompanySigningMaterial = {
 export async function loadCompanySigningMaterial(
   company: Pick<
     Company,
-    "id" | "certificateSalt" | "certificateEncPath" | "certificatePasswordEnc" | "certificateKeyphraseEnc"
+    | "id"
+    | "appSecretsKeyEnc"
+    | "certificateSalt"
+    | "certificateEncPath"
+    | "certificatePasswordEnc"
+    | "certificateKeyphraseEnc"
   >,
   uploadsRoot = getUploadsRoot(),
 ): Promise<CompanySigningMaterial | null> {
   if (!companyHasCertificateRecord(company)) return null;
   const encryptionSecret = assertCertificateEncryptionSecret(
-    decryptCompanySecret(company.certificateKeyphraseEnc) ?? "",
+    decryptCompanySecret(company.certificateKeyphraseEnc, company) ?? "",
   );
   const loaded = await loadDecryptedPkcs12ForCompany(company, uploadsRoot, encryptionSecret);
   if (!loaded) return null;

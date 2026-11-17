@@ -102,6 +102,4 @@ RUN mkdir -p /data/uploads/companies
 
 EXPOSE 3001
 
-COPY .env .env
-
 CMD ["node", "dist/index.js"]

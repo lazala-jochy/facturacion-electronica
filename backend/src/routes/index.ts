@@ -120,7 +120,7 @@ export const buildRouter = () => {
     "/ecf-excel-batch/run",
     requireAuth,
     ecfExcelUpload,
-    asyncHandler(ecfExcelBatchController.runExcelBatchToDesktopHandler),
+    asyncHandler(ecfExcelBatchController.runExcelBatchHandler),
   );
   router.post(
     "/ecf-excel-batch/send",
@@ -137,11 +137,21 @@ export const buildRouter = () => {
     requireAuth,
     asyncHandler(ecfExcelBatchController.sendRfceToDgiiHandler),
   );
+  router.get(
+    "/ecf-excel-batch/download-zip",
+    requireAuth,
+    asyncHandler(ecfExcelBatchController.downloadEcfBatchZipHandler),
+  );
 
   router.post(
     "/portal-consumo-menor-250/export",
     requireAuth,
     asyncHandler(portalConsumoMenor250Controller.exportPortalConsumoMenor250Handler),
+  );
+  router.get(
+    "/portal-consumo-menor-250/download-zip",
+    requireAuth,
+    asyncHandler(portalConsumoMenor250Controller.downloadPortalConsumoMenor250ZipHandler),
   );
 
   router.post(
@@ -164,6 +174,11 @@ export const buildRouter = () => {
     "/commercial-approvals/batch/send",
     requireAuth,
     asyncHandler(commercialApprovalsController.commercialApprovalBatchSendHandler),
+  );
+  router.get(
+    "/commercial-approvals/batch/download-zip",
+    requireAuth,
+    asyncHandler(commercialApprovalsController.commercialApprovalBatchDownloadZipHandler),
   );
 
   router.post(

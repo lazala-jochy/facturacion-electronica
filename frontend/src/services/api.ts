@@ -296,3 +296,26 @@ export const apiFetch = async <T>(
   }
   return data as T;
 };
+
+/**
+ * Descarga un ZIP generado en el servidor (lotes de prueba ECF, ACECF, etc.) y dispara la
+ * descarga del navegador. Reemplaza la carpeta del Escritorio que usaba la app de Electron.
+ */
+export const downloadZipFromPath = async (path: string, fallbackFilename: string): Promise<string> => {
+  const response = await authenticatedFetch(path);
+  if (!response.ok) {
+    const data = await parseJsonResponse(response);
+    throw new ApiError(responseErrorMessage(data, response), response.status, data);
+  }
+  const blob = await response.blob();
+  const disp = response.headers.get("Content-Disposition") ?? "";
+  const match = /filename="([^"]+)"/i.exec(disp);
+  const filename = match?.[1] ?? fallbackFilename;
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+  return filename;
+};

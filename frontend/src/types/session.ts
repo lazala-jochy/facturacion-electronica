@@ -55,6 +55,8 @@ export type AuthCompany = {
   token_cached?: boolean;
   /** Clave de cifrado del .p12 guardada en perfil (para enviar e-CF sin reingresarla en Cotizaciones). */
   certificate_keyphrase?: string | null;
+  /** Indica si la empresa ya tiene APP_SECRETS_KEY guardada en la BD. */
+  app_secrets_key_configured?: boolean;
 };
 
 /** Sesión persistida: JWT + refresh + contexto de usuario y empresa (multi-tenant). */

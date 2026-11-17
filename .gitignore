@@ -9,6 +9,8 @@ electron/dist/
 backend/dist/
 frontend/dist/
 backend/dotnet/DgiiXmlSigner/publish/
+backend/dotnet/DgiiXmlSigner/bin/
+backend/dotnet/DgiiXmlSigner/obj/
 
 # Logs
 *.log

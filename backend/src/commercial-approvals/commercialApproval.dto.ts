@@ -8,7 +8,7 @@ export type CommercialApprovalActionBody = {
   version?: string;
   /** Si true (default), envía el XML firmado a DGII tras generarlo. */
   send_to_dgii?: boolean;
-  /** Carpeta donde guardar xml/ y firmados/ (Escritorio u home). */
+  /** Si viene definido (cualquier valor), además persiste xml/ y firmados/ en el servidor. */
   desktop_parent_dir?: string;
 };
 
@@ -21,7 +21,6 @@ export type CommercialApprovalBatchRunBody = {
   /** Contenido del Excel cuando se sube por multipart (sin ruta en disco). */
   excel_buffer?: Buffer;
   excel_original_name?: string;
-  desktop_parent_dir?: string;
 };
 
 export type CommercialApprovalBatchSendBody = {

@@ -1,14 +1,9 @@
-import {
-  createCipheriv,
-  createDecipheriv,
-  randomBytes,
-  scryptSync,
-} from "crypto";
+import { randomBytes, scryptSync } from "crypto";
+import type { Company } from "@prisma/client";
 import forge from "node-forge";
+import { appSecretsKeyFor } from "./appSecretsKey";
+import { open, seal } from "./seal";
 
-const AES = "aes-256-gcm";
-const IV_LEN = 12;
-const AUTH_TAG_LEN = 16;
 const SALT_BYTES = 16;
 const MIN_ENCRYPTION_SECRET_LEN = 8;
 
@@ -26,26 +21,6 @@ const deriveStorageKey = (userSecretUtf8: string, salt: Buffer, companyId: numbe
   });
 };
 
-const seal = (key: Buffer, plaintext: Buffer): Buffer => {
-  const iv = randomBytes(IV_LEN);
-  const cipher = createCipheriv(AES, key, iv);
-  const enc = Buffer.concat([cipher.update(plaintext), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return Buffer.concat([iv, tag, enc]);
-};
-
-const open = (key: Buffer, payload: Buffer): Buffer => {
-  if (payload.length < IV_LEN + AUTH_TAG_LEN) {
-    throw new Error("Paquete cifrado inválido.");
-  }
-  const iv = payload.subarray(0, IV_LEN);
-  const tag = payload.subarray(IV_LEN, IV_LEN + AUTH_TAG_LEN);
-  const data = payload.subarray(IV_LEN + AUTH_TAG_LEN);
-  const decipher = createDecipheriv(AES, key, iv);
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(data), decipher.final()]);
-};
-
 export function assertCertificateEncryptionSecret(secret: string): string {
   const s = typeof secret === "string" ? secret.normalize("NFKC").trim() : "";
   if (s.length < MIN_ENCRYPTION_SECRET_LEN) {
@@ -60,40 +35,20 @@ export function generateCertificateSalt(): Buffer {
   return randomBytes(SALT_BYTES);
 }
 
-/**
- * Cifrado de secretos de empresa que el backend necesita leer sin una
- * contraseña interactiva (dgiiPassword, certificateKeyphrase) — a diferencia
- * del .p12, cuya clave la escribe el usuario cada vez. Usa una clave maestra
- * de la app (alta entropía, no una contraseña humana) en vez de scrypt.
- */
-const APP_SECRETS_KEY_LEN = 32;
-
-let cachedAppSecretsKey: Buffer | null = null;
-
-const getAppSecretsKey = (): Buffer => {
-  if (cachedAppSecretsKey) return cachedAppSecretsKey;
-  const raw = process.env.APP_SECRETS_KEY?.trim();
-  if (!raw) {
-    throw new Error(
-      "APP_SECRETS_KEY no esta configurada. Generar con: node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\"",
-    );
-  }
-  const key = Buffer.from(raw, "base64");
-  if (key.length !== APP_SECRETS_KEY_LEN) {
-    throw new Error(`APP_SECRETS_KEY debe decodificar a ${APP_SECRETS_KEY_LEN} bytes (base64).`);
-  }
-  cachedAppSecretsKey = key;
-  return key;
-};
+type CompanyWithSecretsKey = Pick<Company, "id" | "appSecretsKeyEnc">;
 
 /** Cifra un secreto de empresa (dgiiPassword, certificateKeyphrase) para guardar en BD. */
-export const encryptCompanySecret = (plaintext: string): string =>
-  seal(getAppSecretsKey(), Buffer.from(plaintext, "utf8")).toString("base64");
+export const encryptCompanySecret = (plaintext: string, company: CompanyWithSecretsKey): string =>
+  seal(Buffer.from(appSecretsKeyFor(company), "base64"), Buffer.from(plaintext, "utf8")).toString("base64");
 
 /** Descifra un secreto de empresa cifrado con encryptCompanySecret. Null-safe. */
-export const decryptCompanySecret = (ciphertextB64: string | null | undefined): string | null => {
+export const decryptCompanySecret = (
+  ciphertextB64: string | null | undefined,
+  company: CompanyWithSecretsKey,
+): string | null => {
   if (!ciphertextB64) return null;
-  return open(getAppSecretsKey(), Buffer.from(ciphertextB64, "base64")).toString("utf8");
+  const key = Buffer.from(appSecretsKeyFor(company), "base64");
+  return open(key, Buffer.from(ciphertextB64, "base64")).toString("utf8");
 };
 
 /** Valida contraseña .p12 leyendo el contenedor PKCS#12 desde buffer. */

@@ -1,0 +1,1 @@
+-- ALTER TABLE "companies" ADD COLUMN "app_secrets_key_enc" TEXT;

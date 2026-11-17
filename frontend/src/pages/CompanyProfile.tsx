@@ -147,6 +147,8 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
   const [certificatePassword, setCertificatePassword] = useState(session.company.certificate_keyphrase ?? "");
   const [showP12Password, setShowP12Password] = useState(false);
   const [clearCertificate, setClearCertificate] = useState(false);
+  const [appSecretsKey, setAppSecretsKey] = useState("");
+  const [showAppSecretsKey, setShowAppSecretsKey] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -235,6 +237,19 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
       setFieldErrors({ certificatePassword: "Primero subí el archivo .p12/.pfx." });
       return;
     }
+    const appSecretsKeyTrim = appSecretsKey.trim();
+    if (appSecretsKeyTrim) {
+      let keyBytes = 0;
+      try {
+        keyBytes = atob(appSecretsKeyTrim).length;
+      } catch {
+        keyBytes = -1;
+      }
+      if (keyBytes !== 32) {
+        setError("APP_SECRETS_KEY debe ser base64 de 32 bytes. Generala con: node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\".");
+        return;
+      }
+    }
     setLoading(true);
     try {
       type ProfileRes = { message: string; user: AuthUser; company: AuthCompany };
@@ -260,6 +275,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
         fd.append("regime", regime.trim() || "Régimen general");
         fd.append("dgii_username", dgiiUsername.trim());
         fd.append("dgii_password", dgiiPassword.trim());
+        if (appSecretsKeyTrim) fd.append("app_secrets_key", appSecretsKeyTrim);
         fd.append("ecf_gateway_base_url", ecfGatewayBaseUrl.trim());
         fd.append("ecf_gateway_api_key", ecfGatewayApiKey.trim());
         if (certificateFile || session.company.certificateConfigured) {
@@ -299,6 +315,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
             regime: regime.trim() || undefined,
             dgii_username: dgiiUsername.trim(),
             dgii_password: dgiiPassword.trim(),
+            ...(appSecretsKeyTrim ? { app_secrets_key: appSecretsKeyTrim } : {}),
             ecf_gateway_base_url: ecfGatewayBaseUrl.trim(),
             ecf_gateway_api_key: ecfGatewayApiKey.trim(),
             ...(session.company.certificateConfigured || pwdTrim
@@ -324,6 +341,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
       setEcfGatewayBaseUrl(res.company.ecfGatewayBaseUrl ?? "");
       setEcfGatewayApiKey(res.company.ecfGatewayApiKey ?? "");
       setClearCertificate(false);
+      setAppSecretsKey("");
       setSuccess("Perfil de empresa actualizado.");
     } catch (err) {
       const message = err instanceof Error ? err.message : "No se pudo actualizar.";
@@ -673,6 +691,48 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
                       visible={showDgiiPassword}
                       onToggle={() => setShowDgiiPassword((v) => !v)}
                       label={showDgiiPassword ? "Ocultar contraseña DGII" : "Mostrar contraseña DGII"}
+                    />
+                  </span>
+                </div>
+              </Field>
+            </div>
+          </section>
+
+          {/* APP_SECRETS_KEY */}
+          <section className="px-6 py-8 sm:px-8">
+            <SectionTitle
+              title="Clave de secretos de la empresa (APP_SECRETS_KEY)"
+              description="Clave base64 de 32 bytes con la que se cifran la contraseña DGII y la clave del certificado en la base de datos. Se guarda cifrada y nunca se muestra nuevamente."
+            />
+            <div className="max-w-2xl space-y-5">
+              <StatusLine
+                ok={Boolean(session.company.app_secrets_key_configured)}
+                label={
+                  session.company.app_secrets_key_configured
+                    ? "APP_SECRETS_KEY configurada"
+                    : "APP_SECRETS_KEY pendiente"
+                }
+              />
+              <Field
+                label="APP_SECRETS_KEY"
+                htmlFor="app-secrets-key-prof"
+                hint="Pegá acá el valor base64. Dejar vacío conserva la clave actual."
+              >
+                <div className="relative">
+                  <input
+                    id="app-secrets-key-prof"
+                    type={showAppSecretsKey ? "text" : "password"}
+                    autoComplete="off"
+                    className={`${inputCls} pr-10`}
+                    placeholder="Base64 de 32 bytes"
+                    value={appSecretsKey}
+                    onChange={(e) => setAppSecretsKey(e.target.value)}
+                  />
+                  <span className="absolute inset-y-0 right-0 flex items-center pr-1 pt-1">
+                    <EyeToggle
+                      visible={showAppSecretsKey}
+                      onToggle={() => setShowAppSecretsKey((v) => !v)}
+                      label={showAppSecretsKey ? "Ocultar APP_SECRETS_KEY" : "Mostrar APP_SECRETS_KEY"}
                     />
                   </span>
                 </div>

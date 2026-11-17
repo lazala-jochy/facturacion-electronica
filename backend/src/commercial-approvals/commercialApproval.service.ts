@@ -1,12 +1,13 @@
 import type { Company } from "@prisma/client";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import XLSX from "xlsx";
 import { prisma } from "../prisma";
 import { signXmlWithP12Buffer } from "../services/signer";
 import { submitSignedAcecfWithTenantConfig } from "../services/dgiiEcfApi.service";
 import { DgiiEcfError } from "../types/dgiiEcf";
+import { getUploadsRoot } from "../utils/uploadsRoot";
+import { createBatchOutputDir, isPathInsideCompanyBatchOutput } from "../utils/batchOutputDir";
 import type {
   CommercialApprovalActionBody,
   CommercialApprovalBatchRunBody,
@@ -62,27 +63,8 @@ function pickField(row: Record<string, string>, ...names: string[]): string {
   return "";
 }
 
-function defaultDesktopDir(): string | null {
-  const home = os.homedir();
-  for (const name of ["Desktop", "Escritorio", "OneDrive/Desktop", "OneDrive/Escritorio"]) {
-    const p = path.join(home, ...name.split("/"));
-    try {
-      if (fs.statSync(p).isDirectory()) return path.resolve(p);
-    } catch {
-      //
-    }
-  }
-  return null;
-}
-
-function resolveOutputRoot(desktopParentDir?: string): string {
-  const raw = desktopParentDir?.trim();
-  const parent = raw ? path.resolve(raw) : defaultDesktopDir();
-  if (!parent) {
-    throw new Error("No se pudo determinar carpeta de salida. Indicá desktop_parent_dir.");
-  }
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const root = path.join(parent, `ACECF-DGII-${stamp}`);
+function resolveOutputRoot(companyId: number): string {
+  const root = createBatchOutputDir(getUploadsRoot(), companyId, "ACECF-DGII");
   fs.mkdirSync(path.join(root, "xml"), { recursive: true });
   fs.mkdirSync(path.join(root, "firmados"), { recursive: true });
   return root;
@@ -213,8 +195,7 @@ export async function processCommercialApprovalAccept(
   if (!input.rncComprador) throw new Error("rnc_comprador obligatorio para ACECF.");
 
   const { xml, encf, filename } = buildAcecfXml(input);
-  const outputRoot =
-    body.desktop_parent_dir !== undefined ? resolveOutputRoot(body.desktop_parent_dir) : undefined;
+  const outputRoot = body.desktop_parent_dir !== undefined ? resolveOutputRoot(companyId) : undefined;
 
   return signAndOptionalSend(company, xml, filename, encf, {
     sendToDgii: body.send_to_dgii !== false,
@@ -236,8 +217,7 @@ export async function processCommercialApprovalReject(
   if (!input.rncComprador) throw new Error("rnc_comprador obligatorio para ACECF.");
 
   const { xml, encf, filename } = buildAcecfXml(input);
-  const outputRoot =
-    body.desktop_parent_dir !== undefined ? resolveOutputRoot(body.desktop_parent_dir) : undefined;
+  const outputRoot = body.desktop_parent_dir !== undefined ? resolveOutputRoot(companyId) : undefined;
 
   return signAndOptionalSend(company, xml, filename, encf, {
     sendToDgii: body.send_to_dgii !== false,
@@ -408,7 +388,7 @@ export async function runCommercialApprovalBatchFromExcel(
       "Indicá excel_path (app de escritorio) o subí el archivo Excel (campo excel).",
     );
   }
-  const outputRoot = resolveOutputRoot(body.desktop_parent_dir);
+  const outputRoot = resolveOutputRoot(companyId);
   const outXmlDir = path.join(outputRoot, "xml");
   const outSignedDir = path.join(outputRoot, "firmados");
 
@@ -470,6 +450,9 @@ export async function sendCommercialApprovalBatchSigned(
   if (!company) throw new Error("Empresa no encontrada.");
 
   const dir = path.resolve(body.out_signed_dir.trim());
+  if (!isPathInsideCompanyBatchOutput(getUploadsRoot(), companyId, dir)) {
+    throw new Error("Por seguridad, solo se permite enviar archivos de un lote generado por tu empresa.");
+  }
   if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
     throw new Error("Carpeta de firmados no válida.");
   }

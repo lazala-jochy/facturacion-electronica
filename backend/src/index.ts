@@ -48,8 +48,21 @@ const bootstrap = async () => {
     // navegador en esas rutas caería en el handler de la API (401 JSON) en vez de la SPA.
     app.use("/api", buildRouter());
     const frontendDist = path.join(process.cwd(), "public");
-    app.use(express.static(frontendDist));
+    // index.html nunca se cachea: si no, tras cada redeploy el navegador puede seguir usando un
+    // index.html viejo que apunta a JS con hash que ya no existe en el servidor nuevo (pantalla en
+    // blanco + "Expected a JavaScript module but server responded with text/html"). Los demás
+    // archivos (assets/*.js, *.css) sí llevan hash en el nombre, así que cachearlos es seguro.
+    app.use(
+      express.static(frontendDist, {
+        setHeaders: (res, filePath) => {
+          if (path.basename(filePath) === "index.html") {
+            res.setHeader("Cache-Control", "no-store");
+          }
+        },
+      }),
+    );
     app.get(/^(?!\/api\/|\/uploads\/).*$/, (_req, res) => {
+      res.set("Cache-Control", "no-store");
       res.sendFile(path.join(frontendDist, "index.html"));
     });
   } else {

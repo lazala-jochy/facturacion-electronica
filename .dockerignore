@@ -21,6 +21,8 @@ backend/dotnet/DgiiXmlSigner/obj
 backend/dotnet/DgiiXmlSigner/publish
 
 # Secretos y datos locales -- nunca deben quedar horneados en una capa de la imagen.
+.env
+.env.docker
 backend/.env
 backend/dev.db
 backend/logs

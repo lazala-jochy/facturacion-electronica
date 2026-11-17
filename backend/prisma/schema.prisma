@@ -73,6 +73,7 @@ model Company {
   tokenCacheEnvironment      String?      @map("token_cache_environment")
   // Clave de cifrado del .p12. Cifrada con APP_SECRETS_KEY (ver companyCertificateCrypto.ts); ya no texto plano.
   certificateKeyphraseEnc    String?      @map("certificate_keyphrase_enc")
+  appSecretsKeyEnc           String?      @map("app_secrets_key_enc")
   createdAt                DateTime     @default(now()) @map("created_at")
   users        User[]
   clients      Client[]

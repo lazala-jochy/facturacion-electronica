@@ -6,6 +6,7 @@ import AcecfExcelSelector from "../components/AcecfExcelSelector";
 import {
   runCommercialApprovalBatch,
   sendCommercialApprovalBatch,
+  downloadCommercialApprovalBatchZip,
   type CommercialApprovalBatchRunResponse,
   type CommercialApprovalBatchSendResponse,
 } from "../services/commercialApprovals";
@@ -68,22 +69,14 @@ export default function DgiiAprobacionesComerciales({
   const [urlSaving, setUrlSaving] = useState(false);
   const [urlError, setUrlError] = useState("");
   const [urlSuccess, setUrlSuccess] = useState("");
-  const [desktopPreview, setDesktopPreview] = useState("");
   const [excelFile, setExcelFile] = useState<File | null>(null);
   const [batchLoading, setBatchLoading] = useState(false);
   const [batchSending, setBatchSending] = useState(false);
   const [batchError, setBatchError] = useState("");
   const [batchResult, setBatchResult] = useState<CommercialApprovalBatchRunResponse | null>(null);
   const [sendResult, setSendResult] = useState<CommercialApprovalBatchSendResponse | null>(null);
-
-  const electron = window.electronAPI;
-  const canUseFolderPicker = !!electron?.pickOutputParentFolder;
-
-  useEffect(() => {
-    const api = window.electronAPI;
-    if (!api?.getDesktopParentPath) return;
-    void api.getDesktopParentPath().then(setDesktopPreview);
-  }, []);
+  const [downloadingZip, setDownloadingZip] = useState(false);
+  const [downloadZipError, setDownloadZipError] = useState("");
 
   useEffect(() => {
     setDgiiUrls(companyAcecfDgiiUrls(company));
@@ -135,12 +128,6 @@ export default function DgiiAprobacionesComerciales({
     persist({ ...rest, notes });
   };
 
-  const browseFolder = async () => {
-    if (!electron?.pickOutputParentFolder) return;
-    const chosen = await electron.pickOutputParentFolder();
-    if (chosen) setDesktopPreview(chosen);
-  };
-
   const hasExcelSelected = !!(progress.excel?.filePath?.trim() || excelFile || progress.excel?.fileName);
 
   const runAcecfBatch = async () => {
@@ -160,14 +147,9 @@ export default function DgiiAprobacionesComerciales({
     setBatchResult(null);
     setSendResult(null);
     try {
-      let desktop_parent_dir = desktopPreview.trim() || undefined;
-      if (electron?.getDesktopParentPath && !desktop_parent_dir) {
-        desktop_parent_dir = await electron.getDesktopParentPath();
-      }
       const data = await runCommercialApprovalBatch({
         excel_path: excelPath,
         excel_file: excelFile ?? undefined,
-        desktop_parent_dir,
       });
       setBatchResult(data);
     } catch (e) {
@@ -188,6 +170,19 @@ export default function DgiiAprobacionesComerciales({
       setBatchError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Error al enviar a DGII.");
     } finally {
       setBatchSending(false);
+    }
+  };
+
+  const downloadZip = async () => {
+    if (!batchResult?.outputRoot) return;
+    setDownloadingZip(true);
+    setDownloadZipError("");
+    try {
+      await downloadCommercialApprovalBatchZip(batchResult.outputRoot);
+    } catch (e) {
+      setDownloadZipError(e instanceof Error ? e.message : "No se pudo descargar el ZIP.");
+    } finally {
+      setDownloadingZip(false);
     }
   };
 
@@ -488,31 +483,6 @@ export default function DgiiAprobacionesComerciales({
           Usa el Excel con hoja <strong>ACECF</strong> del set oficial. No modifica el lote e-CF ni RFCE existente.
         </p>
 
-        <div className="space-y-2">
-          <label className="block text-sm font-medium text-slate-700" htmlFor="acecf-batch-desktop">
-            Carpeta de salida
-          </label>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
-            <input
-              id="acecf-batch-desktop"
-              type="text"
-              value={desktopPreview}
-              onChange={(e) => setDesktopPreview(e.target.value)}
-              placeholder={canUseFolderPicker ? "Explorar o pegar ruta…" : "Ruta del Escritorio"}
-              className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
-            {canUseFolderPicker ? (
-              <button
-                type="button"
-                onClick={() => void browseFolder()}
-                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 whitespace-nowrap"
-              >
-                Explorar…
-              </button>
-            ) : null}
-          </div>
-        </div>
-
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -530,7 +500,18 @@ export default function DgiiAprobacionesComerciales({
           >
             {batchSending ? "Enviando…" : "Enviar firmados a DGII"}
           </button>
+          {batchResult?.outputRoot ? (
+            <button
+              type="button"
+              onClick={() => void downloadZip()}
+              disabled={downloadingZip}
+              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50 disabled:opacity-60"
+            >
+              {downloadingZip ? "Descargando…" : "Descargar ZIP"}
+            </button>
+          ) : null}
         </div>
+        {downloadZipError && <p className="text-xs text-red-700">{downloadZipError}</p>}
 
         {!hasExcelSelected && (
           <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">

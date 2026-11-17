@@ -2,7 +2,6 @@ import "../types/express-auth.augment";
 import type { RequestHandler } from "express";
 import fs from "fs";
 import path from "path";
-import os from "os";
 import { prisma } from "../prisma";
 import { consultDgiiTrackId, submitSignedEcfWithTenantConfig, submitSignedRfceWithTenantConfig } from "../services/dgiiEcfApi.service";
 import { DgiiEcfError } from "../types/dgiiEcf";
@@ -13,6 +12,11 @@ import {
 } from "../utils/companyCertificateStorage";
 import { generateRiPdfsForBatchOutput } from "../services/ecfRepresentacionImpresa.service";
 import { getUploadsRoot } from "../utils/uploadsRoot";
+import {
+  createBatchOutputDir,
+  isPathInsideCompanyBatchOutput,
+  streamDirectoryAsZip,
+} from "../utils/batchOutputDir";
 
 type EcfBatchRunner = (opts: {
   assetsDir: string;
@@ -80,23 +84,6 @@ function resolveEcfAssetsDir(): string {
   );
 }
 
-function pathLooksLikeDesktopOrDeskChild(resolvedPath: string): boolean {
-  const parts = resolvedPath.split(path.sep).filter(Boolean).map((p) => p.toLowerCase());
-  return parts.includes("desktop") || parts.includes("escritorio") || parts.includes("onedrive");
-}
-
-/** Permite escritorio u otra carpeta bajo el home del usuario (p. ej. elegida con el buscador). */
-function isAllowedOutputParentDir(resolvedParent: string): boolean {
-  if (pathLooksLikeDesktopOrDeskChild(resolvedParent)) return true;
-  try {
-    const home = path.resolve(os.homedir());
-    const target = path.resolve(resolvedParent);
-    return target === home || target.startsWith(`${home}${path.sep}`);
-  } catch {
-    return false;
-  }
-}
-
 const pickStr = (b: Record<string, unknown>, k: string): string | undefined =>
   typeof b[k] === "string" ? (b[k] as string).trim() || undefined : undefined;
 
@@ -147,19 +134,6 @@ function resolveExcelPathForBatch(input: {
     );
   }
   return path.join(input.assetsDir, xlsx);
-}
-
-function defaultDesktopDir(): string | null {
-  const home = os.homedir();
-  for (const name of ["Desktop", "Escritorio", "OneDrive/Desktop", "OneDrive/Escritorio"]) {
-    const p = path.join(home, ...name.split("/"));
-    try {
-      if (fs.statSync(p).isDirectory()) return path.resolve(p);
-    } catch {
-      //
-    }
-  }
-  return null;
 }
 
 type DgiiTestStatus = "accepted" | "rejected" | "pending" | "unknown";
@@ -350,56 +324,12 @@ function orderSignedXmlByReferences(entries: SignedXmlSendEntry[]): SignedXmlSen
   return ordered;
 }
 
-/** POST /ecf-excel-batch/run — Excel en assets → XML y firmados en subcarpeta del Escritorio. */
-export const runExcelBatchToDesktopHandler: RequestHandler = async (req, res, next) => {
+/** POST /ecf-excel-batch/run — Excel en assets → XML y firmados en carpeta de lote descargable como ZIP. */
+export const runExcelBatchHandler: RequestHandler = async (req, res, next) => {
   try {
     const auth = req.auth;
     if (!auth) {
       res.status(401).json({ message: "No autorizado." });
-      return;
-    }
-
-    const rawParent =
-      typeof req.body?.desktop_parent_dir === "string" ? req.body.desktop_parent_dir.trim() : "";
-
-    let resolvedParent: string | null = null;
-
-    if (rawParent.length > 0) {
-      try {
-        resolvedParent = path.resolve(rawParent);
-      } catch {
-        res.status(400).json({ message: "Ruta del escritorio no válida." });
-        return;
-      }
-    } else {
-      resolvedParent = defaultDesktopDir();
-    }
-
-    if (!resolvedParent) {
-      res.status(400).json({
-        message:
-          "No se pudo detectar el Escritorio. Abra la app de escritorio o envíe desktop_parent_dir con la ruta completa.",
-      });
-      return;
-    }
-
-    let statParent: fs.Stats;
-    try {
-      statParent = fs.statSync(resolvedParent);
-    } catch {
-      res.status(400).json({ message: "No se puede acceder a la carpeta del escritorio." });
-      return;
-    }
-    if (!statParent.isDirectory()) {
-      res.status(400).json({ message: "La ruta del escritorio debe ser una carpeta." });
-      return;
-    }
-
-    if (!isAllowedOutputParentDir(resolvedParent)) {
-      res.status(400).json({
-        message:
-          "Por seguridad, solo se permite guardar dentro de tu carpeta de usuario (Escritorio, Documentos, etc.).",
-      });
       return;
     }
 
@@ -410,6 +340,7 @@ export const runExcelBatchToDesktopHandler: RequestHandler = async (req, res, ne
         rnc: true,
         dgiiEnvironment: true,
         logoUrl: true,
+        appSecretsKeyEnc: true,
         certificateSalt: true,
         certificateEncPath: true,
         certificatePasswordEnc: true,
@@ -433,7 +364,7 @@ export const runExcelBatchToDesktopHandler: RequestHandler = async (req, res, ne
     let encryptionSecret: string;
     try {
       encryptionSecret = assertCertificateEncryptionSecret(
-        decryptCompanySecret(companyRow.certificateKeyphraseEnc) ?? "",
+        decryptCompanySecret(companyRow.certificateKeyphraseEnc, companyRow) ?? "",
       );
     } catch (e) {
       res.status(400).json({
@@ -479,9 +410,7 @@ export const runExcelBatchToDesktopHandler: RequestHandler = async (req, res, ne
       return;
     }
 
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    const outputRoot = path.join(resolvedParent, `ECF-DGII-Pruebas-${stamp}`);
-    fs.mkdirSync(outputRoot, { recursive: true });
+    const outputRoot = createBatchOutputDir(uploadsRoot, auth.companyId, "ECF-DGII-Pruebas");
 
     const outXmlDir = path.join(outputRoot, "xml");
     const outSignedDir = path.join(outputRoot, "firmados");
@@ -586,9 +515,9 @@ export const sendExcelBatchSignedToDgiiHandler: RequestHandler = async (req, res
       return;
     }
 
-    if (!isAllowedOutputParentDir(outSignedDir)) {
+    if (!isPathInsideCompanyBatchOutput(getUploadsRoot(), auth.companyId, outSignedDir)) {
       res.status(400).json({
-        message: "Por seguridad, solo se permite enviar archivos desde tu carpeta de usuario.",
+        message: "Por seguridad, solo se permite enviar archivos de un lote generado por tu empresa.",
       });
       return;
     }
@@ -952,6 +881,13 @@ export const consultBatchStatusHandler: RequestHandler = async (req, res, next) 
       return;
     }
 
+    if (!isPathInsideCompanyBatchOutput(getUploadsRoot(), auth.companyId, outSignedDir)) {
+      res.status(400).json({
+        message: "Por seguridad, solo se permite consultar un lote generado por tu empresa.",
+      });
+      return;
+    }
+
     const manifest = loadSendManifest(outSignedDir);
     const entries = Object.values(manifest.entries);
     if (entries.length === 0) {
@@ -1082,9 +1018,9 @@ export const sendRfceToDgiiHandler: RequestHandler = async (req, res, next) => {
       return;
     }
 
-    if (!isAllowedOutputParentDir(rfceSignedDir)) {
+    if (!isPathInsideCompanyBatchOutput(getUploadsRoot(), auth.companyId, rfceSignedDir)) {
       res.status(400).json({
-        message: "Por seguridad, solo se permite enviar archivos desde tu carpeta de usuario.",
+        message: "Por seguridad, solo se permite enviar archivos de un lote generado por tu empresa.",
       });
       return;
     }
@@ -1210,6 +1146,37 @@ export const sendRfceToDgiiHandler: RequestHandler = async (req, res, next) => {
       failures,
       logs,
     });
+  } catch (e) {
+    next(e);
+  }
+};
+
+/** GET /ecf-excel-batch/download-zip?dir=<outputRoot> — descarga el lote generado como ZIP. */
+export const downloadEcfBatchZipHandler: RequestHandler = (req, res, next) => {
+  try {
+    const auth = req.auth;
+    if (!auth) {
+      res.status(401).json({ message: "No autorizado." });
+      return;
+    }
+
+    const dirRaw = typeof req.query.dir === "string" ? req.query.dir.trim() : "";
+    if (!dirRaw) {
+      res.status(400).json({ message: "Falta dir." });
+      return;
+    }
+
+    const dir = path.resolve(dirRaw);
+    if (!isPathInsideCompanyBatchOutput(getUploadsRoot(), auth.companyId, dir)) {
+      res.status(400).json({ message: "Por seguridad, solo se permite descargar un lote generado por tu empresa." });
+      return;
+    }
+    if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
+      res.status(404).json({ message: "La carpeta del lote ya no existe." });
+      return;
+    }
+
+    streamDirectoryAsZip(res, dir, `${path.basename(dir)}.zip`);
   } catch (e) {
     next(e);
   }

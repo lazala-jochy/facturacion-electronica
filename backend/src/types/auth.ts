@@ -45,6 +45,8 @@ export type UpdateCompanyBody = {
   dgii_ecf_endpoint?: string;
   /** Clave de cifrado del certificado guardada en perfil (se valida contra el .p12 si ya hay certificado). */
   certificate_keyphrase?: string;
+  /** Clave maestra de cifrado de secretos DGII de esta empresa (base64 de 32 bytes). */
+  app_secrets_key?: string;
   dgii_username?: string;
   dgii_password?: string;
   dgii_auth_url?: string;

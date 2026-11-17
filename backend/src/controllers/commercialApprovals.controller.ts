@@ -1,5 +1,7 @@
 import "../types/express-auth.augment";
 import type { RequestHandler } from "express";
+import fs from "fs";
+import path from "path";
 import {
   processCommercialApprovalAccept,
   processCommercialApprovalReject,
@@ -12,6 +14,8 @@ import type {
   CommercialApprovalBatchSendBody,
   CommercialApprovalRejectBody,
 } from "../commercial-approvals/commercialApproval.dto";
+import { getUploadsRoot } from "../utils/uploadsRoot";
+import { isPathInsideCompanyBatchOutput, streamDirectoryAsZip } from "../utils/batchOutputDir";
 
 const pickStr = (b: Record<string, unknown>, k: string): string | undefined =>
   typeof b[k] === "string" ? (b[k] as string) : undefined;
@@ -95,7 +99,6 @@ export const commercialApprovalBatchRunHandler: RequestHandler = async (req, res
     const uploaded = req.file;
     const body: CommercialApprovalBatchRunBody = {
       excel_path: pickStr(b, "excel_path"),
-      desktop_parent_dir: pickStr(b, "desktop_parent_dir"),
       excel_buffer: uploaded?.buffer,
       excel_original_name: uploaded?.originalname,
     };
@@ -124,6 +127,37 @@ export const commercialApprovalBatchSendHandler: RequestHandler = async (req, re
     }
     const result = await sendCommercialApprovalBatchSigned(auth.companyId, body);
     res.status(200).json({ success: true, ...result });
+  } catch (e) {
+    next(e);
+  }
+};
+
+/** GET /commercial-approvals/batch/download-zip?dir=<outputRoot> — descarga el lote ACECF como ZIP. */
+export const commercialApprovalBatchDownloadZipHandler: RequestHandler = (req, res, next) => {
+  try {
+    const auth = req.auth;
+    if (!auth) {
+      res.status(401).json({ message: "No autorizado." });
+      return;
+    }
+
+    const dirRaw = typeof req.query.dir === "string" ? req.query.dir.trim() : "";
+    if (!dirRaw) {
+      res.status(400).json({ message: "Falta dir." });
+      return;
+    }
+
+    const dir = path.resolve(dirRaw);
+    if (!isPathInsideCompanyBatchOutput(getUploadsRoot(), auth.companyId, dir)) {
+      res.status(400).json({ message: "Por seguridad, solo se permite descargar un lote generado por tu empresa." });
+      return;
+    }
+    if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
+      res.status(404).json({ message: "La carpeta del lote ya no existe." });
+      return;
+    }
+
+    streamDirectoryAsZip(res, dir, `${path.basename(dir)}.zip`);
   } catch (e) {
     next(e);
   }

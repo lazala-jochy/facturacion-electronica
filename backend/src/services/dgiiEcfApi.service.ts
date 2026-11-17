@@ -285,7 +285,7 @@ function looksLikeSwaggerHtml(contentType: string, rawText: string): boolean {
 function buildAuthRequestBody(company: Company): string {
   const rnc = rncDigits(company.rnc);
   const usuario = company.dgiiUsername!.trim();
-  const clave = decryptCompanySecret(company.dgiiPasswordEnc)!;
+  const clave = decryptCompanySecret(company.dgiiPasswordEnc, company)!;
   return JSON.stringify({
     RNC: rnc,
     Usuario: usuario,

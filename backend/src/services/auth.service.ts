@@ -16,6 +16,12 @@ import {
   verifyPkcs12Password,
 } from "../utils/companyCertificateCrypto";
 import {
+  clearCachedAppSecretsKey,
+  encryptAppSecretsKey,
+  parseAppSecretsKey,
+  setCachedAppSecretsKey,
+} from "../utils/appSecretsKey";
+import {
   encryptAndPersistCompanyCertificate,
   companyHasCertificateRecord,
   loadDecryptedPkcs12ForCompany,
@@ -92,6 +98,8 @@ export type PublicCompany = Pick<
   certificate_keyphrase: string | null;
   /** Nunca se expone el token en claro al frontend. */
   token_cached: boolean;
+  /** Indica si la empresa ya tiene APP_SECRETS_KEY guardada (el valor nunca sale del servidor). */
+  app_secrets_key_configured: boolean;
 };
 
 const REFRESH_TOKEN_DAYS = Math.max(
@@ -169,7 +177,7 @@ const publicCompany = (c: Company): PublicCompany => ({
   logoUrl: c.logoUrl,
   dgiiEcfEndpoint: c.dgiiEcfEndpoint,
   dgiiUsername: c.dgiiUsername,
-  dgiiPassword: decryptCompanySecret(c.dgiiPasswordEnc),
+  dgiiPassword: decryptCompanySecret(c.dgiiPasswordEnc, c),
   dgiiAuthUrl: c.dgiiAuthUrl,
   dgiiReceptionUrl: c.dgiiReceptionUrl,
   dgiiConsultUrl: c.dgiiConsultUrl,
@@ -200,13 +208,14 @@ const publicCompany = (c: Company): PublicCompany => ({
   certificatePath: c.certificatePath,
   tokenExpiration: c.tokenExpiration,
   certificateConfigured: companyHasCertificateRecord(c),
-  certificate_keyphrase: decryptCompanySecret(c.certificateKeyphraseEnc),
+  certificate_keyphrase: decryptCompanySecret(c.certificateKeyphraseEnc, c),
   token_cached: Boolean(
     c.tokenCache &&
       c.tokenExpiration &&
       c.tokenCacheEnvironment === (c.dgiiEnvironment ?? "CERTIFICACION") &&
       c.tokenExpiration.getTime() > Date.now(),
   ),
+  app_secrets_key_configured: Boolean(c.appSecretsKeyEnc),
 });
 
 const publicUser = (u: User) => ({
@@ -371,7 +380,7 @@ export const authService = {
             certificateSalt: persisted.certificateSalt,
             certificateEncPath: persisted.certificateEncPath,
             certificatePasswordEnc: persisted.certificatePasswordEnc,
-            certificateKeyphraseEnc: encryptCompanySecret(encryptionSecret),
+            certificateKeyphraseEnc: encryptCompanySecret(encryptionSecret, company),
           },
         });
       } catch (e) {
@@ -487,10 +496,39 @@ export const authService = {
       accessToken?: string;
     },
   ): Promise<UpdateCompanyOk | AuthErr> {
-    const existingCompany = await prisma.company.findUnique({ where: { id: companyId } });
+    let existingCompany = await prisma.company.findUnique({ where: { id: companyId } });
     const existingUser = await prisma.user.findUnique({ where: { id: userId } });
     if (!existingCompany || !existingUser) {
       return { ok: false, status: 404, message: "Empresa o usuario no encontrado." };
+    }
+
+    let appSecretsKeyUpdate: string | null | undefined;
+    if (body.app_secrets_key !== undefined) {
+      let key: string | null;
+      try {
+        key = parseAppSecretsKey(body.app_secrets_key);
+      } catch (e) {
+        return {
+          ok: false,
+          status: 400,
+          message: e instanceof Error ? e.message : "APP_SECRETS_KEY inválida.",
+        };
+      }
+      if (key) {
+        appSecretsKeyUpdate = encryptAppSecretsKey(key);
+        setCachedAppSecretsKey(companyId, key);
+        existingCompany = await prisma.company.update({
+          where: { id: companyId },
+          data: { appSecretsKeyEnc: appSecretsKeyUpdate },
+        });
+      } else {
+        appSecretsKeyUpdate = null;
+        clearCachedAppSecretsKey(companyId);
+        existingCompany = await prisma.company.update({
+          where: { id: companyId },
+          data: { appSecretsKeyEnc: null },
+        });
+      }
     }
 
     /** Campos omitidos en el body conservan el valor del perfil (p. ej. solo dgii_commercial_approval_url). */
@@ -562,7 +600,9 @@ export const authService = {
     }
     if (body.dgii_password !== undefined) {
       const rawDgiiPassword = (body.dgii_password ?? "").trim();
-      dgiiTenantMerge.dgiiPasswordEnc = rawDgiiPassword ? encryptCompanySecret(rawDgiiPassword) : null;
+      dgiiTenantMerge.dgiiPasswordEnc = rawDgiiPassword
+        ? encryptCompanySecret(rawDgiiPassword, existingCompany)
+        : null;
     }
     const parseTenantUrl = (raw: string | undefined, label: string): AuthErr | string | null => {
       const t = normalizeDgiiEcfUrl(raw);
@@ -827,6 +867,9 @@ export const authService = {
             ...dgiiTenantMerge,
             ...(hasPaso4InBody ? dgiiPaso4Merge : {}),
             ...ecfGatewayMerge,
+            ...(appSecretsKeyUpdate !== undefined
+              ? { appSecretsKeyEnc: appSecretsKeyUpdate }
+              : {}),
           },
         });
         const userRow = await tx.user.update({
@@ -932,7 +975,7 @@ export const authService = {
             certificateSalt: persisted.certificateSalt,
             certificateEncPath: persisted.certificateEncPath,
             certificatePasswordEnc: persisted.certificatePasswordEnc,
-            certificateKeyphraseEnc: encryptCompanySecret(encryptionSecret),
+            certificateKeyphraseEnc: encryptCompanySecret(encryptionSecret, companyOut),
           },
         });
       } catch (e) {
@@ -1012,7 +1055,7 @@ export const authService = {
             certificateSalt: persisted.certificateSalt,
             certificateEncPath: persisted.certificateEncPath,
             certificatePasswordEnc: persisted.certificatePasswordEnc,
-            certificateKeyphraseEnc: encryptCompanySecret(encryptionSecret),
+            certificateKeyphraseEnc: encryptCompanySecret(encryptionSecret, companyOut),
           },
         });
       } catch (e) {
@@ -1045,7 +1088,7 @@ export const authService = {
         }
         companyOut = await prisma.company.update({
           where: { id: companyId },
-          data: { certificateKeyphraseEnc: encryptCompanySecret(t) },
+          data: { certificateKeyphraseEnc: encryptCompanySecret(t, companyOut) },
         });
       } else if (t.length === 0 && !companyHasCertificateRecord(companyOut)) {
         companyOut = await prisma.company.update({

@@ -401,7 +401,7 @@ const signXmlWithDotnet = (
     });
 
     if (result.status !== 0) {
-      const message = [result.stderr, result.stdout].filter(Boolean).join("\n").trim();
+      const message = [result.error?.message, result.stderr, result.stdout].filter(Boolean).join("\n").trim();
       throw new Error(`No se pudo firmar XML con el firmador DGII .NET. ${message}`);
     }
 

@@ -167,7 +167,7 @@ export const createClientWithCotizacion: RequestHandler = async (req, res) => {
   if (companyRow && companyHasCertificateRecord(companyRow)) {
     const encOk =
       encFromBody.trim().length >= 8 ||
-      (decryptCompanySecret(companyRow.certificateKeyphraseEnc)?.trim()?.length ?? 0) >= 8;
+      (decryptCompanySecret(companyRow.certificateKeyphraseEnc, companyRow)?.trim()?.length ?? 0) >= 8;
     if (!encOk) {
       res.status(400).json({
         message:
@@ -425,7 +425,7 @@ export const updateCotizacionById: RequestHandler = async (req, res) => {
     if (companyRow && companyHasCertificateRecord(companyRow)) {
       const encOk =
         encFromBody.trim().length >= 8 ||
-        (decryptCompanySecret(companyRow.certificateKeyphraseEnc)?.trim()?.length ?? 0) >= 8;
+        (decryptCompanySecret(companyRow.certificateKeyphraseEnc, companyRow)?.trim()?.length ?? 0) >= 8;
       if (!encOk) {
         res.status(400).json({
           message:

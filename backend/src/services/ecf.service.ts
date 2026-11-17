@@ -123,7 +123,7 @@ export async function resolveP12ForEcf(
   let companyRow = initialCompany;
   const secretRaw =
     (options.certificateEncryptionSecret?.trim() ||
-      decryptCompanySecret(companyRow.certificateKeyphraseEnc)?.trim() ||
+      decryptCompanySecret(companyRow.certificateKeyphraseEnc, companyRow)?.trim() ||
       "") ?? "";
 
   if (options.oneShotCertificate?.buffer?.length) {
@@ -161,7 +161,7 @@ export async function resolveP12ForEcf(
         certificateSalt: persisted.certificateSalt,
         certificateEncPath: persisted.certificateEncPath,
         certificatePasswordEnc: persisted.certificatePasswordEnc,
-        certificateKeyphraseEnc: encryptCompanySecret(encSecret),
+        certificateKeyphraseEnc: encryptCompanySecret(encSecret, companyRow),
       },
     });
     const reloaded = await prisma.company.findUnique({ where: { id: companyId } });

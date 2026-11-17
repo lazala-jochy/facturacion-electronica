@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { AuthCompany } from "../types/session";
 import { ApiError, apiUrl } from "../services/api";
@@ -7,6 +7,7 @@ import {
   sendEcfExcelBatchToDgiiFromApp,
   consultEcfExcelBatchStatus,
   sendRfceToDgii,
+  downloadEcfExcelBatchZip,
   type EcfExcelBatchRunResponse,
   type EcfExcelBatchSendResponse,
   type EcfBatchConsultResponse,
@@ -14,6 +15,7 @@ import {
 } from "../services/ecfExcelBatch";
 import {
   exportPortalConsumoMenor250FromApp,
+  downloadPortalConsumoMenor250Zip,
   type PortalConsumoMenor250ExportResponse,
 } from "../services/portalConsumoMenor250";
 import DgiiEcfUrlsPanel from "../components/DgiiEcfUrlsPanel";
@@ -26,7 +28,6 @@ export default function EcfExcelBatch({
   company: AuthCompany;
   onCompanyUpdated?: (company: AuthCompany) => void;
 }) {
-  const [desktopPreview, setDesktopPreview] = useState("");
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -46,21 +47,10 @@ export default function EcfExcelBatch({
     useState<PortalConsumoMenor250ExportResponse | null>(null);
   const [excelSelection, setExcelSelection] = useState<EcfExcelSelection | undefined>();
   const [excelFile, setExcelFile] = useState<File | null>(null);
-
-  const electron = window.electronAPI;
-  const canUseFolderPicker = !!electron?.pickOutputParentFolder;
-
-  const browseFolder = async () => {
-    if (!electron?.pickOutputParentFolder) return;
-    const chosen = await electron.pickOutputParentFolder();
-    if (chosen) setDesktopPreview(chosen);
-  };
-
-  useEffect(() => {
-    const api = window.electronAPI;
-    if (!api?.getDesktopParentPath) return;
-    void api.getDesktopParentPath().then(setDesktopPreview);
-  }, []);
+  const [downloadingZip, setDownloadingZip] = useState(false);
+  const [downloadZipError, setDownloadZipError] = useState("");
+  const [downloadingPortalZip, setDownloadingPortalZip] = useState(false);
+  const [downloadPortalZipError, setDownloadPortalZipError] = useState("");
 
   const hasExcelSelected = Boolean(
     excelSelection?.filePath?.trim() || excelFile || excelSelection?.fileName,
@@ -144,12 +134,7 @@ export default function EcfExcelBatch({
     setSendResult(null);
     setSendDebug("");
     try {
-      let desktop_parent_dir = desktopPreview.trim() || undefined;
-      if (electron?.getDesktopParentPath && !desktop_parent_dir) {
-        desktop_parent_dir = await electron.getDesktopParentPath();
-      }
       const data = await runEcfExcelBatchFromApp({
-        desktop_parent_dir,
         excel_path: excelSelection?.filePath,
         excel_file: excelFile ?? undefined,
       });
@@ -165,16 +150,25 @@ export default function EcfExcelBatch({
     }
   };
 
+  const downloadZip = async () => {
+    if (!result?.outputRoot) return;
+    setDownloadingZip(true);
+    setDownloadZipError("");
+    try {
+      await downloadEcfExcelBatchZip(result.outputRoot);
+    } catch (e) {
+      setDownloadZipError(e instanceof Error ? e.message : "No se pudo descargar el ZIP.");
+    } finally {
+      setDownloadingZip(false);
+    }
+  };
+
   const exportPortalConsumoMenor250 = async () => {
     setPortalExportLoading(true);
     setPortalExportError("");
     setPortalExportResult(null);
     try {
-      let desktop_parent_dir = desktopPreview.trim() || undefined;
-      if (electron?.getDesktopParentPath && !desktop_parent_dir) {
-        desktop_parent_dir = await electron.getDesktopParentPath();
-      }
-      const data = await exportPortalConsumoMenor250FromApp({ desktop_parent_dir });
+      const data = await exportPortalConsumoMenor250FromApp();
       setPortalExportResult(data);
     } catch (e) {
       setPortalExportError(
@@ -182,6 +176,19 @@ export default function EcfExcelBatch({
       );
     } finally {
       setPortalExportLoading(false);
+    }
+  };
+
+  const downloadPortalZip = async () => {
+    if (!portalExportResult?.outputRoot) return;
+    setDownloadingPortalZip(true);
+    setDownloadPortalZipError("");
+    try {
+      await downloadPortalConsumoMenor250Zip(portalExportResult.outputRoot);
+    } catch (e) {
+      setDownloadPortalZipError(e instanceof Error ? e.message : "No se pudo descargar el ZIP.");
+    } finally {
+      setDownloadingPortalZip(false);
     }
   };
 
@@ -269,52 +276,10 @@ export default function EcfExcelBatch({
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm space-y-4">
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-slate-700" htmlFor="ecf-batch-desktop">
-            Carpeta donde guardar los resultados
-          </label>
+          <p className="text-sm font-medium text-slate-700">Generar lote de prueba</p>
           <p className="text-xs text-slate-500">
-            Aquí se creará una carpeta nueva (p. ej. ECF-DGII-Pruebas-…) con xml/ y firmados/.
+            El servidor genera xml/ y firmados/ en una carpeta nueva; al terminar podés descargarla como ZIP.
           </p>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
-            <input
-              id="ecf-batch-desktop"
-              type="text"
-              placeholder={
-                canUseFolderPicker
-                  ? "Tocá «Explorar» o pegá/edita la ruta…"
-                  : "Ruta absoluta del Escritorio o carpeta donde guardar"
-              }
-              className="flex-1 min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 bg-white"
-              value={desktopPreview}
-              onChange={(e) => setDesktopPreview(e.target.value)}
-            />
-            {canUseFolderPicker ? (
-              <div className="flex shrink-0 flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => void browseFolder()}
-                  disabled={loading}
-                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50 disabled:opacity-50 whitespace-nowrap"
-                >
-                  Explorar carpeta…
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void electron?.getDesktopParentPath().then(setDesktopPreview)}
-                  disabled={loading}
-                  className="rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50 whitespace-nowrap"
-                >
-                  Escritorio por defecto
-                </button>
-              </div>
-            ) : null}
-          </div>
-          {!canUseFolderPicker && (
-            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
-              En el navegador hay que pegar la ruta completa a mano (o vacío si el servidor detecta ~/Desktop /
-              ~/Escritorio). En la app de escritorio aparece «Explorar carpeta».
-            </p>
-          )}
         </div>
 
         <button
@@ -323,7 +288,7 @@ export default function EcfExcelBatch({
           disabled={loading || !hasExcelSelected}
           className="w-full sm:w-auto rounded-lg bg-[#15803d] text-white px-5 py-2.5 text-sm font-medium shadow hover:bg-[#166534] disabled:opacity-60 transition"
         >
-          {loading ? "Generando…" : "Generar en el Escritorio"}
+          {loading ? "Generando…" : "Generar lote"}
         </button>
         {!hasExcelSelected && (
           <p className="text-xs text-amber-800">Seleccioná el Excel arriba para habilitar la generación.</p>
@@ -357,6 +322,14 @@ export default function EcfExcelBatch({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
+              onClick={() => void downloadZip()}
+              disabled={downloadingZip}
+              className="w-full sm:w-auto rounded-lg border border-slate-300 bg-white text-slate-800 px-5 py-2.5 text-sm font-medium shadow-sm hover:bg-slate-50 disabled:opacity-60 transition"
+            >
+              {downloadingZip ? "Descargando…" : "Descargar ZIP"}
+            </button>
+            <button
+              type="button"
               onClick={() => void sendBatch()}
               disabled={loading || sending || consulting || sendingRfce}
               className="w-full sm:w-auto rounded-lg bg-[#0b57d0] text-white px-5 py-2.5 text-sm font-medium shadow hover:bg-[#0a4fc4] disabled:opacity-60 transition"
@@ -383,6 +356,7 @@ export default function EcfExcelBatch({
             </button>
           </div>
         ) : null}
+        {downloadZipError && <p className="text-xs text-red-700">{downloadZipError}</p>}
       </div>
 
       {portalExportError && (
@@ -404,11 +378,6 @@ export default function EcfExcelBatch({
             Carpeta:{" "}
             <code className="bg-white/90 px-1 rounded">{portalExportResult.portalSignedDir}</code>
           </p>
-          {portalExportResult.zipPath && (
-            <p className="text-xs text-slate-700 break-all">
-              ZIP: <code className="bg-white/90 px-1 rounded">{portalExportResult.zipPath}</code>
-            </p>
-          )}
           <ul className="text-xs list-disc ml-5 space-y-0.5">
             {portalExportResult.files.map((f) => (
               <li key={f.encf}>
@@ -416,6 +385,15 @@ export default function EcfExcelBatch({
               </li>
             ))}
           </ul>
+          <button
+            type="button"
+            onClick={() => void downloadPortalZip()}
+            disabled={downloadingPortalZip}
+            className="rounded-lg border border-emerald-300 bg-white text-emerald-900 px-4 py-2 text-sm font-medium shadow-sm hover:bg-emerald-50 disabled:opacity-60 transition"
+          >
+            {downloadingPortalZip ? "Descargando…" : "Descargar ZIP"}
+          </button>
+          {downloadPortalZipError && <p className="text-xs text-red-700">{downloadPortalZipError}</p>}
         </div>
       )}
 

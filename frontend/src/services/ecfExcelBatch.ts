@@ -1,4 +1,4 @@
-import { ApiError, apiFetch, authenticatedFetch, readAuthSessionFromStorage } from "./api";
+import { ApiError, apiFetch, authenticatedFetch, downloadZipFromPath, readAuthSessionFromStorage } from "./api";
 export type EcfExcelBatchRunResponse = {
   outputRoot: string;
   excelPath: string;
@@ -49,7 +49,6 @@ export type EcfExcelBatchSendResponse = {
 
 /** Genera XML y firmados desde el Excel de pruebas e-CF. */
 export const runEcfExcelBatchFromApp = async (body: {
-  desktop_parent_dir?: string;
   excel_path?: string;
   excel_file?: File;
 }): Promise<EcfExcelBatchRunResponse> => {
@@ -59,9 +58,6 @@ export const runEcfExcelBatchFromApp = async (body: {
 
     const fd = new FormData();
     fd.append("excel", body.excel_file);
-    if (body.desktop_parent_dir?.trim()) {
-      fd.append("desktop_parent_dir", body.desktop_parent_dir.trim());
-    }
 
     let response: Response;
     try {
@@ -99,10 +95,16 @@ export const runEcfExcelBatchFromApp = async (body: {
     method: "POST",
     body: JSON.stringify({
       excel_path: body.excel_path.trim(),
-      desktop_parent_dir: body.desktop_parent_dir,
     }),
   });
 };
+
+/** Descarga como ZIP la carpeta de un lote generado (xml/, firmados/, representación impresa). */
+export const downloadEcfExcelBatchZip = (outputRoot: string): Promise<string> =>
+  downloadZipFromPath(
+    `/ecf-excel-batch/download-zip?dir=${encodeURIComponent(outputRoot)}`,
+    "ecf-dgii-pruebas.zip",
+  );
 
 export const sendEcfExcelBatchToDgiiFromApp = async (body: {
   out_signed_dir: string;

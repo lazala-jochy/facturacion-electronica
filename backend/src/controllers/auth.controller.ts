@@ -39,6 +39,7 @@ const updateCompanyBodyFromReq = (req: Request): UpdateCompanyBody => {
     login_email: pickStr(b, "login_email"),
     dgii_ecf_endpoint: pickStr(b, "dgii_ecf_endpoint"),
     certificate_keyphrase: pickStr(b, "certificate_keyphrase"),
+    app_secrets_key: pickStr(b, "app_secrets_key"),
     dgii_username: pickStr(b, "dgii_username"),
     dgii_password: pickStr(b, "dgii_password"),
     dgii_auth_url: pickStr(b, "dgii_auth_url"),

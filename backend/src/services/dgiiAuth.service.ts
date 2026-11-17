@@ -210,7 +210,7 @@ async function signSeedWithCompanyCertificate(
   company: Company,
 ): Promise<(seedXml: string, mode: SignatureMode) => Promise<string>> {
   const uploadsRoot = getUploadsRoot();
-  const encryptionSecret = assertCertificateEncryptionSecret(decryptCompanySecret(company.certificateKeyphraseEnc) ?? "");
+  const encryptionSecret = assertCertificateEncryptionSecret(decryptCompanySecret(company.certificateKeyphraseEnc, company) ?? "");
   const loaded = await loadDecryptedPkcs12ForCompany(company, uploadsRoot, encryptionSecret);
   if (!loaded) {
     throw new DgiiEcfError(
@@ -445,7 +445,7 @@ export const dgiiAuthService = {
       | undefined;
     try {
       const uploadsRoot = getUploadsRoot();
-      const encryptionSecret = assertCertificateEncryptionSecret(decryptCompanySecret(company.certificateKeyphraseEnc) ?? "");
+      const encryptionSecret = assertCertificateEncryptionSecret(decryptCompanySecret(company.certificateKeyphraseEnc, company) ?? "");
       const loaded = await loadDecryptedPkcs12ForCompany(company, uploadsRoot, encryptionSecret);
       if (loaded) {
         const t = await testCertificateCompatibility(loaded.p12Buffer, loaded.password);

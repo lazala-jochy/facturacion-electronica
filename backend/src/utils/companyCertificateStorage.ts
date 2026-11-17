@@ -7,8 +7,17 @@ import {
   generateCertificateSalt,
   verifyPkcs12Password,
 } from "./companyCertificateCrypto";
+import {
+  certificateBucketObjectPath,
+  downloadCertificateFromBucket,
+  isCertificateBucketConfigured,
+  removeCertificateFromBucket,
+  uploadCertificateToBucket,
+} from "./companyCertificateBucket";
 
 const CERT_FILENAME = "company-certificate.enc";
+/** Prefijo que marca `certificateEncPath` como objeto del bucket en vez de ruta local. */
+const BUCKET_MARKER = "supabase:";
 
 /** Ruta absoluta del directorio de empresa bajo uploads. */
 export function companySecureDir(uploadsRoot: string, companyId: number): string {
@@ -49,29 +58,39 @@ export async function encryptAndPersistCompanyCertificate(
     pass,
   );
 
-  const dir = companySecureDir(input.uploadsRoot, input.companyId);
-  await fs.mkdir(dir, { recursive: true });
-  const absolute = path.join(dir, CERT_FILENAME);
-  await fs.writeFile(absolute, encryptedP12);
+  const uploadedToBucket = await uploadCertificateToBucket(input.companyId, CERT_FILENAME, encryptedP12);
 
-  const rel = path.posix.join("companies", String(input.companyId), CERT_FILENAME);
+  let certificateEncPath: string;
+  if (uploadedToBucket) {
+    certificateEncPath = `${BUCKET_MARKER}${certificateBucketObjectPath(input.companyId, CERT_FILENAME)}`;
+  } else {
+    /** Sin SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY configuradas (ej. dev local): disco como antes. */
+    const dir = companySecureDir(input.uploadsRoot, input.companyId);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, CERT_FILENAME), encryptedP12);
+    certificateEncPath = path.posix.join("companies", String(input.companyId), CERT_FILENAME).replace(/\\/g, "/");
+  }
+
   return {
     certificateSalt: saltBuf.toString("base64"),
-    certificateEncPath: rel.replace(/\\/g, "/"),
+    certificateEncPath,
     certificatePasswordEnc: encryptedPasswordPayload.toString("base64"),
   };
 }
 
-/** Elimina certificado guardado para la empresa y limpía campos. */
+/** Elimina certificado guardado para la empresa (bucket y/o disco) y limpía campos. */
 export async function removeStoredCompanyCertificate(
   uploadsRoot: string,
   companyId: number,
 ): Promise<void> {
+  if (isCertificateBucketConfigured()) {
+    await removeCertificateFromBucket(certificateBucketObjectPath(companyId, CERT_FILENAME));
+  }
   try {
     const abs = companyCertificateAbsolutePath(uploadsRoot, companyId);
     await fs.unlink(abs);
   } catch {
-    /* ya no existe */
+    /* ya no existe en disco (o nunca estuvo ahí) */
   }
 }
 
@@ -92,10 +111,12 @@ export async function loadDecryptedPkcs12ForCompany(
 
   try {
     const saltBuf = Buffer.from(company.certificateSalt!, "base64");
-    const encAbs = path.isAbsolute(company.certificateEncPath!)
-      ? company.certificateEncPath!
-      : path.join(uploadsRoot, company.certificateEncPath!.replace(/^[/\\]/, ""));
-    const encFile = await fs.readFile(encAbs);
+    const encPath = company.certificateEncPath!;
+    const encFile = encPath.startsWith(BUCKET_MARKER)
+      ? await downloadCertificateFromBucket(encPath.slice(BUCKET_MARKER.length))
+      : await fs.readFile(
+          path.isAbsolute(encPath) ? encPath : path.join(uploadsRoot, encPath.replace(/^[/\\]/, "")),
+        );
     const encPwdBuf = Buffer.from(company.certificatePasswordEnc!, "base64");
 
     const { p12Buffer, password } = decryptCompanyP12Payload(

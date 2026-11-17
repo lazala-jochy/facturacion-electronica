@@ -53,4 +53,5 @@ export const toPublicCompany = (c: Record<string, any>, appSecretsKey: string) =
       c.token_cache_environment === (c.dgii_environment ?? "CERTIFICACION") &&
       new Date(c.token_expiration).getTime() > Date.now(),
   ),
+  app_secrets_key_configured: Boolean(c.app_secrets_key_enc),
 });

@@ -602,6 +602,21 @@ La app queda en `http://localhost:3001` (detrás de tu reverse proxy con TLS en 
 volumen es solo para logos subidos localmente en instalaciones viejas; los nuevos logos ya se
 suben a Supabase Storage.
 
+### Desarrollo con hot reload (Docker Compose)
+
+Para trabajar con recarga automática sin instalar nada en la máquina (además de Docker):
+
+```bash
+cp .env.docker.example .env.docker   # completar DATABASE_URL, DIRECT_URL, JWT_SECRET, etc.
+docker compose -f docker-compose.dev.yml --env-file .env.docker up --build
+```
+
+- Frontend (Vite + HMR): `http://localhost:5173`
+- Backend (`ts-node-dev`): `http://localhost:3001` (el proxy de Vite en `/api` apunta acá)
+- El código se monta como volumen: al editar `frontend/src` o `backend/src` se recarga automáticamente.
+- Si el puerto 3001 está ocupado: `BACKEND_PORT=3002 docker compose -f docker-compose.dev.yml --env-file .env.docker up --build`.
+- El firmador DGII para Linux se compila en el servicio `dotnet-signer` y se comparte por volumen.
+
 ### Migraciones
 
 Igual que con la build de escritorio, `prisma migrate deploy` **no** corre automáticamente al

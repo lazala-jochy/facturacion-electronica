@@ -75,7 +75,6 @@ export default function Auth({
   const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>(() => readSavedAccounts());
   const [showSwitcher, setShowSwitcher] = useState(() => readSavedAccounts().length > 0);
   const [switchingId, setSwitchingId] = useState<number | null>(null);
-  const [switchError, setSwitchError] = useState("");
 
   useEffect(() => {
     return () => {
@@ -258,12 +257,18 @@ export default function Auth({
   };
 
   const handleUseAccount = async (account: SavedAccount) => {
-    setSwitchError("");
     setSwitchingId(account.user.id);
     try {
       const session = await refreshWithToken(account.refresh_token, account.user, account.company);
       if (!session) {
-        setSwitchError(`La sesión de ${account.user.email} expiró. Iniciá sesión de nuevo con su contraseña.`);
+        // El refresh token ya no sirve (vencido o rotado en otra sesión): no hay forma segura de
+        // reactivar esta cuenta sin la contraseña. Se borra (seguir mostrándola solo repetiría el
+        // mismo error) y se pasa al formulario normal con el correo ya puesto.
+        handleForgetAccount(account.user.id);
+        setEmail(account.user.email);
+        setMode("login");
+        setShowSwitcher(false);
+        setError(`La sesión de ${account.user.email} expiró. Ingresá tu contraseña para volver a entrar.`);
         return;
       }
       onAuthenticated(session);
@@ -570,12 +575,6 @@ export default function Auth({
                       </span>
                     </button>
                   ))}
-
-                  {switchError && (
-                    <p className="text-sm rounded-lg border border-red-200 bg-red-50 text-red-700 px-3 py-2">
-                      {switchError}
-                    </p>
-                  )}
 
                   <button
                     type="button"
