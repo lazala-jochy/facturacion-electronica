@@ -212,6 +212,9 @@ model Cotizacion {
   fechaLimitePago DateTime?       @map("fecha_limite_pago")
   accountManager String           @map("account_manager")
   comment        String?          @map("comment")
+  /// Clave generada por el navegador al crear en modo offline; evita duplicar la venta si la
+  /// sincronización se corta a mitad y reintenta (ver frontend/src/offline/syncEngine.ts).
+  idempotencyKey String?          @unique @map("idempotency_key")
   subtotal       Float
   itbis          Float
   total          Float

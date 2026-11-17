@@ -10,6 +10,7 @@ import Invoices from "./pages/Invoices";
 import Clients from "./pages/Clients";
 import CotizacionCreate from "./pages/CotizacionCreate";
 import CotizacionEdit from "./pages/CotizacionEdit";
+import OfflineDraftPrint from "./pages/OfflineDraftPrint";
 import {
   AUTH_SESSION_INVALIDATED,
   AUTH_SESSION_UPDATED,
@@ -17,6 +18,9 @@ import {
 } from "./services/api";
 import { AUTH_STORAGE_KEY, type AuthSession } from "./types/session";
 import { upsertSavedAccount } from "./services/savedAccounts";
+import { startConnectivityWatch, subscribeConnectivity } from "./offline/connectivity";
+import { startOfflineSyncWatch } from "./offline/syncEngine";
+import { cacheCompanyProfile, refreshCachedClients } from "./offline/cacheRefresh";
 import CompanyProfile from "./pages/CompanyProfile";
 import EcfExcelBatch from "./pages/EcfExcelBatch";
 import DgiiAprobacionesComerciales from "./pages/DgiiAprobacionesComerciales";
@@ -86,6 +90,31 @@ function App() {
     }, 60_000);
     return () => window.clearInterval(id);
   }, [session?.token, session?.refresh_token]);
+
+  // Modo offline: conectividad real (heartbeat), sincronización automática de la cola de
+  // ventas al volver internet, y cache de empresa/clientes para poder seguir trabajando sin
+  // conexión. Arranca apenas hay sesión -- sin sesión no hay nada que cachear/sincronizar.
+  useEffect(() => {
+    startConnectivityWatch();
+  }, []);
+
+  useEffect(() => {
+    if (!session?.company?.id) return;
+    return startOfflineSyncWatch();
+  }, [session?.company?.id]);
+
+  useEffect(() => {
+    if (!session) return;
+    void cacheCompanyProfile(session);
+  }, [session]);
+
+  useEffect(() => {
+    if (!session?.company?.id) return;
+    void refreshCachedClients();
+    return subscribeConnectivity((online) => {
+      if (online) void refreshCachedClients();
+    });
+  }, [session?.company?.id]);
 
   useEffect(() => {
     const onInvalidated = () => setSession(null);
@@ -157,6 +186,7 @@ function App() {
   return (
     <RouterComponent>
       <Routes>
+        <Route path="/cotizaciones/offline/:localId/imprimir" element={<OfflineDraftPrint />} />
         <Route element={<AppLayout company={company} onLogout={handleLogout} />}>
           <Route path="/" element={<Dashboard company={company} user={session.user} />} />
           <Route path="/ecf" element={<ECF company={company} />} />

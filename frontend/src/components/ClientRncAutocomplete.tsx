@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { listClients, type ClientListItem } from "../services/clients";
+import { getCachedClients } from "../offline/cacheRefresh";
 
 type Props = {
   value: string;
@@ -28,7 +29,10 @@ export default function ClientRncAutocomplete({
         if (active) setClients(loaded);
       })
       .catch(() => {
-        /* sin sugerencias si falla la carga; el campo sigue editable a mano */
+        // Sin conexión (u otro error puntual): se usa el último cache de clientes guardado.
+        void getCachedClients().then((cached) => {
+          if (active && cached.length) setClients(cached);
+        });
       });
     return () => {
       active = false;

@@ -221,6 +221,7 @@ export const createClientWithCotizacion: RequestHandler = async (req, res) => {
       exento: Boolean(cot.exento),
     },
     items,
+    idempotency_key: pickStr(body, "idempotency_key"),
   });
 
   if (!out.ok) {

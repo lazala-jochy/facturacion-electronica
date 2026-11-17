@@ -106,6 +106,8 @@ export type CreateClientWithCotizacionPayload = {
   items: CotizacionItemDraft[];
   /** Clave de cifrado del .p12 (mín. 8); obligatoria si la empresa tiene certificado sin clave guardada en perfil. */
   certificate_encryption_secret?: string;
+  /** Generada al crear en modo offline; evita duplicar la venta si la sincronización reintenta. */
+  idempotency_key?: string;
 };
 
 export const createClientWithCotizacion = (payload: CreateClientWithCotizacionPayload) =>

@@ -50,6 +50,8 @@ export type CreateClientWithCotizacionInput = {
     exento?: boolean;
   };
   items?: IncomingItem[];
+  /** Generada por el navegador al crear en modo offline; evita duplicar la venta al sincronizar. */
+  idempotency_key?: string | null;
 };
 export type UpdateCotizacionInput = CreateClientWithCotizacionInput;
 
@@ -386,6 +388,18 @@ export const cotizacionService = {
     companyId: number,
     input: CreateClientWithCotizacionInput,
   ) {
+    const idempotencyKey = trimOrNull(input.idempotency_key ?? undefined);
+    if (idempotencyKey) {
+      const existing = await prisma.cotizacion.findFirst({
+        where: { companyId, idempotencyKey },
+        include: { items: { orderBy: { itemNumber: "asc" } }, client: true, company: true },
+      });
+      // Reintento de una sincronización offline ya aplicada: devuelve lo que ya existe en vez
+      // de crear la venta (y consumir NCF) por segunda vez.
+      if (existing) {
+        return { ok: true as const, client: existing.client, cotizacion: existing };
+      }
+    }
     const cName = input.client.name?.trim();
     const cRnc = input.client.rnc_cedula?.trim();
     const docDigits = toDocDigits(cRnc ?? "");
@@ -529,6 +543,7 @@ export const cotizacionService = {
           ecfTipo,
           ecfNcfSeq,
           ecfReferenceNcf,
+          idempotencyKey,
           subtotal: totals.subtotal,
           itbis: totals.itbis,
           total: totals.total,
@@ -570,6 +585,15 @@ export const cotizacionService = {
           status: 400,
           message: e.message,
         };
+      }
+      // Choque con la restricción UNIQUE de idempotency_key: dos sincronizaciones offline
+      // concurrentes de la misma venta. Devuelve la que ya se creó en vez de un 500.
+      if (idempotencyKey && e instanceof Error && e.message.includes("idempotency_key")) {
+        const existing = await prisma.cotizacion.findFirst({
+          where: { companyId, idempotencyKey },
+          include: { items: { orderBy: { itemNumber: "asc" } }, client: true, company: true },
+        });
+        if (existing) return { ok: true as const, client: existing.client, cotizacion: existing };
       }
       throw e;
     }

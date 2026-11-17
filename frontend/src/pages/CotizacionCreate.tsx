@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { AUTH_STORAGE_KEY, type AuthSession } from "../types/session";
+import { ApiError } from "../services/api";
 import {
   createClientWithCotizacion,
   type CotizacionItemDraft,
+  type CreateClientWithCotizacionPayload,
 } from "../services/cotizaciones";
+import { isOnline } from "../offline/connectivity";
+import { queueOfflineCotizacion } from "../offline/offlineQueue";
 import {
   calculateTotalsFromItems,
   itemLineTotalValue,
@@ -91,6 +95,10 @@ export default function CotizacionCreate() {
     cotizacionNumber: number;
     dgii: Record<string, unknown>;
   } | null>(null);
+  const [offlineQueued, setOfflineQueued] = useState<{
+    localId: string;
+    clientName: string;
+  } | null>(null);
 
   const lineTotals = items.map((it) =>
     itemLineTotalValue(it.quantity, it.unit_price),
@@ -148,6 +156,11 @@ export default function CotizacionCreate() {
     e.preventDefault();
     setError("");
     setDone(null);
+    setOfflineQueued(null);
+    if (!company) {
+      setError("No hay sesión activa.");
+      return;
+    }
     if (!clientName.trim() || !clientRnc.trim()) {
       setError("Nombre y RNC o cedula del cliente son obligatorios.");
       return;
@@ -179,40 +192,33 @@ export default function CotizacionCreate() {
       unit_price: Number(it.unit_price) || 0,
     }));
 
-    setLoading(true);
-    try {
-      const enc = certEncSecret.trim() || company?.certificate_keyphrase?.trim() || "";
-      const res = await createClientWithCotizacion({
-        client: {
-          name: clientName.trim(),
-          address: clientAddress.trim() || undefined,
-          rnc_cedula: clientRnc.trim(),
-          phone: clientPhone.trim() || undefined,
-          email: clientEmail.trim() || undefined,
-        },
-        cotizacion: {
-          payment_method: paymentMethod,
-          fecha_limite_pago: isCredito ? creditDueDate : undefined,
-          comment: comment.trim() || undefined,
-          ecf_tipo: ecfTipo,
-          ecf_reference_ncf:
-            ECF_TIPO_REQUIERE_REFERENCIA.has(ecfTipo) && ecfReferenceNcf.trim()
-              ? ecfReferenceNcf.trim()
-              : undefined,
-          calc_mode: calcMode,
-          subtotal: displayTotals.subtotal,
-          itbis: displayTotals.itbis,
-          total: displayTotals.total,
-          exento,
-        },
-        items: payloadItems,
-        ...(enc.length >= 8 ? { certificate_encryption_secret: enc } : {}),
-      });
-      const cot = res.cotizacion as { number?: number };
-      setDone({
-        cotizacionNumber: Number(cot.number),
-        dgii: res.dgii_preview as Record<string, unknown>,
-      });
+    const payload: CreateClientWithCotizacionPayload = {
+      client: {
+        name: clientName.trim(),
+        address: clientAddress.trim() || undefined,
+        rnc_cedula: clientRnc.trim(),
+        phone: clientPhone.trim() || undefined,
+        email: clientEmail.trim() || undefined,
+      },
+      cotizacion: {
+        payment_method: paymentMethod,
+        fecha_limite_pago: isCredito ? creditDueDate : undefined,
+        comment: comment.trim() || undefined,
+        ecf_tipo: ecfTipo,
+        ecf_reference_ncf:
+          ECF_TIPO_REQUIERE_REFERENCIA.has(ecfTipo) && ecfReferenceNcf.trim()
+            ? ecfReferenceNcf.trim()
+            : undefined,
+        calc_mode: calcMode,
+        subtotal: displayTotals.subtotal,
+        itbis: displayTotals.itbis,
+        total: displayTotals.total,
+        exento,
+      },
+      items: payloadItems,
+    };
+
+    const resetForm = () => {
       setClientName("");
       setClientAddress("");
       setClientRnc("");
@@ -229,8 +235,38 @@ export default function CotizacionCreate() {
       setManualSubtotal(0);
       setManualItbis(0);
       setManualTotal(0);
+    };
+
+    if (!isOnline()) {
+      const entry = await queueOfflineCotizacion(company.id, payload);
+      setOfflineQueued({ localId: entry.localId, clientName: payload.client.name });
+      resetForm();
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const enc = certEncSecret.trim() || company?.certificate_keyphrase?.trim() || "";
+      const res = await createClientWithCotizacion({
+        ...payload,
+        ...(enc.length >= 8 ? { certificate_encryption_secret: enc } : {}),
+      });
+      const cot = res.cotizacion as { number?: number };
+      setDone({
+        cotizacionNumber: Number(cot.number),
+        dgii: res.dgii_preview as Record<string, unknown>,
+      });
+      resetForm();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al guardar.");
+      // Se creía en línea pero la red falló justo al enviar (status 0 = sin respuesta del
+      // servidor): se guarda offline en vez de perder la venta.
+      if (err instanceof ApiError && err.status === 0) {
+        const entry = await queueOfflineCotizacion(company.id, payload);
+        setOfflineQueued({ localId: entry.localId, clientName: payload.client.name });
+        resetForm();
+      } else {
+        setError(err instanceof Error ? err.message : "Error al guardar.");
+      }
     } finally {
       setLoading(false);
     }
@@ -719,6 +755,26 @@ export default function CotizacionCreate() {
               <pre className="mt-2 max-h-48 overflow-auto rounded bg-white p-2 text-xs text-slate-800">
                 {JSON.stringify(done.dgii, null, 2)}
               </pre>
+            </div>
+          )}
+
+          {offlineQueued && (
+            <div className="mt-4 rounded border border-amber-200 bg-amber-50 p-3 sm:p-4 text-xs sm:text-sm text-amber-900">
+              <p className="font-semibold">
+                Guardada sin conexión — {offlineQueued.clientName}
+              </p>
+              <p className="mt-1 text-xs text-amber-800">
+                Se enviará sola (con NCF real y firma DGII) en cuanto vuelva internet. Mientras
+                tanto podés imprimir un comprobante borrador.
+              </p>
+              <Link
+                to={`/cotizaciones/offline/${offlineQueued.localId}/imprimir`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-block rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
+              >
+                Imprimir comprobante borrador
+              </Link>
             </div>
           )}
 
