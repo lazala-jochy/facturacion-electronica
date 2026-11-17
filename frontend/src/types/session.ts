@@ -16,6 +16,8 @@ export type AuthCompany = {
   logoUrl?: string | null;
   /** Indica si hay certificado DGII (.p12) configurado para la empresa. */
   certificateConfigured?: boolean;
+  /** Nombre del archivo .p12/.pfx tal como se subió. */
+  certificate_original_name?: string | null;
   /** URL del servicio DGII para envío e-CF (opcional; si no hay, se usa la variable de entorno del servidor). */
   dgiiEcfEndpoint?: string | null;
   dgiiUsername?: string | null;
@@ -57,6 +59,8 @@ export type AuthCompany = {
   certificate_keyphrase?: string | null;
   /** Indica si la empresa ya tiene APP_SECRETS_KEY guardada en la BD. */
   app_secrets_key_configured?: boolean;
+  /** Ya descifrada, para precargar el campo en Perfil de empresa (igual que certificate_keyphrase). */
+  app_secrets_key?: string | null;
 };
 
 /** Sesión persistida: JWT + refresh + contexto de usuario y empresa (multi-tenant). */

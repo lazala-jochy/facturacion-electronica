@@ -27,6 +27,8 @@ model Company {
   certificateSalt          String?      @map("certificate_salt")
   certificateEncPath       String?      @map("certificate_enc_path")
   certificatePasswordEnc   String?      @map("certificate_password_enc")
+  /// Nombre del archivo .p12/.pfx tal como lo subió el usuario (solo para mostrarlo en Perfil de empresa).
+  certificateOriginalName  String?      @map("certificate_original_name")
   // URL servicio DGII e-CF (legacy: recepción directa sin flujo token).
   dgiiEcfEndpoint            String?      @map("dgii_ecf_endpoint")
   dgiiUsername               String?      @map("dgii_username")

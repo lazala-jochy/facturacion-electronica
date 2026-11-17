@@ -147,7 +147,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
   const [certificatePassword, setCertificatePassword] = useState(session.company.certificate_keyphrase ?? "");
   const [showP12Password, setShowP12Password] = useState(false);
   const [clearCertificate, setClearCertificate] = useState(false);
-  const [appSecretsKey, setAppSecretsKey] = useState("");
+  const [appSecretsKey, setAppSecretsKey] = useState(session.company.app_secrets_key ?? "");
   const [showAppSecretsKey, setShowAppSecretsKey] = useState(false);
 
   useEffect(() => {
@@ -188,6 +188,10 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
   useEffect(() => {
     setCertificatePassword(session.company.certificate_keyphrase ?? "");
   }, [session.company.certificate_keyphrase]);
+
+  useEffect(() => {
+    setAppSecretsKey(session.company.app_secrets_key ?? "");
+  }, [session.company.app_secrets_key]);
 
   const onPickLogo = (list: FileList | null) => {
     const f = list?.[0];
@@ -341,7 +345,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
       setEcfGatewayBaseUrl(res.company.ecfGatewayBaseUrl ?? "");
       setEcfGatewayApiKey(res.company.ecfGatewayApiKey ?? "");
       setClearCertificate(false);
-      setAppSecretsKey("");
+      setAppSecretsKey(res.company.app_secrets_key ?? "");
       setSuccess("Perfil de empresa actualizado.");
     } catch (err) {
       const message = err instanceof Error ? err.message : "No se pudo actualizar.";
@@ -702,7 +706,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
           <section className="px-6 py-8 sm:px-8">
             <SectionTitle
               title="Clave de secretos de la empresa (APP_SECRETS_KEY)"
-              description="Clave base64 de 32 bytes con la que se cifran la contraseña DGII y la clave del certificado en la base de datos. Se guarda cifrada y nunca se muestra nuevamente."
+              description="Clave base64 de 32 bytes con la que se cifran la contraseña DGII y la clave del certificado en la base de datos. Se guarda cifrada en el servidor; este campo aparece precargado con la clave actual para que no haya que volver a tipearla en cada guardado."
             />
             <div className="max-w-2xl space-y-5">
               <StatusLine
@@ -791,6 +795,14 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
                 ok={certOk}
                 label={certOk ? "Certificado guardado en el servidor" : "Aún no hay certificado cargado"}
               />
+              {certOk && !certificateFile && session.company.certificate_original_name ? (
+                <p className="text-sm text-slate-600">
+                  Archivo guardado:{" "}
+                  <span className="font-medium text-slate-900">
+                    {session.company.certificate_original_name}
+                  </span>
+                </p>
+              ) : null}
               {certificateFile ? (
                 <p className="text-sm text-slate-600">
                   Archivo seleccionado: <span className="font-medium text-slate-900">{certificateFile.name}</span>

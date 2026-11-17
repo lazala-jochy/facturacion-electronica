@@ -17,6 +17,7 @@ import {
 } from "../utils/companyCertificateCrypto";
 import {
   clearCachedAppSecretsKey,
+  decryptAppSecretsKey,
   encryptAppSecretsKey,
   parseAppSecretsKey,
   setCachedAppSecretsKey,
@@ -94,12 +95,16 @@ export type PublicCompany = Pick<
   /** Descifrado de dgiiPasswordEnc; mismo contrato externo que antes (texto plano). */
   dgiiPassword: string | null;
   certificateConfigured: boolean;
+  /** Nombre del archivo .p12/.pfx tal como lo subió el usuario, solo para mostrarlo en Perfil de empresa. */
+  certificate_original_name: string | null;
   /** Clave de cifrado del .p12 persistida (misma que al guardar el certificado), descifrada de certificateKeyphraseEnc. */
   certificate_keyphrase: string | null;
   /** Nunca se expone el token en claro al frontend. */
   token_cached: boolean;
-  /** Indica si la empresa ya tiene APP_SECRETS_KEY guardada (el valor nunca sale del servidor). */
+  /** Indica si la empresa ya tiene APP_SECRETS_KEY guardada. */
   app_secrets_key_configured: boolean;
+  /** Descifrada de appSecretsKeyEnc, para precargar el campo en Perfil de empresa. */
+  app_secrets_key: string | null;
 };
 
 const REFRESH_TOKEN_DAYS = Math.max(
@@ -208,6 +213,7 @@ const publicCompany = (c: Company): PublicCompany => ({
   certificatePath: c.certificatePath,
   tokenExpiration: c.tokenExpiration,
   certificateConfigured: companyHasCertificateRecord(c),
+  certificate_original_name: c.certificateOriginalName,
   certificate_keyphrase: decryptCompanySecret(c.certificateKeyphraseEnc, c),
   token_cached: Boolean(
     c.tokenCache &&
@@ -216,6 +222,10 @@ const publicCompany = (c: Company): PublicCompany => ({
       c.tokenExpiration.getTime() > Date.now(),
   ),
   app_secrets_key_configured: Boolean(c.appSecretsKeyEnc),
+  // Igual que certificate_keyphrase: se devuelve ya descifrada para precargar el campo en
+  // Perfil de empresa (si no, el usuario tiene que volver a tipearla a mano en cada guardado,
+  // aunque dejarla vacía ya conserva la actual -- mala experiencia que esto evita).
+  app_secrets_key: decryptAppSecretsKey(c.appSecretsKeyEnc),
 });
 
 const publicUser = (u: User) => ({
@@ -486,7 +496,7 @@ export const authService = {
     body: UpdateCompanyBody,
     opts?: {
       logoFile?: { buffer: Buffer; mimetype: string };
-      certificateFile?: { buffer: Buffer; mimetype?: string };
+      certificateFile?: { buffer: Buffer; mimetype?: string; originalname?: string };
       certificatePassword?: string;
       certificateEncryptionSecret?: string;
       uploadsRoot?: string;
@@ -976,6 +986,7 @@ export const authService = {
             certificateEncPath: persisted.certificateEncPath,
             certificatePasswordEnc: persisted.certificatePasswordEnc,
             certificateKeyphraseEnc: encryptCompanySecret(encryptionSecret, companyOut),
+            certificateOriginalName: opts?.certificateFile?.originalname ?? null,
           },
         });
       } catch (e) {
@@ -992,6 +1003,7 @@ export const authService = {
             certificateEncPath: null,
             certificatePasswordEnc: null,
             certificateKeyphraseEnc: null,
+            certificateOriginalName: null,
           },
         });
       } catch (e) {

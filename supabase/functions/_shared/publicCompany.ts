@@ -54,4 +54,8 @@ export const toPublicCompany = (c: Record<string, any>, appSecretsKey: string) =
       new Date(c.token_expiration).getTime() > Date.now(),
   ),
   app_secrets_key_configured: Boolean(c.app_secrets_key_enc),
+  // Igual que certificate_keyphrase: se manda ya en claro para precargar el campo en Perfil de
+  // empresa (si no, hay que volver a tipearla a mano en cada guardado aunque dejarla vacía ya
+  // conserve la actual).
+  app_secrets_key: appSecretsKey,
 });
