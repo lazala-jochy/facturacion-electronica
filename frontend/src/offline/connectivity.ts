@@ -4,9 +4,16 @@ import { apiUrl } from "../services/api";
 /**
  * `navigator.onLine` miente: dice "online" con wifi conectado aunque no haya
  * internet real. Se confirma con un heartbeat propio contra `/health` del backend.
+ *
+ * Timeout generoso (15s) porque en Render (plan free) el servicio "duerme" tras inactividad y
+ * el primer request tras despertar puede tardar bastante -- un timeout corto marcaría "sin
+ * conexión" aunque el usuario sí tenga internet, solo que el backend está arrancando. Esto es
+ * solo para el BANNER informativo; la decisión real de "¿guardo online o pongo en cola?" nunca
+ * depende de este valor cacheado (ver CotizacionCreate.tsx: siempre intenta guardar en línea
+ * primero y solo cae a la cola si esa llamada puntual falla de verdad).
  */
-const HEARTBEAT_MS = 8_000;
-const HEARTBEAT_TIMEOUT_MS = 5_000;
+const HEARTBEAT_MS = 20_000;
+const HEARTBEAT_TIMEOUT_MS = 15_000;
 
 type Listener = (online: boolean) => void;
 

@@ -23,7 +23,12 @@ COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
 ARG VITE_API_URL=/api
-ENV VITE_API_URL=${VITE_API_URL}
+# Este Vite solo expone VITE_* leyéndolas de un archivo .env*, no de variables de entorno del
+# proceso -- ARG/ENV a secas acá nunca llegaba a import.meta.env, y el bundle caía al fallback
+# "http://localhost:3001" hardcodeado en frontend/src/services/api.ts (que para cualquier
+# usuario real apunta a SU máquina, no al servidor: de ahí que ninguna llamada a la API
+# funcionara en producción aunque el sitio cargara bien).
+RUN echo "VITE_API_URL=${VITE_API_URL}" >> .env.production
 RUN npm run build
 
 # ---------------------------------------------------------------------------

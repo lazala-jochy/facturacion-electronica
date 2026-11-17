@@ -7,7 +7,6 @@ import {
   type CotizacionItemDraft,
   type CreateClientWithCotizacionPayload,
 } from "../services/cotizaciones";
-import { isOnline } from "../offline/connectivity";
 import { queueOfflineCotizacion } from "../offline/offlineQueue";
 import {
   calculateTotalsFromItems,
@@ -237,13 +236,11 @@ export default function CotizacionCreate() {
       setManualTotal(0);
     };
 
-    if (!isOnline()) {
-      const entry = await queueOfflineCotizacion(company.id, payload);
-      setOfflineQueued({ localId: entry.localId, clientName: payload.client.name });
-      resetForm();
-      return;
-    }
-
+    // No se decide "offline" por el heartbeat cacheado (puede dar falso negativo si el backend
+    // tarda en responder, ej. Render "despertando" el servicio) -- eso dejaría en cola una venta
+    // que en realidad sí se podía guardar, confundiendo al usuario (ve el formulario vaciarse sin
+    // la confirmación que esperaba). Siempre se intenta guardar en línea primero; solo cae a la
+    // cola offline si ESTA llamada puntual falla de verdad por red (ver catch abajo).
     setLoading(true);
     try {
       const enc = certEncSecret.trim() || company?.certificate_keyphrase?.trim() || "";
@@ -258,9 +255,12 @@ export default function CotizacionCreate() {
       });
       resetForm();
     } catch (err) {
-      // Se creía en línea pero la red falló justo al enviar (status 0 = sin respuesta del
-      // servidor): se guarda offline en vez de perder la venta.
-      if (err instanceof ApiError && err.status === 0) {
+      // Esta llamada puntual no llegó al servidor: sin red (status 0) o el servidor no
+      // respondió a tiempo (502/503/504 -- típico de un cold start, ej. Render despertando el
+      // servicio). Se guarda offline en vez de perder la venta, en lugar de un error genérico.
+      const isUnreachable =
+        err instanceof ApiError && (err.status === 0 || [502, 503, 504].includes(err.status));
+      if (isUnreachable) {
         const entry = await queueOfflineCotizacion(company.id, payload);
         setOfflineQueued({ localId: entry.localId, clientName: payload.client.name });
         resetForm();
