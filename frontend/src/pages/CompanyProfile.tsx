@@ -6,7 +6,7 @@ import PageShell from "../components/PageShell";
 import type { AuthCompany, AuthSession, AuthUser } from "../types/session";
 import { formatPhoneInput, isValidPhone } from "../utils/phone";
 import { cedulaDigits, formatCedulaInput } from "../utils/cedula";
-import { companyUploadedLogoUrl } from "../utils/companyLogo";
+import { companyUploadedLogoUrl, companyUploadedSignatureUrl } from "../utils/companyLogo";
 
 type Props = {
   session: AuthSession;
@@ -143,6 +143,10 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
   const [logoObjectUrl, setLogoObjectUrl] = useState<string | null>(null);
   const [clearCompanyLogo, setClearCompanyLogo] = useState(false);
 
+  const [signatureFile, setSignatureFile] = useState<File | null>(null);
+  const [signatureObjectUrl, setSignatureObjectUrl] = useState<string | null>(null);
+  const [clearCompanySignature, setClearCompanySignature] = useState(false);
+
   const [certificateFile, setCertificateFile] = useState<File | null>(null);
   const [certificatePassword, setCertificatePassword] = useState(session.company.certificate_keyphrase ?? "");
   const [showP12Password, setShowP12Password] = useState(false);
@@ -155,6 +159,12 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
       if (logoObjectUrl) URL.revokeObjectURL(logoObjectUrl);
     };
   }, [logoObjectUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (signatureObjectUrl) URL.revokeObjectURL(signatureObjectUrl);
+    };
+  }, [signatureObjectUrl]);
 
   useEffect(() => {
     setDgiiUsername(session.company.dgiiUsername ?? "");
@@ -170,6 +180,11 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
   const previewImageSrc =
     logoObjectUrl ?? (!clearCompanyLogo && uploadedFromSession ? uploadedFromSession : null);
 
+  const uploadedSignatureFromSession = companyUploadedSignatureUrl(session.company);
+  const previewSignatureSrc =
+    signatureObjectUrl ??
+    (!clearCompanySignature && uploadedSignatureFromSession ? uploadedSignatureFromSession : null);
+
   const clearPendingUpload = () => {
     if (logoObjectUrl) URL.revokeObjectURL(logoObjectUrl);
     setLogoObjectUrl(null);
@@ -179,6 +194,17 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
   const resetPendingLogo = () => {
     clearPendingUpload();
     setClearCompanyLogo(false);
+  };
+
+  const clearPendingSignatureUpload = () => {
+    if (signatureObjectUrl) URL.revokeObjectURL(signatureObjectUrl);
+    setSignatureObjectUrl(null);
+    setSignatureFile(null);
+  };
+
+  const resetPendingSignature = () => {
+    clearPendingSignatureUpload();
+    setClearCompanySignature(false);
   };
 
   const cancelPendingCertificate = () => {
@@ -201,6 +227,15 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
     setLogoFile(f);
     setClearCompanyLogo(false);
     setClearCertificate(false);
+  };
+
+  const onPickSignature = (list: FileList | null) => {
+    const f = list?.[0];
+    if (!f) return;
+    if (signatureObjectUrl) URL.revokeObjectURL(signatureObjectUrl);
+    setSignatureObjectUrl(URL.createObjectURL(f));
+    setSignatureFile(f);
+    setClearCompanySignature(false);
   };
 
   const onSubmit = async (e: FormEvent) => {
@@ -263,8 +298,10 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
       const needsMultipart =
         Boolean(logoFile) ||
         Boolean(certificateFile) ||
+        Boolean(signatureFile) ||
         clearCompanyLogo ||
-        clearCertificate;
+        clearCertificate ||
+        clearCompanySignature;
 
       if (needsMultipart) {
         const fd = new FormData();
@@ -286,6 +323,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
           fd.append("certificate_keyphrase", certificatePassword.trim());
         }
         if (logoFile) fd.append("logo", logoFile);
+        if (signatureFile) fd.append("signature", signatureFile);
         if (certificateFile) {
           fd.append("certificate", certificateFile);
           fd.append("certificate_password", certificatePassword.trim());
@@ -296,6 +334,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
         }
         if (clearCompanyLogo) fd.append("clear_logo", "true");
         if (clearCertificate) fd.append("clear_certificate", "true");
+        if (clearCompanySignature) fd.append("clear_signature", "true");
 
         const response = await authenticatedFetch("/auth/company", {
           method: "PUT",
@@ -338,6 +377,10 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
       setLogoObjectUrl(null);
       setLogoFile(null);
       setClearCompanyLogo(false);
+      if (signatureObjectUrl) URL.revokeObjectURL(signatureObjectUrl);
+      setSignatureObjectUrl(null);
+      setSignatureFile(null);
+      setClearCompanySignature(false);
       setCertificateFile(null);
       setCertificatePassword(res.company.certificate_keyphrase ?? "");
       setDgiiUsername(res.company.dgiiUsername ?? "");
@@ -346,7 +389,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
       setEcfGatewayApiKey(res.company.ecfGatewayApiKey ?? "");
       setClearCertificate(false);
       setAppSecretsKey(res.company.app_secrets_key ?? "");
-      setSuccess("Perfil de empresa actualizado.");
+      setSuccess(res.message?.trim() ? res.message : "Perfil de empresa actualizado.");
     } catch (err) {
       const message = err instanceof Error ? err.message : "No se pudo actualizar.";
       setError(message);
@@ -364,6 +407,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
   };
 
   const canRestoreDefault = Boolean(session.company.logoUrl) || Boolean(logoFile);
+  const canRemoveSignature = Boolean(session.company.signatureUrl) || Boolean(signatureFile);
 
   const runDgiiTest = async () => {
     setTestingDgii(true);
@@ -543,6 +587,55 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
                   ) : null}
                   {logoFile ? (
                     <button type="button" onClick={() => resetPendingLogo()} className={btnGhost}>
+                      Descartar
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Firma autorizada */}
+          <section className="px-6 py-8 sm:px-8">
+            <SectionTitle
+              title="Firma autorizada"
+              description="Imagen de la firma que se muestra debajo del nombre completo en el PDF de cotizaciones."
+            />
+            <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
+              <div className="flex h-20 w-36 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                {previewSignatureSrc ? (
+                  <img src={previewSignatureSrc} alt="" className="h-full w-full object-contain" />
+                ) : (
+                  <span className="text-xs text-slate-400">Sin firma</span>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-slate-900">{fullName || session.user.full_name}</p>
+                <p className="mt-0.5 text-sm text-slate-500">PNG, JPG, GIF o WebP · fondo transparente recomendado</p>
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <label className={`${btnPrimary} cursor-pointer`}>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/gif,image/webp,.png,.jpg,.jpeg,.gif,.webp"
+                      className="sr-only"
+                      onChange={(e) => onPickSignature(e.target.files)}
+                    />
+                    {signatureFile ? "Cambiar imagen" : "Subir firma"}
+                  </label>
+                  {canRemoveSignature ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        clearPendingSignatureUpload();
+                        setClearCompanySignature(true);
+                      }}
+                      className={`${btnGhost} text-red-600 hover:text-red-700`}
+                    >
+                      Quitar firma
+                    </button>
+                  ) : null}
+                  {signatureFile ? (
+                    <button type="button" onClick={() => resetPendingSignature()} className={btnGhost}>
                       Descartar
                     </button>
                   ) : null}

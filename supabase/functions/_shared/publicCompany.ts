@@ -13,6 +13,7 @@ export const toPublicCompany = (c: Record<string, any>, appSecretsKey: string) =
   phone: c.phone,
   email: c.email,
   logoUrl: c.logo_url,
+  signatureUrl: c.signature_url,
   dgiiEcfEndpoint: c.dgii_ecf_endpoint,
   dgiiUsername: c.dgii_username,
   dgiiPassword: decryptAppSecret(c.dgii_password_enc, appSecretsKey),

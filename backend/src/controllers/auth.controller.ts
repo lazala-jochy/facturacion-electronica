@@ -5,6 +5,7 @@ import { authService } from "../services/auth.service";
 import { dgiiAuthService } from "../services/dgiiAuth.service";
 import type { UpdateCompanyBody } from "../types/auth";
 import { isAllowedLogoMime } from "../utils/companyLogo";
+import { isAllowedSignatureMime } from "../utils/companySignature";
 import { validateCertificateMulterFile } from "../utils/companyCertificateUpload";
 import { getUploadsRoot } from "../utils/uploadsRoot";
 
@@ -15,13 +16,19 @@ type MulterFields = { [fieldname: string]: Express.Multer.File[] } | undefined;
 
 const readAuthFiles = (
   req: Request,
-): { logo?: Express.Multer.File; certificate?: Express.Multer.File } => {
+): {
+  logo?: Express.Multer.File;
+  certificate?: Express.Multer.File;
+  signature?: Express.Multer.File;
+} => {
   const map = req.files as MulterFields;
   const logo = map?.logo?.[0];
   const certificate = map?.certificate?.[0];
+  const signature = map?.signature?.[0];
   return {
     ...(logo?.buffer?.length ? { logo } : {}),
     ...(certificate?.buffer?.length ? { certificate } : {}),
+    ...(signature?.buffer?.length ? { signature } : {}),
   };
 };
 
@@ -83,6 +90,12 @@ const wantsClearCertificate = (req: Request): boolean => {
   return v === true || v === 1 || v === "1" || v === "true";
 };
 
+const wantsClearSignature = (req: Request): boolean => {
+  const b = (req.body as Record<string, unknown>) ?? {};
+  const v = b.clear_signature;
+  return v === true || v === 1 || v === "1" || v === "true";
+};
+
 // register/login/forgot-password/reset-password viven en Supabase Edge
 // Functions (supabase/functions/) -- ver backend/src/routes/index.ts.
 
@@ -126,7 +139,11 @@ export const updateCompany: RequestHandler = async (req, res) => {
   }
 
   try {
-    const { logo: logoCandidate, certificate: certCandidate } = readAuthFiles(req);
+    const {
+      logo: logoCandidate,
+      certificate: certCandidate,
+      signature: signatureCandidate,
+    } = readAuthFiles(req);
 
     let logoFile = logoCandidate;
     if (logoFile && logoFile.buffer.length && !isAllowedLogoMime(logoFile.mimetype)) {
@@ -141,6 +158,19 @@ export const updateCompany: RequestHandler = async (req, res) => {
     }
     if (logoFile && !logoFile.buffer.length) logoFile = undefined;
 
+    let signatureFile = signatureCandidate;
+    if (signatureFile && signatureFile.buffer.length && !isAllowedSignatureMime(signatureFile.mimetype)) {
+      res.status(400).json({
+        message: "La firma debe ser PNG, JPG, GIF o WebP de hasta 2 MB.",
+      });
+      return;
+    }
+    if (signatureFile && signatureFile.buffer.length > 2 * 1024 * 1024) {
+      res.status(400).json({ message: "La firma no puede superar 2 MB." });
+      return;
+    }
+    if (signatureFile && !signatureFile.buffer.length) signatureFile = undefined;
+
     let certificateMulter = certCandidate;
     if (certificateMulter) certificateMulter = validateCertificateMulterFile(certificateMulter);
 
@@ -148,6 +178,7 @@ export const updateCompany: RequestHandler = async (req, res) => {
     const uploadsRoot = getUploadsRoot();
     const clearLogo = wantsClearLogo(req) && !logoCandidate?.buffer?.length;
     const clearCert = wantsClearCertificate(req) && !certificateMulter?.buffer?.length;
+    const clearSignature = wantsClearSignature(req) && !signatureCandidate?.buffer?.length;
 
     const certificatePassword = pickStr(
       (req.body as Record<string, unknown>) ?? {},
@@ -163,11 +194,13 @@ export const updateCompany: RequestHandler = async (req, res) => {
     const result = await authService.updateCompany(auth.companyId, auth.userId, body, {
       logoFile: logoFile?.buffer?.length ? logoFile : undefined,
       certificateFile: certificateMulter?.buffer?.length ? certificateMulter : undefined,
+      signatureFile: signatureFile?.buffer?.length ? signatureFile : undefined,
       certificatePassword,
       certificateEncryptionSecret,
       uploadsRoot,
       clearLogo,
       clearCertificate: clearCert,
+      clearSignature,
       accessToken,
     });
     if (!result.ok) {
@@ -176,7 +209,7 @@ export const updateCompany: RequestHandler = async (req, res) => {
     }
 
     res.json({
-      message: "Perfil de empresa actualizado.",
+      message: result.message ?? "Perfil de empresa actualizado.",
       user: result.user,
       company: result.company,
     });

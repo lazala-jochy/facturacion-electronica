@@ -23,6 +23,8 @@ model Company {
   phone                 String?
   email                 String?
   logoUrl               String?      @map("logo_url")
+  /// Imagen de firma autorizada (cotizaciones), subida en Perfil de empresa.
+  signatureUrl          String?      @map("signature_url")
   regime                   String?      @default("Régimen general")
   certificateSalt          String?      @map("certificate_salt")
   certificateEncPath       String?      @map("certificate_enc_path")

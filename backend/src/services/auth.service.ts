@@ -34,6 +34,10 @@ import {
   uploadCompanyLogoToBucket,
   saveCompanyLogoFile,
 } from "../utils/companyLogo";
+import {
+  saveCompanySignatureFile,
+  removeUploadedCompanySignatureFiles,
+} from "../utils/companySignature";
 import { normalizeEmail } from "../utils/email";
 import { hashPassword, verifyPassword } from "../utils/password";
 import { signSessionToken } from "../utils/jwt";
@@ -60,6 +64,7 @@ export type PublicCompany = Pick<
   | "phone"
   | "email"
   | "logoUrl"
+  | "signatureUrl"
   | "dgiiEcfEndpoint"
   | "dgiiUsername"
   | "dgiiAuthUrl"
@@ -170,6 +175,8 @@ export type UpdateCompanyOk = {
     cedula: string;
   };
   company: PublicCompany;
+  /** Aviso no bloqueante (p. ej. certificado no pudo actualizarse) -- el resto del perfil sí se guardó. */
+  message?: string;
 };
 
 const publicCompany = (c: Company): PublicCompany => ({
@@ -180,6 +187,7 @@ const publicCompany = (c: Company): PublicCompany => ({
   phone: c.phone,
   email: c.email,
   logoUrl: c.logoUrl,
+  signatureUrl: c.signatureUrl,
   dgiiEcfEndpoint: c.dgiiEcfEndpoint,
   dgiiUsername: c.dgiiUsername,
   dgiiPassword: decryptCompanySecret(c.dgiiPasswordEnc, c),
@@ -497,11 +505,13 @@ export const authService = {
     opts?: {
       logoFile?: { buffer: Buffer; mimetype: string };
       certificateFile?: { buffer: Buffer; mimetype?: string; originalname?: string };
+      signatureFile?: { buffer: Buffer; mimetype: string };
       certificatePassword?: string;
       certificateEncryptionSecret?: string;
       uploadsRoot?: string;
       clearLogo?: boolean;
       clearCertificate?: boolean;
+      clearSignature?: boolean;
       /** Access token de la sesion que llama, para pedir la URL firmada de subida del logo. */
       accessToken?: string;
     },
@@ -951,6 +961,36 @@ export const authService = {
       }
     }
 
+    const signatureFile = opts?.signatureFile;
+    if (signatureFile?.buffer?.length && uploadsRoot) {
+      try {
+        const relative = await saveCompanySignatureFile(
+          uploadsRoot,
+          companyId,
+          signatureFile.buffer,
+          signatureFile.mimetype,
+        );
+        if (relative) {
+          companyOut = await prisma.company.update({
+            where: { id: companyId },
+            data: { signatureUrl: relative },
+          });
+        }
+      } catch (e) {
+        console.error("No se pudo guardar la firma de la empresa.", e);
+      }
+    } else if (opts?.clearSignature && uploadsRoot) {
+      try {
+        await removeUploadedCompanySignatureFiles(uploadsRoot, companyId);
+        companyOut = await prisma.company.update({
+          where: { id: companyId },
+          data: { signatureUrl: null },
+        });
+      } catch (e) {
+        console.error("No se pudo quitar la firma de la empresa.", e);
+      }
+    }
+
     const certUpload = opts?.certificateFile?.buffer;
     const certPwd = opts?.certificatePassword?.trim() ?? "";
     if (certUpload?.length && uploadsRoot) {
@@ -1013,6 +1053,22 @@ export const authService = {
 
     const pwdOnly = opts?.certificatePassword?.trim() ?? "";
     const encForPwdOnly = opts?.certificateEncryptionSecret?.trim() ?? "";
+    /**
+     * El formulario de Perfil de empresa precarga y reenvía esta clave en CADA guardado (no solo
+     * cuando el usuario la cambia a propósito). Si el .p12 guardado quedó en un estado que ya no
+     * coincide con la clave (p. ej. drift histórico), revalidar contra el archivo en cada guardado
+     * bloqueaba TODO el perfil con "la clave no coincide" aunque el usuario solo quisiera cambiar
+     * el teléfono. Comparar contra el valor ya persistido evita revalidar cuando no hay cambio real,
+     * y si el usuario sí cambia la clave a propósito y no coincide, se avisa sin tumbar el resto del guardado.
+     */
+    const currentCertificateKeyphrase = (() => {
+      try {
+        return decryptCompanySecret(companyOut.certificateKeyphraseEnc, companyOut);
+      } catch {
+        return null;
+      }
+    })();
+    let certificateWarning: string | undefined;
     if (
       !certUpload?.length &&
       uploadsRoot &&
@@ -1032,47 +1088,38 @@ export const authService = {
       encForPwdOnly &&
       uploadsRoot &&
       companyHasCertificateRecord(companyOut) &&
-      !opts?.clearCertificate
+      !opts?.clearCertificate &&
+      encForPwdOnly !== currentCertificateKeyphrase
     ) {
-      let encryptionSecret: string;
       try {
-        encryptionSecret = assertCertificateEncryptionSecret(encForPwdOnly);
-      } catch (e) {
-        const msg =
-          e instanceof Error
-            ? e.message
-            : "La clave de cifrado del certificado debe tener al menos 8 caracteres.";
-        return { ok: false, status: 400, message: msg };
-      }
-      try {
+        const encryptionSecret = assertCertificateEncryptionSecret(encForPwdOnly);
         const loaded = await loadDecryptedPkcs12ForCompany(companyOut, uploadsRoot, encryptionSecret);
-        if (!loaded) {
-          return {
-            ok: false,
-            status: 400,
-            message: "No hay certificado guardado para actualizar la contraseña.",
-          };
+        if (loaded) {
+          verifyPkcs12Password(loaded.p12Buffer, pwdOnly);
+          const persisted = await encryptAndPersistCompanyCertificate({
+            uploadsRoot,
+            companyId,
+            p12Buffer: loaded.p12Buffer,
+            p12Password: pwdOnly,
+            encryptionSecret,
+          });
+          companyOut = await prisma.company.update({
+            where: { id: companyId },
+            data: {
+              certificateSalt: persisted.certificateSalt,
+              certificateEncPath: persisted.certificateEncPath,
+              certificatePasswordEnc: persisted.certificatePasswordEnc,
+              certificateKeyphraseEnc: encryptCompanySecret(encryptionSecret, companyOut),
+            },
+          });
         }
-        verifyPkcs12Password(loaded.p12Buffer, pwdOnly);
-        const persisted = await encryptAndPersistCompanyCertificate({
-          uploadsRoot,
-          companyId,
-          p12Buffer: loaded.p12Buffer,
-          p12Password: pwdOnly,
-          encryptionSecret,
-        });
-        companyOut = await prisma.company.update({
-          where: { id: companyId },
-          data: {
-            certificateSalt: persisted.certificateSalt,
-            certificateEncPath: persisted.certificateEncPath,
-            certificatePasswordEnc: persisted.certificatePasswordEnc,
-            certificateKeyphraseEnc: encryptCompanySecret(encryptionSecret, companyOut),
-          },
-        });
       } catch (e) {
-        const msg = e instanceof Error ? e.message : "No se pudo actualizar la contraseña del certificado.";
-        return { ok: false, status: 400, message: msg };
+        console.error(
+          "No se pudo actualizar la contraseña del certificado de empresa (se omite; el resto del perfil se guarda igual).",
+          e,
+        );
+        certificateWarning =
+          "No se pudo actualizar la contraseña del certificado con la clave de cifrado indicada. El resto del perfil se guardó; volvé a subir el .p12 para corregirlo.";
       }
     }
 
@@ -1085,23 +1132,27 @@ export const authService = {
           message: "La clave de cifrado guardada debe tener al menos 8 caracteres.",
         };
       }
-      if (t.length >= 8) {
+      if (t.length >= 8 && t !== currentCertificateKeyphrase) {
+        let canPersist = true;
         if (companyHasCertificateRecord(companyOut)) {
           try {
             await loadDecryptedPkcs12ForCompany(companyOut, uploadsRoot, t);
-          } catch {
-            return {
-              ok: false,
-              status: 400,
-              message:
-                "La clave de cifrado no coincide con el certificado guardado. Revisá o volvé a subir el .p12 con esa clave.",
-            };
+          } catch (e) {
+            canPersist = false;
+            console.error(
+              "La clave de cifrado indicada no coincide con el certificado guardado (se omite; el resto del perfil se guarda igual).",
+              e,
+            );
+            certificateWarning =
+              "La clave de cifrado no coincide con el certificado guardado. El resto del perfil se guardó; volvé a subir el .p12 con esa clave para actualizarla.";
           }
         }
-        companyOut = await prisma.company.update({
-          where: { id: companyId },
-          data: { certificateKeyphraseEnc: encryptCompanySecret(t, companyOut) },
-        });
+        if (canPersist) {
+          companyOut = await prisma.company.update({
+            where: { id: companyId },
+            data: { certificateKeyphraseEnc: encryptCompanySecret(t, companyOut) },
+          });
+        }
       } else if (t.length === 0 && !companyHasCertificateRecord(companyOut)) {
         companyOut = await prisma.company.update({
           where: { id: companyId },
@@ -1127,7 +1178,12 @@ export const authService = {
       });
     }
 
-    return { ok: true, user: publicUser(user), company: publicCompany(companyOut) };
+    return {
+      ok: true,
+      user: publicUser(user),
+      company: publicCompany(companyOut),
+      message: certificateWarning,
+    };
   },
 
   async requestPasswordReset(

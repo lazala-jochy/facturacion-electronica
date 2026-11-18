@@ -7,6 +7,7 @@ export const authFormUpload = multer({
 }).fields([
   { name: "logo", maxCount: 1 },
   { name: "certificate", maxCount: 1 },
+  { name: "signature", maxCount: 1 },
 ]);
 
 /** Solo certificado en envío e-CF (opcional). */

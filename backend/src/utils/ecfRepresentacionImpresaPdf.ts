@@ -250,13 +250,13 @@ type ItemsTableLayout = {
 const buildItemsTableLayout = (left: number, tableW: number): ItemsTableLayout => {
   const gap = 6;
   const ratios = {
-    cant: 0.07,
-    desc: 0.25,
-    unidad: 0.08,
+    cant: 0.083,
+    desc: 0.188,
+    unidad: 0.07,
     precio: 0.13,
-    itbis: 0.11,
-    descuento: 0.11,
-    recargo: 0.11,
+    itbis: 0.13,
+    descuento: 0.145,
+    recargo: 0.124,
     valor: 0.13,
   };
   const gapCount = 7;

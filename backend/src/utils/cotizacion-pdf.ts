@@ -1,6 +1,7 @@
 import PDFDocument from "pdfkit";
 import { ECF_TIPO_LABELS } from "./ecfTipo";
 import { resolveCompanyLogoImage } from "./companyLogo";
+import { resolveCompanySignatureImage } from "./companySignature";
 
 type PdfDoc = InstanceType<typeof PDFDocument>;
 
@@ -28,6 +29,7 @@ type CotizacionForPdf = {
     email: string | null;
     regime: string | null;
     logoUrl?: string | null;
+    signatureUrl?: string | null;
   };
   client: {
     name: string;
@@ -412,16 +414,68 @@ const drawPaymentInfo = (doc: PdfDoc, cotizacion: CotizacionForPdf, topY: number
   return y;
 };
 
+const SIGNATURE_IMAGE_MAX_W_PT = 140;
+const SIGNATURE_IMAGE_MAX_H_PT = 60;
+
+/** Nombre completo + "Firma autorizada" + imagen de firma (en ese orden), debajo de los totales. */
+const drawSignatureBlock = (
+  doc: PdfDoc,
+  signerFullName: string | null | undefined,
+  signatureImagePath: string | Buffer | null,
+) => {
+  const name = (signerFullName ?? "").trim();
+  if (!name && !signatureImagePath) return;
+
+  const left = doc.page.margins.left;
+  const bottom = doc.page.height - doc.page.margins.bottom;
+  const estimatedH = 18 + 14 + (signatureImagePath ? SIGNATURE_IMAGE_MAX_H_PT + 6 : 0);
+  if (doc.y + estimatedH > bottom) {
+    doc.addPage();
+    doc.y = doc.page.margins.top;
+  }
+
+  let y = doc.y;
+  if (name) {
+    doc.font("Helvetica-Bold").fontSize(BASE_FONT_PT).fillColor("#000000").text(name, left, y);
+    y = doc.y + 2;
+  }
+  doc
+    .font("Helvetica")
+    .fontSize(BASE_FONT_PT - 0.5)
+    .fillColor("#444444")
+    .text("Firma autorizada", left, y);
+  y = doc.y + 6;
+
+  if (signatureImagePath) {
+    try {
+      doc.image(signatureImagePath, left, y, {
+        fit: [SIGNATURE_IMAGE_MAX_W_PT, SIGNATURE_IMAGE_MAX_H_PT],
+      });
+      y += SIGNATURE_IMAGE_MAX_H_PT + 6;
+    } catch {
+      /* imagen invalida/corrupta: se omite sin romper el PDF */
+    }
+  }
+  doc.fillColor("#000000");
+  doc.y = y;
+};
+
 export const buildCotizacionPdfBuffer = async (
   cotizacion: CotizacionForPdf,
-  opts?: { uploadsRoot?: string },
+  opts?: { uploadsRoot?: string; signerFullName?: string | null },
 ): Promise<Buffer> => {
   let logoPath: string | Buffer | null = null;
+  let signaturePath: string | Buffer | null = null;
   if (opts?.uploadsRoot && cotizacion.company.id != null) {
     logoPath = await resolveCompanyLogoImage(
       opts.uploadsRoot,
       cotizacion.company.id,
       cotizacion.company.logoUrl,
+    );
+    signaturePath = await resolveCompanySignatureImage(
+      opts.uploadsRoot,
+      cotizacion.company.id,
+      cotizacion.company.signatureUrl,
     );
   }
 
@@ -441,6 +495,9 @@ export const buildCotizacionPdfBuffer = async (
     const paymentBottomY = drawPaymentInfo(doc, cotizacion, sectionTop);
     const totalsBottomY = drawTotalesBox(doc, cotizacion, sectionTop);
     doc.y = Math.max(paymentBottomY, totalsBottomY) + 16;
+
+    doc.moveDown(0.8);
+    drawSignatureBlock(doc, opts?.signerFullName, signaturePath);
 
     doc.moveDown(0.8);
     doc

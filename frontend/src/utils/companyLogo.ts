@@ -11,3 +11,11 @@ export function companyUploadedLogoUrl(company: AuthCompany): string | null {
   const base = API_URL.replace(/\/$/, "");
   return `${base}${company.logoUrl.startsWith("/") ? company.logoUrl : `/${company.logoUrl}`}`;
 }
+
+/** URL absoluta de la firma autorizada de la empresa, o null si no hay archivo. */
+export function companyUploadedSignatureUrl(company: AuthCompany): string | null {
+  if (!company.signatureUrl) return null;
+  if (/^https?:\/\//i.test(company.signatureUrl)) return company.signatureUrl;
+  const base = API_URL.replace(/\/$/, "");
+  return `${base}${company.signatureUrl.startsWith("/") ? company.signatureUrl : `/${company.signatureUrl}`}`;
+}
