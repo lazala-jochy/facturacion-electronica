@@ -546,6 +546,13 @@ export default function Clients() {
       );
       return;
     }
+    if (
+      !window.confirm(
+        "Está a punto de enviar este comprobante a la DGII.\n\nUna vez enviado, no podrá modificarlo ni cancelarlo.\n\n¿Desea continuar?",
+      )
+    ) {
+      return;
+    }
     setSendingEcfId(cotizacionId);
     setEcfError("");
     setEcfSuccess("");
@@ -660,6 +667,13 @@ export default function Clients() {
       setEcfError(
         "No hay clave de cifrado del certificado. Guardala en Perfil de empresa (mín. 8 caracteres) o ingresala abajo.",
       );
+      return;
+    }
+    if (
+      !window.confirm(
+        "Está a punto de reenviar este comprobante a la DGII.\n\n¿Desea continuar?",
+      )
+    ) {
       return;
     }
     setSendingEcfId(cotizacionId);
@@ -1175,10 +1189,14 @@ export default function Clients() {
                     <th className="px-3 sm:px-4 py-3 text-left">e-NCF</th>
                     <th className="px-3 sm:px-4 py-3 text-left">Total</th>
                     <th className="px-3 sm:px-4 py-3 text-left">Estado DGII</th>
-                    <th className="px-3 sm:px-4 py-3 text-center">Detalle</th>
+                    {isDgiiCertification && (
+                      <th className="px-3 sm:px-4 py-3 text-center">Detalle</th>
+                    )}
                     <th className="px-4 sm:px-6 py-4 text-center">e-CF</th>
                     <th className="px-4 sm:px-6 py-4 text-center">PDF</th>
-                    <th className="px-4 sm:px-6 py-4 text-center">XML</th>
+                    {isDgiiCertification && (
+                      <th className="px-4 sm:px-6 py-4 text-center">XML</th>
+                    )}
                     <th className="px-4 sm:px-6 py-4 text-center">Acciones</th>
                   </tr>
                 </thead>
@@ -1316,37 +1334,39 @@ export default function Clients() {
                             <span className="text-gray-400">—</span>
                           )}
                         </td>
-                        <td className="px-4 sm:px-6 py-3 text-center">
-                          {cot ? (
-                            <button
-                              onClick={() => handleOpenDetail(cot.id)}
-                              className="rounded-lg border border-slate-200 p-2 text-slate-700 hover:bg-slate-50"
-                              title="Ver detalle"
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="h-4 w-4"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                                strokeWidth={2}
+                        {isDgiiCertification && (
+                          <td className="px-4 sm:px-6 py-3 text-center">
+                            {cot ? (
+                              <button
+                                onClick={() => handleOpenDetail(cot.id)}
+                                className="rounded-lg border border-slate-200 p-2 text-slate-700 hover:bg-slate-50"
+                                title="Ver detalle"
                               >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                                />
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                                />
-                              </svg>
-                            </button>
-                          ) : (
-                            <span className="text-gray-400">-</span>
-                          )}
-                        </td>
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  className="h-4 w-4"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                  strokeWidth={2}
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                                  />
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                                  />
+                                </svg>
+                              </button>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </td>
+                        )}
 
                         <td className="px-4 sm:px-6 py-4 text-center align-top">
                           {cot ? (
@@ -1446,33 +1466,35 @@ export default function Clients() {
                             <span className="text-gray-400">-</span>
                           )}
                         </td>
-                        <td className="px-4 sm:px-6 py-4 text-center">
-                          {cot ? (
-                            <button
-                              type="button"
-                              onClick={() => void openEcfXmlViewer(cot.id)}
-                              className="p-2 rounded-lg hover:bg-violet-50 transition inline-block"
-                              title="Ver XML e-CF guardado (firmado al guardar cotización)"
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="w-4 h-4 sm:w-5 sm:h-5 text-violet-700"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                                strokeWidth={2}
+                        {isDgiiCertification && (
+                          <td className="px-4 sm:px-6 py-4 text-center">
+                            {cot ? (
+                              <button
+                                type="button"
+                                onClick={() => void openEcfXmlViewer(cot.id)}
+                                className="p-2 rounded-lg hover:bg-violet-50 transition inline-block"
+                                title="Ver XML e-CF guardado (firmado al guardar cotización)"
                               >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"
-                                />
-                              </svg>
-                            </button>
-                          ) : (
-                            <span className="text-gray-400">-</span>
-                          )}
-                        </td>
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  className="w-4 h-4 sm:w-5 sm:h-5 text-violet-700"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                  strokeWidth={2}
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"
+                                  />
+                                </svg>
+                              </button>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </td>
+                        )}
                         <td className="px-4 sm:px-6 py-4 text-center">
                           <div className="flex items-center justify-center gap-2">
                             <Link
@@ -1554,31 +1576,33 @@ export default function Clients() {
                       {cot ? (
                         <>
                           <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => handleOpenDetail(cot.id)}
-                            className="rounded-lg border border-slate-200 p-2 text-slate-700 hover:bg-slate-50"
-                            title="Ver detalle de cotización"
-                          >
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              className="h-4 w-4"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
-                              strokeWidth={2}
+                          {isDgiiCertification && (
+                            <button
+                              onClick={() => handleOpenDetail(cot.id)}
+                              className="rounded-lg border border-slate-200 p-2 text-slate-700 hover:bg-slate-50"
+                              title="Ver detalle de cotización"
                             >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                              />
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                              />
-                            </svg>
-                          </button>
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="h-4 w-4"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                                />
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                                />
+                              </svg>
+                            </button>
+                          )}
                           <button
                             onClick={() => handleSendEcf(cot.id)}
                             disabled={sendingEcfId === cot.id || dgiiSendLocked || !isOnline}
@@ -1632,7 +1656,7 @@ export default function Clients() {
                               </svg>
                             )}
                           </button>
-                          {cot ? (
+                          {cot && isDgiiCertification ? (
                             <button
                               type="button"
                               onClick={() => void openEcfXmlViewer(cot.id)}

@@ -493,11 +493,9 @@ export const downloadCotizacionPdf: RequestHandler = async (req, res) => {
     return;
   }
 
-  const issuerUser = await prisma.user.findFirst({
-    where: { id: req.auth?.userId, companyId },
-    select: { fullName: true },
+  const pdfBuffer = await buildCotizacionPdfBuffer(row, {
+    uploadsRoot: getUploadsRoot(),
   });
-  const pdfBuffer = await buildCotizacionPdfBuffer(row, issuerUser?.fullName);
   const fileName = `cotizacion-${row.number}.pdf`;
 
   res.setHeader("Content-Type", "application/pdf");

@@ -207,6 +207,11 @@ export default function CotizacionEdit() {
       setError("En modo manual, el total debe ser subtotal + ITBIS.");
       return;
     }
+    const badPriceLine = items.findIndex((it) => !(Number(it.unit_price) > 0));
+    if (badPriceLine >= 0) {
+      setError(`El precio unitario de la línea ${badPriceLine + 1} no puede ser 0.`);
+      return;
+    }
 
     const payloadItems: CotizacionItemDraft[] = items.map((it) => ({
       quantity: Number(it.quantity) || 0,
@@ -445,7 +450,7 @@ export default function CotizacionEdit() {
                         </select>
                       </td>
                       <td className="border border-slate-200 p-1"><input className="w-full rounded border border-slate-200 px-1 py-0.5 text-xs" value={row.description} onChange={(e) => updateItem(row.key, { description: e.target.value })} /></td>
-                      <td className="border border-slate-200 p-1"><input type="number" min={0} step="0.01" className="w-full rounded border border-slate-200 px-1 py-0.5 text-right text-xs" value={row.unit_price} onChange={(e) => updateItem(row.key, { unit_price: Number(e.target.value) })} /></td>
+                      <td className="border border-slate-200 p-1"><input type="number" min={0.01} step="0.01" className="w-full rounded border border-slate-200 px-1 py-0.5 text-right text-xs" value={row.unit_price} onChange={(e) => updateItem(row.key, { unit_price: Number(e.target.value) })} /></td>
                       <td className="border border-slate-200 px-2 py-1 text-right font-mono text-slate-800 text-xs">{itemLineTotalValue(row.quantity, row.unit_price).toFixed(2)}</td>
                       <td className="border border-slate-200 p-1 text-center"><button type="button" onClick={() => removeItem(row.key)} className="text-xs text-red-600 hover:underline">✕</button></td>
                     </tr>

@@ -3,62 +3,13 @@ import path from "node:path";
 import type { Company } from "@prisma/client";
 import { prisma } from "../prisma";
 import { normalizeEcfTipo } from "../utils/ecfTipo";
-import { buildConsultaTimbreQrUrl } from "../utils/ecfConsultaTimbreQr";
 import { buildRepresentacionImpresaPdfBuffer } from "../utils/ecfRepresentacionImpresaPdf";
 import { extractXmlTagValue } from "../utils/ecfXmlExtract";
-
-export type PersistRiParams = {
-  uploadsRoot: string;
-  cotizacionId: number;
-  company: Pick<Company, "id" | "dgiiEnvironment" | "name" | "logoUrl">;
-  signedXml: string;
-  ecfTipo: string;
-  fechaFirma: Date;
-  dgiiTrackId: string | null;
-};
-
-export const persistRepresentacionImpresa = async (
-  p: PersistRiParams,
-): Promise<{ relativePath: string; qrUrl: string } | null> => {
-  if (!p.signedXml?.trim()) return null;
-
-  const qrUrl = buildConsultaTimbreQrUrl({
-    signedXml: p.signedXml,
-    dgiiEnvironment: p.company.dgiiEnvironment,
-    ecfTipo: p.ecfTipo,
-    fechaFirma: p.fechaFirma,
-  });
-
-  const pdfBuf = await buildRepresentacionImpresaPdfBuffer({
-    signedXml: p.signedXml,
-    company: p.company,
-    ecfTipo: p.ecfTipo,
-    fechaFirma: p.fechaFirma,
-    dgiiTrackId: p.dgiiTrackId,
-    uploadsRoot: p.uploadsRoot,
-  });
-
-  const relativePath = path.join("ecf-ri", String(p.company.id), `${p.cotizacionId}.pdf`);
-  const absPath = path.join(p.uploadsRoot, relativePath);
-  await fs.mkdir(path.dirname(absPath), { recursive: true });
-  await fs.writeFile(absPath, pdfBuf);
-
-  await prisma.cotizacion.update({
-    where: { id: p.cotizacionId },
-    data: {
-      ecfRiPdfPath: relativePath.replace(/\\/g, "/"),
-      ecfRiQrUrl: qrUrl,
-      ecfRiGeneratedAt: new Date(),
-    },
-  });
-
-  return { relativePath: relativePath.replace(/\\/g, "/"), qrUrl };
-};
 
 type EnsureRiOk = { ok: true; buffer: Buffer; filename: string };
 type EnsureRiErr = { ok: false; status: number; message: string };
 
-/** Sirve el PDF guardado o lo regenera desde `signed_xml` si falta el archivo. */
+/** Genera el PDF siempre desde `signed_xml`, sin persistirlo a disco: evita acumular archivos. */
 export async function ensureRepresentacionImpresaPdfForCotizacion(
   cotizacionId: number,
   companyId: number,
@@ -80,44 +31,20 @@ export async function ensureRepresentacionImpresaPdfForCotizacion(
   }
 
   const fechaFirma = row.dgiiSubmittedAt ?? new Date();
-  const qrUrlActual = buildConsultaTimbreQrUrl({
+  const buffer = await buildRepresentacionImpresaPdfBuffer({
     signedXml: row.signedXml,
-    dgiiEnvironment: row.company.dgiiEnvironment,
-    ecfTipo: normalizeEcfTipo(row.ecfTipo),
-    fechaFirma,
-  });
-  const qrGuardado = row.ecfRiQrUrl?.trim() ?? "";
-  const riDesactualizada = qrGuardado.length > 0 && qrGuardado !== qrUrlActual;
-
-  const rel = row.ecfRiPdfPath?.trim();
-  if (rel && !riDesactualizada) {
-    const abs = path.join(uploadsRoot, rel);
-    try {
-      const buffer = await fs.readFile(abs);
-      return { ok: true, buffer, filename: `representacion-ecf-${cotizacionId}.pdf` };
-    } catch {
-      // Archivo perdido: regenerar
-    }
-  }
-
-  const out = await persistRepresentacionImpresa({
-    uploadsRoot,
-    cotizacionId,
     company: {
       id: row.company.id,
       dgiiEnvironment: row.company.dgiiEnvironment,
       name: row.company.name,
       logoUrl: row.company.logoUrl,
+      phone: row.company.phone,
     },
-    signedXml: row.signedXml,
     ecfTipo: normalizeEcfTipo(row.ecfTipo),
     fechaFirma,
     dgiiTrackId: row.dgiiTrackId,
+    uploadsRoot,
   });
-  if (!out) {
-    return { ok: false, status: 500, message: "No se pudo generar la representación impresa." };
-  }
-  const buffer = await fs.readFile(path.join(uploadsRoot, out.relativePath));
   return { ok: true, buffer, filename: `representacion-ecf-${cotizacionId}.pdf` };
 }
 
@@ -137,7 +64,7 @@ export async function generateRiPdfsForBatchOutput(params: {
   consumoIntegrasSignedDir?: string;
   dgiiEnvironment: string | null;
   uploadsRoot?: string;
-  company?: Pick<Company, "id" | "logoUrl">;
+  company?: Pick<Company, "id" | "logoUrl" | "phone">;
 }): Promise<GenerateRiBatchResult> {
   const outRiDir = path.join(path.dirname(params.ecfSignedDir), "representacion-impresa");
   await fs.mkdir(outRiDir, { recursive: true });
@@ -173,6 +100,7 @@ export async function generateRiPdfsForBatchOutput(params: {
     dgiiEnvironment: params.dgiiEnvironment,
     name: "",
     logoUrl: params.company?.logoUrl ?? null,
+    phone: params.company?.phone ?? null,
   };
   const fechaFirma = new Date();
   let ok = 0;

@@ -71,8 +71,10 @@ export type RiDescuentoRecargoGlobal = {
 export type RiTotales = {
   subtotalGravado: string;
   subtotalExento: string;
+  otrosImpuestosAdicionales: string;
+  totalIscEspecifico: string;
+  totalIscAdValorem: string;
   totalItbis: string;
-  totalIsc: string;
   totalCdt: string;
   totalPropina: string;
   total: string;
@@ -142,15 +144,6 @@ const parseYyyymmddDisplay = (raw: string): string => {
     return `${digits.slice(0, 2)}-${digits.slice(2, 4)}-${digits.slice(4, 8)}`;
   }
   return trimmed;
-};
-
-const sumImpuestoMonto = (el: XmlEl): number => {
-  const parts = [
-    itemChild(el, "MontoImpuestoSelectivoConsumoEspecifico"),
-    itemChild(el, "MontoImpuestoSelectivoConsumoAdvalorem"),
-    itemChild(el, "OtrosImpuestosAdicionales"),
-  ];
-  return parts.reduce((acc, p) => acc + (Number.parseFloat(p) || 0), 0);
 };
 
 type ItbisRates = { i1: number; i2: number; i3: number };
@@ -273,26 +266,46 @@ const parseDescuentosRecargosGlobales = (doc: XmlDoc): RiDescuentoRecargoGlobal[
 const parseTotalesImpuestosAdicionales = (doc: XmlDoc) => {
   let totalCdt = 0;
   let totalPropina = 0;
-  let totalIscOtros = 0;
+  let totalEspecifico = 0;
+  let totalAdValorem = 0;
+  let totalOtros = 0;
   const impuestos = doc.getElementsByTagName("ImpuestoAdicional");
   for (let i = 0; i < impuestos.length; i++) {
     const el = impuestos.item(i) as XmlEl | null;
     if (!el) continue;
     const tipo = itemChild(el, "TipoImpuesto");
-    const monto = sumImpuestoMonto(el);
-    if (!monto) continue;
-    if (TIPO_IMPUESTO_CDT.has(tipo)) totalCdt += monto;
-    else if (TIPO_IMPUESTO_PROPINA.has(tipo)) totalPropina += monto;
-    else totalIscOtros += monto;
+    const espec = Number.parseFloat(itemChild(el, "MontoImpuestoSelectivoConsumoEspecifico")) || 0;
+    const adval = Number.parseFloat(itemChild(el, "MontoImpuestoSelectivoConsumoAdvalorem")) || 0;
+    const otros = Number.parseFloat(itemChild(el, "OtrosImpuestosAdicionales")) || 0;
+    if (TIPO_IMPUESTO_CDT.has(tipo)) {
+      totalCdt += espec + adval + otros;
+      continue;
+    }
+    if (TIPO_IMPUESTO_PROPINA.has(tipo)) {
+      totalPropina += espec + adval + otros;
+      continue;
+    }
+    totalEspecifico += espec;
+    totalAdValorem += adval;
+    totalOtros += otros;
   }
   const montoImpAdicional = Number.parseFloat(extractXmlTagValueFromDoc(doc, "MontoImpuestoAdicional")) || 0;
-  if (montoImpAdicional > 0 && totalIscOtros === 0 && totalCdt === 0 && totalPropina === 0) {
-    totalIscOtros = montoImpAdicional;
+  if (
+    montoImpAdicional > 0 &&
+    totalEspecifico === 0 &&
+    totalAdValorem === 0 &&
+    totalOtros === 0 &&
+    totalCdt === 0 &&
+    totalPropina === 0
+  ) {
+    totalOtros = montoImpAdicional;
   }
   return {
     totalCdt: totalCdt > 0 ? totalCdt.toFixed(2) : "",
     totalPropina: totalPropina > 0 ? totalPropina.toFixed(2) : "",
-    totalIsc: totalIscOtros > 0 ? totalIscOtros.toFixed(2) : "",
+    totalIscEspecifico: totalEspecifico > 0 ? totalEspecifico.toFixed(2) : "",
+    totalIscAdValorem: totalAdValorem > 0 ? totalAdValorem.toFixed(2) : "",
+    otrosImpuestosAdicionales: totalOtros > 0 ? totalOtros.toFixed(2) : "",
   };
 };
 
@@ -373,8 +386,10 @@ export const parseRepresentacionImpresaData = (
     totales: {
       subtotalGravado: gravadoFromDoc(doc),
       subtotalExento: extractXmlTagValueFromDoc(doc, "MontoExento"),
+      otrosImpuestosAdicionales: impuestos.otrosImpuestosAdicionales,
+      totalIscEspecifico: impuestos.totalIscEspecifico,
+      totalIscAdValorem: impuestos.totalIscAdValorem,
       totalItbis: extractXmlTagValueFromDoc(doc, "TotalITBIS"),
-      totalIsc: impuestos.totalIsc || extractXmlTagValueFromDoc(doc, "MontoImpuestoAdicional"),
       totalCdt: impuestos.totalCdt,
       totalPropina: impuestos.totalPropina,
       total: extractXmlTagValueFromDoc(doc, "MontoTotal"),

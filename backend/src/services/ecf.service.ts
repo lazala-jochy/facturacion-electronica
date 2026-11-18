@@ -11,7 +11,6 @@ import { fechaEmisionDdMmYyyy } from "./xmlBuilder/common";
 import { assertCertificateEncryptionSecret, decryptCompanySecret, encryptCompanySecret } from "../utils/companyCertificateCrypto";
 import { buildEcfNumber } from "../utils/ecfTipo";
 import { refinePayloadForEcfTipo } from "./ecfTipoHandlers";
-import { persistRepresentacionImpresa } from "./ecfRepresentacionImpresa.service";
 import {
   companyHasCertificateRecord,
   encryptAndPersistCompanyCertificate,
@@ -457,27 +456,6 @@ export const ecfService = {
           dgiiSubmittedAt,
         },
       );
-
-      if (dgiiResponse.status !== "rejected") {
-        try {
-          await persistRepresentacionImpresa({
-            uploadsRoot: options.uploadsRoot,
-            cotizacionId,
-            company: {
-              id: companyRow.id,
-              dgiiEnvironment: companyRow.dgiiEnvironment,
-              name: companyRow.name,
-              logoUrl: companyRow.logoUrl,
-            },
-            signedXml,
-            ecfTipo: normalizeEcfTipo(generation.payload.ecfTipo),
-            fechaFirma: dgiiSubmittedAt,
-            dgiiTrackId: dgiiResponse.trackId ?? null,
-          });
-        } catch (riErr) {
-          console.error("[ecf] representacion impresa:", riErr);
-        }
-      }
 
       return {
         ok: true,

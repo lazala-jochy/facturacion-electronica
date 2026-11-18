@@ -1,8 +1,17 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useOnlineStatus } from "../offline/connectivity";
-import { subscribeOfflineSync, runOfflineSync } from "../offline/syncEngine";
+import {
+  notifyOfflineSync,
+  subscribeOfflineSync,
+  runOfflineSync,
+} from "../offline/syncEngine";
 import { readAuthSessionFromStorage } from "../services/api";
-import { listOfflineCotizaciones, retryOfflineCotizacion } from "../offline/offlineQueue";
+import {
+  listOfflineCotizaciones,
+  removeOfflineCotizacion,
+  retryOfflineCotizacion,
+} from "../offline/offlineQueue";
 import type { OfflineCotizacion } from "../offline/db";
 
 /** El resumen y la lista de ventas pendientes vive en OfflinePendingSales; esto solo cubre el
@@ -28,6 +37,13 @@ export default function OfflineBanner() {
     void runOfflineSync();
   };
 
+  const handleDelete = async (localId: string) => {
+    if (!window.confirm("¿Eliminar esta venta offline? Esta acción no se puede deshacer.")) return;
+    await removeOfflineCotizacion(localId);
+    await refreshErrorsList();
+    await notifyOfflineSync();
+  };
+
   if (online && permanentErrors.length === 0) return null;
 
   return (
@@ -46,17 +62,32 @@ export default function OfflineBanner() {
           </p>
           <ul className="space-y-1">
             {permanentErrors.map((e) => (
-              <li key={e.localId} className="flex items-center justify-between gap-2">
-                <span className="truncate">
+              <li key={e.localId} className="flex flex-wrap items-center justify-between gap-2">
+                <span className="min-w-0 truncate">
                   {e.payload.client.name} — {e.lastError ?? "Error desconocido."}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => void handleRetry(e.localId)}
-                  className="shrink-0 rounded border border-red-300 bg-white px-2 py-0.5 text-xs font-medium text-red-700 hover:bg-red-100"
-                >
-                  Reintentar
-                </button>
+                <span className="flex shrink-0 items-center gap-2">
+                  <Link
+                    to={`/cotizaciones/offline/${e.localId}/editar`}
+                    className="rounded border border-red-300 bg-white px-2 py-0.5 text-xs font-medium text-red-700 hover:bg-red-100"
+                  >
+                    Editar
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => void handleRetry(e.localId)}
+                    className="rounded border border-red-300 bg-white px-2 py-0.5 text-xs font-medium text-red-700 hover:bg-red-100"
+                  >
+                    Reintentar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleDelete(e.localId)}
+                    className="rounded border border-red-300 bg-white px-2 py-0.5 text-xs font-medium text-red-700 hover:bg-red-100"
+                  >
+                    Eliminar
+                  </button>
+                </span>
               </li>
             ))}
           </ul>

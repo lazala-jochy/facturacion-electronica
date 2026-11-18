@@ -37,6 +37,37 @@ export const countPendingOfflineCotizaciones = (companyId: number): Promise<numb
 export const removeOfflineCotizacion = (localId: string): Promise<void> =>
   offlineDb.offlineCotizaciones.delete(localId);
 
+export async function updateOfflineCotizacionPayload(
+  localId: string,
+  payload: CreateClientWithCotizacionPayload,
+): Promise<number> {
+  return offlineDb.offlineCotizaciones.update(localId, {
+    payload: { ...payload, certificate_encryption_secret: undefined },
+    status: "pendiente",
+    attempts: 0,
+    lastError: undefined,
+    updatedAt: Date.now(),
+  });
+}
+
+export async function recoverStuckOfflineCotizaciones(companyId: number): Promise<number> {
+  const stuck = await offlineDb.offlineCotizaciones
+    .where({ companyId, status: "sincronizando" })
+    .toArray();
+  if (stuck.length === 0) return 0;
+  const now = Date.now();
+  await offlineDb.offlineCotizaciones.bulkPut(
+    stuck.map((entry) => ({
+      ...entry,
+      status: "pendiente" as const,
+      attempts: entry.attempts,
+      lastError: undefined,
+      updatedAt: now,
+    })),
+  );
+  return stuck.length;
+}
+
 export async function markOfflineCotizacionStatus(
   localId: string,
   status: OfflineCotizacion["status"],

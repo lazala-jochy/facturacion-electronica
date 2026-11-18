@@ -11,6 +11,7 @@ import Clients from "./pages/Clients";
 import CotizacionCreate from "./pages/CotizacionCreate";
 import CotizacionEdit from "./pages/CotizacionEdit";
 import OfflineDraftPrint from "./pages/OfflineDraftPrint";
+import OfflineDraftEdit from "./pages/OfflineDraftEdit";
 import {
   AUTH_SESSION_INVALIDATED,
   AUTH_SESSION_UPDATED,
@@ -187,6 +188,7 @@ function App() {
     <RouterComponent>
       <Routes>
         <Route path="/cotizaciones/offline/:localId/imprimir" element={<OfflineDraftPrint />} />
+        <Route path="/cotizaciones/offline/:localId/editar" element={<OfflineDraftEdit />} />
         <Route element={<AppLayout company={company} onLogout={handleLogout} />}>
           <Route path="/" element={<Dashboard company={company} user={session.user} />} />
           <Route path="/ecf" element={<ECF company={company} />} />

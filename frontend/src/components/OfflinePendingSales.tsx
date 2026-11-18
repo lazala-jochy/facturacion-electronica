@@ -1,8 +1,15 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { OfflineCotizacion } from "../offline/db";
-import { listOfflineCotizaciones } from "../offline/offlineQueue";
-import { subscribeOfflineSync, runOfflineSync } from "../offline/syncEngine";
+import {
+  listOfflineCotizaciones,
+  removeOfflineCotizacion,
+} from "../offline/offlineQueue";
+import {
+  notifyOfflineSync,
+  subscribeOfflineSync,
+  runOfflineSync,
+} from "../offline/syncEngine";
 
 const statusLabel: Record<OfflineCotizacion["status"], string> = {
   pendiente: "Pendiente de sincronizar",
@@ -33,6 +40,12 @@ export default function OfflinePendingSales({ companyId }: { companyId?: number 
     refresh();
     return subscribeOfflineSync(refresh);
   }, [companyId]);
+
+  const handleDelete = async (localId: string) => {
+    if (!window.confirm("¿Eliminar esta venta offline? Esta acción no se puede deshacer.")) return;
+    await removeOfflineCotizacion(localId);
+    await notifyOfflineSync();
+  };
 
   if (entries.length === 0) return null;
 
@@ -67,6 +80,14 @@ export default function OfflinePendingSales({ companyId }: { companyId?: number 
               >
                 {statusLabel[e.status]}
               </span>
+              {e.status === "error_permanente" && (
+                <Link
+                  to={`/cotizaciones/offline/${e.localId}/editar`}
+                  className="text-[11px] font-medium text-[#0b57d0] hover:underline"
+                >
+                  Editar
+                </Link>
+              )}
               <Link
                 to={`/cotizaciones/offline/${e.localId}/imprimir`}
                 target="_blank"
@@ -75,6 +96,13 @@ export default function OfflinePendingSales({ companyId }: { companyId?: number 
               >
                 Ver borrador
               </Link>
+              <button
+                type="button"
+                onClick={() => void handleDelete(e.localId)}
+                className="text-[11px] font-medium text-red-600 hover:underline"
+              >
+                Eliminar
+              </button>
             </span>
           </li>
         ))}

@@ -4,7 +4,6 @@ import type { DgiiSubmissionResult } from "../types/dgiiEcf";
 import { DgiiEcfError } from "../types/dgiiEcf";
 import { submitSignedEcfWithTenantConfig } from "./dgiiEcfApi.service";
 import { finalizeDgiiSubmissionAfterReception } from "./dgiiSubmissionFinalize.service";
-import { persistRepresentacionImpresa } from "./ecfRepresentacionImpresa.service";
 import { persistCotizacionAfterDgiiSubmission } from "./cotizacion.service";
 import { parseDgiiCertProfile, type DgiiCertProfile } from "../types/dgiiCertProfile";
 import { normalizeEcfTipo } from "../utils/ecfTipo";
@@ -201,27 +200,6 @@ export async function retryQueuedCotizacionSubmit(
         dgiiSubmitCertProfile: null,
       },
     });
-
-    if (dgiiResponse.status !== "rejected") {
-      try {
-        await persistRepresentacionImpresa({
-          uploadsRoot: options.uploadsRoot,
-          cotizacionId,
-          company: {
-            id: companyRow.id,
-            dgiiEnvironment: companyRow.dgiiEnvironment,
-            name: companyRow.name,
-            logoUrl: companyRow.logoUrl,
-          },
-          signedXml,
-          ecfTipo: normalizeEcfTipo(cot.ecfTipo),
-          fechaFirma: dgiiSubmittedAt,
-          dgiiTrackId: dgiiResponse.trackId ?? null,
-        });
-      } catch (riErr) {
-        console.error("[dgii-retry] representacion impresa:", riErr);
-      }
-    }
 
     return {
       ok: true,

@@ -15,7 +15,7 @@ import {
 /** §18.2.3: margen mínimo 2 cm; QR mínimo 22×22 mm. */
 const MARGEN_HOJA_CM_PT = 56.7;
 const QR_SIZE_MM_PT = 62.4;
-const QR_FOOTER_TEXT_LINE_H_PT = 12;
+const QR_FOOTER_TEXT_LINE_H_PT = 14;
 const QR_FOOTER_TEXT_GAP_PT = 6;
 /** QR + código de seguridad y fecha firma debajo del QR. */
 const FOOTER_BLOCK_H_PT =
@@ -23,13 +23,15 @@ const FOOTER_BLOCK_H_PT =
 
 const COLOR_ACCENT = "#1e4a8a";
 const COLOR_TABLE_HEAD = "#d9dce3";
+const COLOR_GRID = "#a9afba";
 const LOGO_MAX_PT = 56;
-const TABLE_HEADER_H_PT = 18;
-const TABLE_ROW_PAD_PT = 4;
+const TABLE_HEADER_H_PT = 32;
+const TABLE_ROW_PAD_PT = 5;
+const BASE_FONT_PT = 9.5;
 
 export type RepresentacionImpresaInput = {
   signedXml: string;
-  company: Pick<Company, "dgiiEnvironment" | "name" | "logoUrl"> & { id?: number };
+  company: Pick<Company, "dgiiEnvironment" | "name" | "logoUrl" | "phone"> & { id?: number };
   ecfTipo: string;
   fechaFirma: Date;
   dgiiTrackId?: string | null;
@@ -88,11 +90,51 @@ const drawAccentRule = (doc: PdfDoc, y: number) => {
     .strokeColor("#000000");
 };
 
+/** Dibuja "Etiqueta: valor" con la etiqueta en negrita y el valor en texto normal. */
+/** Devuelve el alto (pt) realmente ocupado, para que el llamador avance `y` incluso si el valor hizo wrap. */
+const drawKeyValue = (
+  doc: PdfDoc,
+  label: string,
+  value: string,
+  x: number,
+  y: number,
+  width: number,
+  align: "left" | "right" = "left",
+  size = BASE_FONT_PT,
+): number => {
+  const labelText = `${label}: `;
+  const lineH = size + 4;
+  if (align === "right") {
+    doc.font("Helvetica-Bold").fontSize(size);
+    const labelW = doc.widthOfString(labelText);
+    doc.font("Helvetica").fontSize(size);
+    const valueW = doc.widthOfString(value);
+    if (labelW + valueW <= width) {
+      const startX = x + width - (labelW + valueW);
+      doc.font("Helvetica-Bold").fontSize(size).text(labelText, startX, y, { lineBreak: false });
+      doc.font("Helvetica").fontSize(size).text(value, startX + labelW, y, { lineBreak: false });
+      return lineH;
+    }
+    // El valor no cabe junto a la etiqueta en una línea: lo envolvemos debajo, ambos a la derecha.
+    doc.font("Helvetica-Bold").fontSize(size).text(labelText, x, y, { width, align: "right" });
+    const valueY = y + lineH;
+    doc.font("Helvetica").fontSize(size).text(value, x, valueY, { width, align: "right" });
+    const valueH = doc.heightOfString(value, { width });
+    return lineH + Math.max(lineH, valueH + 2);
+  }
+  doc.font("Helvetica-Bold").fontSize(size).text(labelText, x, y, { continued: true, width });
+  doc.font("Helvetica").fontSize(size).text(value);
+  doc.font("Helvetica-Bold").fontSize(size);
+  const h = doc.heightOfString(`${labelText}${value}`, { width });
+  return Math.max(lineH, h + 2);
+};
+
 /** §18.2.1 + modelo ilustrativo DGII: logo (si existe), emisor izquierda, tipo/e-NCF derecha. */
 const drawHeaderBlock = (
   doc: PdfDoc,
   data: RepresentacionImpresaData,
   logoPath: string | Buffer | null,
+  companyPhone?: string | null,
 ) => {
   const pageW = doc.page.width;
   const left = doc.page.margins.left;
@@ -100,123 +142,138 @@ const drawHeaderBlock = (
   const mid = (left + right) / 2;
   const y0 = doc.y;
 
-  let textLeft = left;
+  const textLeft = left;
+  let contentStartY = y0;
   if (logoPath) {
     try {
       doc.image(logoPath, left, y0, { fit: [LOGO_MAX_PT, LOGO_MAX_PT] });
-      textLeft = left + LOGO_MAX_PT + 10;
+      contentStartY = y0 + LOGO_MAX_PT + 8;
     } catch {
-      textLeft = left;
+      contentStartY = y0;
     }
   }
+  let yLeft = contentStartY;
 
   const colW = mid - textLeft - 10;
-  let yLeft = y0;
   if (data.emisor.nombreComercial.trim()) {
-    doc.font("Helvetica-Bold").fontSize(11).text(data.emisor.nombreComercial, textLeft, yLeft, {
+    doc.font("Helvetica-Bold").fontSize(12.5).text(data.emisor.nombreComercial, textLeft, yLeft, {
       width: colW,
     });
-    yLeft = doc.y + 2;
+    yLeft = doc.y + 3;
   }
   const razon = data.emisor.razonSocial.trim();
   if (razon && razon !== data.emisor.nombreComercial.trim()) {
-    doc.font("Helvetica-Bold").fontSize(9).text(razon, textLeft, yLeft, { width: colW });
-    yLeft = doc.y + 2;
+    doc.font("Helvetica-Bold").fontSize(10.5).text(razon, textLeft, yLeft, { width: colW });
+    yLeft = doc.y + 3;
   }
-  doc.font("Helvetica").fontSize(8);
+  doc.font("Helvetica").fontSize(BASE_FONT_PT);
   if (data.emisor.sucursal.trim()) {
-    doc.text(`Sucursal ${data.emisor.sucursal}`, textLeft, yLeft, { width: colW });
-    yLeft = doc.y + 2;
+    yLeft += drawKeyValue(doc, "Sucursal", data.emisor.sucursal, textLeft, yLeft, colW);
   }
   if (data.emisor.rnc.trim()) {
-    doc.text(`RNC ${data.emisor.rnc}`, textLeft, yLeft, { width: colW });
-    yLeft = doc.y + 2;
+    yLeft += drawKeyValue(doc, "RNC", data.emisor.rnc, textLeft, yLeft, colW);
   }
   const dir = direccionEmisorLinea(data);
   if (dir) {
-    doc.text(dir, textLeft, yLeft, { width: colW });
-    yLeft = doc.y + 2;
+    yLeft += drawKeyValue(doc, "Dirección", dir, textLeft, yLeft, colW);
+  }
+  if (companyPhone?.trim()) {
+    yLeft += drawKeyValue(doc, "Teléfono", companyPhone.trim(), textLeft, yLeft, colW);
   }
   if (data.emisor.fechaEmision.trim()) {
-    doc.text(`Fecha Emisión ${data.emisor.fechaEmision}`, textLeft, yLeft, { width: colW });
-    yLeft = doc.y + 2;
-  }
-  if (logoPath) {
-    yLeft = Math.max(yLeft, y0 + LOGO_MAX_PT);
+    yLeft += drawKeyValue(doc, "Fecha Emisión", data.emisor.fechaEmision, textLeft, yLeft, colW);
   }
 
-  let yRight = y0;
+  let yRight = contentStartY;
   doc
     .font("Helvetica-Bold")
-    .fontSize(10)
+    .fontSize(12)
     .fillColor(COLOR_ACCENT)
     .text(data.tipoLabel, mid + 10, yRight, { width: right - mid - 10, align: "right" });
   doc.fillColor("#000000");
   yRight = doc.y + 6;
 
-  const pushRight = (text: string, bold = false, size = 8) => {
+  const pushRightKv = (label: string, value: string, size = BASE_FONT_PT) => {
+    if (!value.trim()) return;
+    yRight += drawKeyValue(doc, label, value, mid + 10, yRight, right - mid - 10, "right", size);
+  };
+  const pushRight = (text: string) => {
     if (!text.trim()) return;
-    doc
-      .font(bold ? "Helvetica-Bold" : "Helvetica")
-      .fontSize(size)
-      .text(text, mid + 10, yRight, { width: right - mid - 10, align: "right" });
+    doc.font("Helvetica").fontSize(BASE_FONT_PT).text(text, mid + 10, yRight, { width: right - mid - 10, align: "right" });
     yRight = doc.y + 3;
   };
 
-  pushRight(`e-NCF ${data.encf}`, true, 9);
+  pushRightKv("e-NCF", data.encf, BASE_FONT_PT + 1);
   if (data.fechaVencimientoSecuencia) {
-    pushRight(`Fecha Vencimiento ${formatFechaRiSlash(data.fechaVencimientoSecuencia)}`);
+    pushRightKv("Fecha Vencimiento", formatFechaRiSlash(data.fechaVencimientoSecuencia));
   }
   if (data.ncfModificado) {
-    pushRight(`e-NCF modificado ${data.ncfModificado}`);
+    pushRightKv("e-NCF modificado", data.ncfModificado);
   }
   if (data.codigoModificacionLabel) {
     pushRight(data.codigoModificacionLabel);
   } else if (data.codigoModificacion) {
-    pushRight(`Código modificación ${data.codigoModificacion}`);
+    pushRightKv("Código modificación", data.codigoModificacion);
   }
 
   doc.y = Math.max(yLeft, yRight) + 8;
   drawAccentRule(doc, doc.y);
   doc.moveDown(0.45);
 
-  doc.font("Helvetica").fontSize(8);
-  doc.text(`Razón social cliente ${data.comprador.razonSocial || "—"}`, left);
-  doc.moveDown(0.15);
+  let yClient = doc.y;
+  yClient += drawKeyValue(doc, "Razón social cliente", data.comprador.razonSocial || "—", left, yClient, colW);
   if (data.comprador.identificadorExtranjero.trim()) {
-    doc.text(`Identificador extranjero ${data.comprador.identificadorExtranjero}`, left);
+    yClient += drawKeyValue(doc, "Identificador extranjero", data.comprador.identificadorExtranjero, left, yClient, colW);
   } else {
-    doc.text(`RNC Cliente ${data.comprador.rncCedula.trim() || "—"}`, left);
+    yClient += drawKeyValue(doc, "RNC Cliente", data.comprador.rncCedula.trim() || "—", left, yClient, colW);
   }
-  doc.moveDown(0.5);
+  doc.y = yClient + 2;
+};
+
+type ItemsTableCols = {
+  cant: number;
+  desc: number;
+  unidad: number;
+  precio: number;
+  itbis: number;
+  descuento: number;
+  recargo: number;
+  valor: number;
 };
 
 type ItemsTableLayout = {
   gap: number;
-  w: { cant: number; desc: number; unidad: number; precio: number; itbis: number; valor: number };
-  x: { cant: number; desc: number; unidad: number; precio: number; itbis: number; valor: number };
+  w: ItemsTableCols;
+  x: ItemsTableCols;
 };
 
 const buildItemsTableLayout = (left: number, tableW: number): ItemsTableLayout => {
-  const gap = 8;
+  const gap = 6;
   const ratios = {
-    cant: 0.09,
-    desc: 0.31,
-    unidad: 0.14,
-    precio: 0.15,
-    itbis: 0.14,
-    valor: 0.17,
+    cant: 0.07,
+    desc: 0.25,
+    unidad: 0.08,
+    precio: 0.13,
+    itbis: 0.11,
+    descuento: 0.11,
+    recargo: 0.11,
+    valor: 0.13,
   };
-  const contentW = tableW - gap * 5;
-  const w = {
+  const gapCount = 7;
+  const contentW = tableW - gap * gapCount;
+  const w: ItemsTableCols = {
     cant: Math.floor(contentW * ratios.cant),
     desc: Math.floor(contentW * ratios.desc),
     unidad: Math.floor(contentW * ratios.unidad),
     precio: Math.floor(contentW * ratios.precio),
     itbis: Math.floor(contentW * ratios.itbis),
-    valor: Math.max(48, Math.floor(contentW * ratios.valor)),
+    descuento: Math.floor(contentW * ratios.descuento),
+    recargo: Math.floor(contentW * ratios.recargo),
+    valor: Math.max(42, Math.floor(contentW * ratios.valor)),
   };
-  const used = w.cant + w.desc + w.unidad + w.precio + w.itbis + w.valor + gap * 5;
+  const used =
+    w.cant + w.desc + w.unidad + w.precio + w.itbis + w.descuento + w.recargo + w.valor +
+    gap * gapCount;
   if (used < tableW) w.desc += tableW - used;
 
   let xCursor = left;
@@ -234,6 +291,8 @@ const buildItemsTableLayout = (left: number, tableW: number): ItemsTableLayout =
       unidad: nextX(w.unidad),
       precio: nextX(w.precio),
       itbis: nextX(w.itbis),
+      descuento: nextX(w.descuento),
+      recargo: nextX(w.recargo),
       valor: nextX(w.valor),
     },
   };
@@ -254,65 +313,107 @@ const drawItemsTable = (
   doc: PdfDoc,
   data: RepresentacionImpresaData,
   logoPath: string | Buffer | null,
+  reservedFooterH: number,
 ) => {
   const left = doc.page.margins.left;
   const right = doc.page.width - doc.page.margins.right;
   const tableW = right - left;
   const layout = buildItemsTableLayout(left, tableW);
-  const { w, x } = layout;
+  const { w, x, gap } = layout;
+
+  const boundaries = [
+    left,
+    x.desc - gap / 2,
+    x.unidad - gap / 2,
+    x.precio - gap / 2,
+    x.itbis - gap / 2,
+    x.descuento - gap / 2,
+    x.recargo - gap / 2,
+    x.valor - gap / 2,
+    right,
+  ];
+
+  const drawGridBox = (top: number, bottom: number) => {
+    doc.save();
+    doc.lineWidth(0.5).strokeColor(COLOR_GRID);
+    doc.moveTo(boundaries[0], top).lineTo(boundaries[boundaries.length - 1], top).stroke();
+    doc.moveTo(boundaries[0], bottom).lineTo(boundaries[boundaries.length - 1], bottom).stroke();
+    for (const bx of boundaries) {
+      doc.moveTo(bx, top).lineTo(bx, bottom).stroke();
+    }
+    doc.restore();
+  };
 
   const footerReserveTop = () =>
-    doc.page.height - doc.page.margins.bottom - FOOTER_BLOCK_H_PT - 24;
+    doc.page.height - doc.page.margins.bottom - reservedFooterH - 24;
 
   const drawTableHeader = () => {
     const y0 = doc.y;
     const h = TABLE_HEADER_H_PT;
     doc.rect(left, y0, tableW, h).fill(COLOR_TABLE_HEAD);
-    doc.fillColor("#000000").font("Helvetica-Bold").fontSize(7);
-    const ty = y0 + 5;
-    cellText(doc, "Cantidad", x.cant, ty, w.cant, "right");
+    drawGridBox(y0, y0 + h);
+    doc.fillColor("#000000").font("Helvetica-Bold").fontSize(BASE_FONT_PT - 1.5);
+    const ty = y0 + 6;
+    cellText(doc, "Cant", x.cant, ty, w.cant, "right");
     cellText(doc, "Descripción", x.desc, ty, w.desc);
-    cellText(doc, "U. medida", x.unidad, ty, w.unidad);
-    cellText(doc, "Precio", x.precio, ty, w.precio, "right");
-    cellText(doc, "ITBIS", x.itbis, ty, w.itbis, "right");
-    cellText(doc, "Valor", x.valor, ty, w.valor, "right");
-    doc.y = y0 + h + 4;
+    cellText(doc, "Unidad", x.unidad, ty, w.unidad);
+    cellText(doc, "Precio RD$", x.precio, ty, w.precio, "right");
+    cellText(doc, "ITBIS RD$", x.itbis, ty, w.itbis, "right");
+    cellText(doc, "Descuento RD$", x.descuento, ty, w.descuento, "right");
+    cellText(doc, "Recargo RD$", x.recargo, ty, w.recargo, "right");
+    cellText(doc, "Valor RD$", x.valor, ty, w.valor, "right");
+    doc.y = y0 + h;
   };
 
   drawTableHeader();
-  doc.font("Helvetica").fontSize(7.5);
+  doc.font("Helvetica").fontSize(BASE_FONT_PT - 1);
+
+  if (!data.items.length) {
+    const rowTop = doc.y;
+    const rowH = 22;
+    drawGridBox(rowTop, rowTop + rowH);
+    doc.font("Helvetica").fontSize(BASE_FONT_PT).text("Sin líneas de detalle.", left + 6, rowTop + 7);
+    doc.y = rowTop + rowH;
+    return;
+  }
 
   for (const row of data.items) {
     if (doc.y > footerReserveTop()) {
       doc.addPage();
       doc.y = doc.page.margins.top;
       drawTableHeader();
-      doc.font("Helvetica").fontSize(7.5);
+      doc.font("Helvetica").fontSize(BASE_FONT_PT - 1);
     }
 
     const desc =
       (row.prefijoExento ? `${row.prefijoExento} ` : "") + (row.nombreItem || "—");
-    const y = doc.y + TABLE_ROW_PAD_PT;
     const itbisTxt = row.itbisLinea.trim() ? formatMontoRi(row.itbisLinea) : "—";
-    cellText(doc, formatCantidadRi(row.cantidad), x.cant, y, w.cant, "right");
-    cellText(doc, desc, x.desc, y, w.desc);
-    cellText(doc, unidadCorta(row), x.unidad, y, w.unidad);
+    const descuentoTxt = row.descuento.trim() ? formatMontoRi(row.descuento) : "-";
+    const recargoTxt = row.recargo.trim() ? formatMontoRi(row.recargo) : "-";
+    const descH = doc.heightOfString(desc, { width: w.desc, lineBreak: true });
+
+    const rowTop = doc.y;
+    const rowH = Math.max(BASE_FONT_PT + 3, descH + 2) + TABLE_ROW_PAD_PT * 2;
+    const textY = rowTop + TABLE_ROW_PAD_PT;
+
+    drawGridBox(rowTop, rowTop + rowH);
+
+    cellText(doc, formatCantidadRi(row.cantidad), x.cant, textY, w.cant, "right");
+    doc.text(desc, x.desc, textY, { width: w.desc, lineBreak: true });
+    cellText(doc, unidadCorta(row), x.unidad, textY, w.unidad);
     cellText(
       doc,
       row.precioUnitario ? formatMontoRi(row.precioUnitario) : "—",
       x.precio,
-      y,
+      textY,
       w.precio,
       "right",
     );
-    cellText(doc, itbisTxt, x.itbis, y, w.itbis, "right");
-    cellText(doc, row.montoItem ? formatMontoRi(row.montoItem) : "—", x.valor, y, w.valor, "right");
-    doc.y = y + 12;
-  }
-
-  if (!data.items.length) {
-    doc.font("Helvetica").fontSize(8).text("Sin líneas de detalle.", left);
-    doc.moveDown(0.3);
+    cellText(doc, itbisTxt, x.itbis, textY, w.itbis, "right");
+    cellText(doc, descuentoTxt, x.descuento, textY, w.descuento, "right");
+    cellText(doc, recargoTxt, x.recargo, textY, w.recargo, "right");
+    cellText(doc, row.montoItem ? formatMontoRi(row.montoItem) : "—", x.valor, textY, w.valor, "right");
+    doc.y = rowTop + rowH;
   }
 };
 
@@ -332,45 +433,97 @@ const drawDescuentosRecargosGlobales = (doc: PdfDoc, data: RepresentacionImpresa
   doc.moveDown(0.2);
 };
 
-/** Totales alineados a la derecha (modelo DGII). */
-const drawTotalesFooter = (doc: PdfDoc, data: RepresentacionImpresaData, baseY: number) => {
-  const right = doc.page.width - doc.page.margins.right;
-  const labelW = 130;
-  const x = right - labelW;
+type TotalLine = { label: string; value: string; bold?: boolean };
 
-  const lines: { label: string; value: string; bold?: boolean }[] = [];
-  if (data.totales.subtotalGravado.trim()) {
-    lines.push({ label: "Subtotal Gravado", value: formatMontoRi(data.totales.subtotalGravado) });
-  }
-  if (data.totales.subtotalExento.trim()) {
-    lines.push({ label: "Subtotal Exento", value: formatMontoRi(data.totales.subtotalExento) });
-  }
-  if (data.totales.totalItbis.trim()) {
-    lines.push({ label: "Total ITBIS", value: formatMontoRi(data.totales.totalItbis) });
-  }
-  if (data.totales.totalIsc.trim()) {
-    lines.push({ label: "Total ISC", value: formatMontoRi(data.totales.totalIsc) });
-  }
-  if (data.totales.totalCdt.trim()) {
-    lines.push({ label: "CDT", value: formatMontoRi(data.totales.totalCdt) });
-  }
-  if (data.totales.totalPropina.trim()) {
-    lines.push({ label: "Propina legal", value: formatMontoRi(data.totales.totalPropina) });
-  }
+const TOTALES_ROW_H_PT = 15;
+
+/** §18.2.3 modelo DGII: Subtotal Gravado/Exento, Otros Impuestos Adicionales, ISCe/ISCav, ITBIS, CDT, Propina, Monto Total. */
+const buildTotalesLines = (data: RepresentacionImpresaData): TotalLine[] => {
+  const lines: TotalLine[] = [];
+  lines.push({
+    label: "Subtotal Gravado",
+    value: data.totales.subtotalGravado.trim() ? formatMontoRi(data.totales.subtotalGravado) : "-",
+  });
+  lines.push({
+    label: "Subtotal Exento",
+    value: data.totales.subtotalExento.trim() ? formatMontoRi(data.totales.subtotalExento) : "-",
+  });
+  lines.push({
+    label: "Otros Impuestos Adicionales",
+    value: data.totales.otrosImpuestosAdicionales.trim()
+      ? formatMontoRi(data.totales.otrosImpuestosAdicionales)
+      : "-",
+  });
+  lines.push({
+    label: "Total ISCe",
+    value: data.totales.totalIscEspecifico.trim()
+      ? formatMontoRi(data.totales.totalIscEspecifico)
+      : "-",
+  });
+  lines.push({
+    label: "Total ISCav",
+    value: data.totales.totalIscAdValorem.trim()
+      ? formatMontoRi(data.totales.totalIscAdValorem)
+      : "-",
+  });
+  lines.push({
+    label: "Total ITBIS",
+    value: data.totales.totalItbis.trim() ? formatMontoRi(data.totales.totalItbis) : "-",
+  });
+  lines.push({
+    label: "CDT",
+    value: data.totales.totalCdt.trim() ? formatMontoRi(data.totales.totalCdt) : "-",
+  });
+  lines.push({
+    label: "Propina Legal",
+    value: data.totales.totalPropina.trim() ? formatMontoRi(data.totales.totalPropina) : "-",
+  });
   if (data.totales.totalIsr.trim()) {
     lines.push({ label: "Total ISR retención", value: formatMontoRi(data.totales.totalIsr) });
   }
-  if (data.totales.total.trim()) {
-    lines.push({ label: "Total", value: formatMontoRi(data.totales.total), bold: true });
-  }
+  lines.push({
+    label: "Monto Total",
+    value: data.totales.total.trim() ? formatMontoRi(data.totales.total) : "-",
+    bold: true,
+  });
+
+  return lines;
+};
+
+const totalesBoxHeight = (lineCount: number) => TOTALES_ROW_H_PT * lineCount + 6;
+
+/** Totales alineados a la derecha (modelo DGII); `bottomY` es el borde inferior del bloque. */
+const drawTotalesFooter = (
+  doc: PdfDoc,
+  lines: TotalLine[],
+  bottomY: number,
+) => {
+  const right = doc.page.width - doc.page.margins.right;
+  const valueW = 110;
+  const labelW = 170;
+  const boxLeft = right - labelW - valueW;
+  const valueX = right - valueW;
+
+  const boxH = totalesBoxHeight(lines.length);
+  const boxTop = bottomY - boxH;
+  const baseY = boxTop + 3;
+
+  doc.rect(valueX, boxTop, valueW, boxH).fill(COLOR_TABLE_HEAD);
+  drawAccentRule(doc, boxTop);
 
   let y = baseY;
   for (const line of lines) {
+    const size = line.bold ? BASE_FONT_PT + 1 : BASE_FONT_PT;
+    doc
+      .fillColor("#000000")
+      .font("Helvetica-Bold")
+      .fontSize(size)
+      .text(`${line.label}:`, boxLeft, y, { width: labelW - 8, align: "right" });
     doc
       .font(line.bold ? "Helvetica-Bold" : "Helvetica")
-      .fontSize(line.bold ? 9 : 8)
-      .text(`${line.label} ${line.value}`, x, y, { width: labelW, align: "right" });
-    y += line.bold ? 14 : 12;
+      .fontSize(size)
+      .text(line.value, valueX, y, { width: valueW - 8, align: "right" });
+    y += TOTALES_ROW_H_PT;
   }
 };
 
@@ -391,12 +544,12 @@ const drawQrFooter = (
 
   doc.image(qrPng, left, qrY, { width: QR_SIZE_MM_PT, height: QR_SIZE_MM_PT });
 
+  const footerTextW = doc.page.width - doc.page.margins.right - left;
   let textY = qrY + QR_SIZE_MM_PT + QR_FOOTER_TEXT_GAP_PT;
-  doc.font("Helvetica").fontSize(8);
-  doc.text(`Código de Seguridad ${codigoSeg}`, left, textY);
+  drawKeyValue(doc, "Código de Seguridad", codigoSeg, left, textY, footerTextW);
   textY += QR_FOOTER_TEXT_LINE_H_PT;
   if (fechaFirmaDisplay.trim()) {
-    doc.text(`Fecha Firma ${fechaFirmaDisplay}`, left, textY);
+    drawKeyValue(doc, "Fecha Firma", fechaFirmaDisplay, left, textY, footerTextW);
   }
 };
 
@@ -449,17 +602,21 @@ export const buildRepresentacionImpresaPdfBuffer = async (
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    drawHeaderBlock(doc, data, logoPath);
+    const totalesLines = buildTotalesLines(data);
+    const reservedFooterH = Math.max(FOOTER_BLOCK_H_PT, totalesBoxHeight(totalesLines.length));
+
+    drawHeaderBlock(doc, data, logoPath, input.company.phone);
     doc.moveDown(0.4);
-    drawItemsTable(doc, data, logoPath);
+    drawItemsTable(doc, data, logoPath, reservedFooterH);
     drawDescuentosRecargosGlobales(doc, data);
 
-    const footerY = doc.page.height - MARGEN_HOJA_CM_PT - FOOTER_BLOCK_H_PT;
-    if (doc.y > footerY - 8) {
+    const footerBottomY = doc.page.height - MARGEN_HOJA_CM_PT;
+    const totalesTopY = footerBottomY - totalesBoxHeight(totalesLines.length);
+    if (doc.y > totalesTopY - 8) {
       doc.addPage();
     }
 
-    drawTotalesFooter(doc, data, footerY);
+    drawTotalesFooter(doc, totalesLines, footerBottomY);
     drawQrFooter(doc, qrPng, codigoSeg, fechaFirmaDisplay);
 
     doc.end();

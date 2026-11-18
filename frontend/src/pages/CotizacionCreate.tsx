@@ -182,6 +182,11 @@ export default function CotizacionCreate() {
       setError("En modo manual, el total debe ser subtotal + ITBIS.");
       return;
     }
+    const badPriceLine = items.findIndex((it) => !(Number(it.unit_price) > 0));
+    if (badPriceLine >= 0) {
+      setError(`El precio unitario de la línea ${badPriceLine + 1} no puede ser 0.`);
+      return;
+    }
 
     const payloadItems: CotizacionItemDraft[] = items.map((it) => ({
       quantity: Number(it.quantity) || 0,
@@ -618,7 +623,7 @@ export default function CotizacionCreate() {
                     <td className="border border-slate-200 p-0.5 sm:p-1">
                       <input
                         type="number"
-                        min={0}
+                        min={0.01}
                         step="0.01"
                         className="w-full rounded border border-slate-200 px-1 py-0.5 text-right text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
                         value={row.unit_price}

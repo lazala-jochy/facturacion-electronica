@@ -5,6 +5,7 @@ import {
   incrementOfflineCotizacionAttempts,
   listOfflineCotizaciones,
   markOfflineCotizacionStatus,
+  recoverStuckOfflineCotizaciones,
   removeOfflineCotizacion,
 } from "./offlineQueue";
 
@@ -24,6 +25,12 @@ export function subscribeOfflineSync(listener: SyncListener): () => void {
   return () => listeners.delete(listener);
 }
 
+export async function notifyOfflineSync(): Promise<void> {
+  const session = readAuthSessionFromStorage();
+  if (!session?.company?.id) return;
+  notify((await listOfflineCotizaciones(session.company.id)).length);
+}
+
 /**
  * Procesa la cola offline en orden, una por una (no en paralelo: así, si una fila
  * depende de que la anterior ya haya liberado un número de secuencia, no hay carrera).
@@ -37,6 +44,7 @@ export async function runOfflineSync(): Promise<void> {
 
   syncing = true;
   try {
+    await recoverStuckOfflineCotizaciones(session.company.id);
     const pendingBefore = await listOfflineCotizaciones(session.company.id);
     notify(pendingBefore.length);
 
@@ -70,10 +78,7 @@ export async function runOfflineSync(): Promise<void> {
     }
   } finally {
     syncing = false;
-    const session2 = readAuthSessionFromStorage();
-    if (session2?.company?.id) {
-      notify((await listOfflineCotizaciones(session2.company.id)).length);
-    }
+    await notifyOfflineSync();
   }
 }
 

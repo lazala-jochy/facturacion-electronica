@@ -340,6 +340,7 @@ export const runExcelBatchHandler: RequestHandler = async (req, res, next) => {
         rnc: true,
         dgiiEnvironment: true,
         logoUrl: true,
+        phone: true,
         appSecretsKeyEnc: true,
         certificateSalt: true,
         certificateEncPath: true,
@@ -452,7 +453,7 @@ export const runExcelBatchHandler: RequestHandler = async (req, res, next) => {
           consumoIntegrasSignedDir: result.rfce?.consumoIntegrasSignedDir,
           dgiiEnvironment: companyRow.dgiiEnvironment,
           uploadsRoot,
-          company: { id: companyRow.id, logoUrl: companyRow.logoUrl },
+          company: { id: companyRow.id, logoUrl: companyRow.logoUrl, phone: companyRow.phone },
         });
         result.logs.push(
           `RI PDF: ${representacionImpresa.ok} OK, ${representacionImpresa.fail} error(es) en ${representacionImpresa.outRiDir}`,

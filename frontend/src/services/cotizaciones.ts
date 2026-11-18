@@ -1,4 +1,5 @@
 import { apiFetch, authenticatedFetch, ApiError, readAuthSessionFromStorage } from "./api";
+import { saveFile, PDF_FILE_TYPES } from "../utils/saveFile";
 
 export type CotizacionItemDraft = {
   quantity: number;
@@ -420,14 +421,7 @@ export const downloadCotizacionPDF = async (id: number, fileName?: string) => {
     }
 
     const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = fileName || `cotizacion-${id}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
+    await saveFile(blob, fileName || `cotizacion-${id}.pdf`, PDF_FILE_TYPES);
   } catch (error) {
     throw new Error(
       error instanceof Error
@@ -452,13 +446,6 @@ export const downloadRepresentacionImpresaEcf = async (id: number, fileName?: st
   }
 
   const blob = await response.blob();
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName || `representacion-ecf-${id}.pdf`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  window.URL.revokeObjectURL(url);
+  await saveFile(blob, fileName || `representacion-ecf-${id}.pdf`, PDF_FILE_TYPES);
 };
 
