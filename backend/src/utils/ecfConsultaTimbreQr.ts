@@ -15,7 +15,8 @@ const URL_CONSULTA_TIMBRE_ECF: Record<string, string> = {
 
 const URL_CONSULTA_TIMBRE_FC: Record<string, string> = {
   PRODUCCION: "https://fc.dgii.gov.do/ecf/consultatimbrefc",
-  CERTIFICACION: "https://fc.dgii.gov.do/testecf/consultatimbrefc",
+  /** Mismo segmento `certecf` que usa la recepción RFCE real (`fc.dgii.gov.do/CerteCF/RecepcionFC`); `testecf` no es el ambiente correcto. */
+  CERTIFICACION: "https://fc.dgii.gov.do/certecf/consultatimbrefc",
 };
 
 const envKey = (raw: string | null | undefined) =>

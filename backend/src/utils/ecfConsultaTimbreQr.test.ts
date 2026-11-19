@@ -77,7 +77,7 @@ test("buildConsultaTimbreQrUrl: consumo menor 250 usa fc.dgii.gov.do", () => {
     ecfTipo: "32",
     fechaFirma: new Date("2024-06-15T16:00:00.000Z"),
   });
-  assert.match(url, /^https:\/\/fc\.dgii\.gov\.do\/testecf\/consultatimbrefc\?/);
+  assert.match(url, /^https:\/\/fc\.dgii\.gov\.do\/certecf\/consultatimbrefc\?/);
   assert.doesNotMatch(url, /RncComprador=/);
 });
 
