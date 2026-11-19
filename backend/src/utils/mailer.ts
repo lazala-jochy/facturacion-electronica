@@ -1,21 +1,14 @@
-import nodemailer from "nodemailer";
+import fs from "fs/promises";
 import type { Company } from "@prisma/client";
-import { decryptCompanySecret } from "./companyCertificateCrypto";
 
-export class SmtpNotConfiguredError extends Error {}
+/**
+ * SMTP (incl. Gmail) no funciona en Render: la plataforma bloquea todo tráfico SMTP saliente,
+ * sin importar el puerto -- la conexión se queda colgada hasta hacer timeout. Resend envía
+ * por HTTPS (igual que cualquier llamada a una API REST), así que sí atraviesa esa red.
+ */
+export class MailNotConfiguredError extends Error {}
 
-type MailableCompany = Pick<Company, "id" | "appSecretsKeyEnc" | "smtpEmail" | "smtpAppPasswordEnc" | "name">;
-
-/** Credenciales Gmail (SMTP) de la empresa, descifradas. Null si no hay correo configurado. */
-export const resolveCompanySmtpCredentials = (
-  company: MailableCompany,
-): { user: string; pass: string } | null => {
-  const user = company.smtpEmail?.trim();
-  if (!user || !company.smtpAppPasswordEnc) return null;
-  const pass = decryptCompanySecret(company.smtpAppPasswordEnc, company)?.trim() ?? "";
-  if (!pass) return null;
-  return { user, pass };
-};
+type MailableCompany = Pick<Company, "name" | "smtpEmail">;
 
 export type MailAttachment = {
   filename?: string;
@@ -25,33 +18,65 @@ export type MailAttachment = {
   cid?: string;
 };
 
-/** Envía un correo desde la cuenta Gmail (App Password) configurada en Perfil de empresa. */
+const RESEND_API_URL = "https://api.resend.com/emails";
+
+const resolveAttachmentContent = async (a: MailAttachment): Promise<string | undefined> => {
+  if (a.content) return a.content.toString("base64");
+  if (!a.path) return undefined;
+  if (/^https?:\/\//i.test(a.path)) {
+    const res = await fetch(a.path);
+    return Buffer.from(await res.arrayBuffer()).toString("base64");
+  }
+  return (await fs.readFile(a.path)).toString("base64");
+};
+
+/** Envía un correo vía la API de Resend, desde el remitente verificado de la cuenta (no el Gmail de la empresa). */
 export async function sendCompanyEmail(
   company: MailableCompany,
   opts: { to: string; subject: string; html: string; attachments?: MailAttachment[] },
 ): Promise<void> {
-  const creds = resolveCompanySmtpCredentials(company);
-  if (!creds) {
-    throw new SmtpNotConfiguredError(
-      "No hay correo Gmail configurado para esta empresa. Guardá el correo y el App Password en Perfil de empresa antes de enviar.",
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  const fromEmail = process.env.RESEND_FROM_EMAIL?.trim();
+  if (!apiKey || !fromEmail) {
+    throw new MailNotConfiguredError(
+      "El envío de correo no está configurado en el servidor (RESEND_API_KEY / RESEND_FROM_EMAIL).",
     );
   }
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: { user: creds.user, pass: creds.pass },
-  });
+
+  const attachments = await Promise.all(
+    (opts.attachments ?? []).map(async (a) => ({
+      filename: a.filename ?? "adjunto",
+      content: await resolveAttachmentContent(a),
+      ...(a.cid ? { content_id: a.cid } : {}),
+    })),
+  );
+
+  const replyTo = company.smtpEmail?.trim() || undefined;
+
+  let res: Response;
   try {
-    await transporter.sendMail({
-      from: `"${company.name}" <${creds.user}>`,
-      to: opts.to,
-      subject: opts.subject,
-      html: opts.html,
-      attachments: opts.attachments,
+    res = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: `${company.name} <${fromEmail}>`,
+        to: [opts.to],
+        subject: opts.subject,
+        html: opts.html,
+        attachments,
+        ...(replyTo ? { reply_to: replyTo } : {}),
+      }),
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error desconocido.";
-    throw new Error(
-      `No se pudo enviar el correo con la cuenta Gmail configurada. Verificá el correo y el App Password en Perfil de empresa. Detalle: ${msg}`,
-    );
+    throw new Error(`No se pudo contactar el servicio de correo (Resend). Detalle: ${msg}`);
+  }
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`No se pudo enviar el correo (Resend respondió ${res.status}). Detalle: ${body}`);
   }
 }

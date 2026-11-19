@@ -20,6 +20,8 @@ services:
       ECF_GATEWAY_BASE_URL: ${ECF_GATEWAY_BASE_URL:-}
       ECF_GATEWAY_API_KEY: ${ECF_GATEWAY_API_KEY:-}
       ECF_GATEWAY_CONNECTOR: ${ECF_GATEWAY_CONNECTOR:-false}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-}
     volumes:
       - ./backend:/app/backend
       - backend_node_modules:/app/backend/node_modules

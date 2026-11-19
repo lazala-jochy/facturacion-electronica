@@ -27,7 +27,7 @@ import {
 import { buildEcfNumber } from "../utils/ecfTipo";
 import { retryQueuedCotizacionSubmit } from "../services/dgiiSubmitQueue.service";
 import { resolveCompanyLogoImage } from "../utils/companyLogo";
-import { sendCompanyEmail, SmtpNotConfiguredError, type MailAttachment } from "../utils/mailer";
+import { sendCompanyEmail, MailNotConfiguredError, type MailAttachment } from "../utils/mailer";
 import { isValidEmailFormat } from "../utils/validation";
 
 const escapeHtml = (raw: string): string =>
@@ -642,8 +642,8 @@ export const sendCotizacionEmail: RequestHandler = async (req, res) => {
       attachments,
     });
   } catch (e) {
-    if (e instanceof SmtpNotConfiguredError) {
-      res.status(400).json({ message: e.message });
+    if (e instanceof MailNotConfiguredError) {
+      res.status(500).json({ message: e.message });
       return;
     }
     const msg = e instanceof Error ? e.message : "No se pudo enviar el correo.";
