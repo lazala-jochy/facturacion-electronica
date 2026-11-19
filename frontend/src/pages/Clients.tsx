@@ -195,6 +195,16 @@ export default function Clients() {
     () => !company?.dgiiEnvironment || company.dgiiEnvironment === "CERTIFICACION",
     [company?.dgiiEnvironment],
   );
+  const isDgiiProduccion = company?.dgiiEnvironment === "PRODUCCION";
+  /**
+   * En Producción cualquier envío a DGII (aceptado, rechazado o lo que sea) ya es un hecho real
+   * ante DGII -- no se puede eliminar. En Certificación no hay restricción: son pruebas, no
+   * facturas reales, así que se puede borrar aunque DGII la haya "aceptado".
+   */
+  const canDeleteCotizacion = (dgiiStatus: string | null | undefined): boolean => {
+    if (!isDgiiProduccion) return true;
+    return !dgiiStatus?.trim();
+  };
   const [isOnline, setIsOnline] = useState(
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
@@ -1673,11 +1683,11 @@ export default function Clients() {
                             <button
                               type="button"
                               onClick={() => handleDeleteCotizacionRow(client, cot)}
-                              disabled={cot != null && dgiiStatus === "accepted"}
+                              disabled={cot != null && !canDeleteCotizacion(dgiiStatus)}
                               className="rounded-lg border border-red-200 p-2 text-red-700 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                               title={
-                                cot && dgiiStatus === "accepted"
-                                  ? "Ya fue aceptada por DGII (factura): no se puede eliminar."
+                                cot && !canDeleteCotizacion(dgiiStatus)
+                                  ? "En Producción no se puede eliminar un comprobante ya enviado a DGII."
                                   : "Eliminar cotización"
                               }
                             >
@@ -2031,11 +2041,11 @@ export default function Clients() {
                       <button
                         type="button"
                         onClick={() => handleDeleteCotizacionRow(client, cot)}
-                        disabled={cot != null && dgiiStatus === "accepted"}
+                        disabled={cot != null && !canDeleteCotizacion(dgiiStatus)}
                         className="rounded-lg border border-red-200 p-2 text-red-700 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                         title={
-                          cot && dgiiStatus === "accepted"
-                            ? "Ya fue aceptada por DGII (factura): no se puede eliminar."
+                          cot && !canDeleteCotizacion(dgiiStatus)
+                            ? "En Producción no se puede eliminar un comprobante ya enviado a DGII."
                             : "Eliminar cotización"
                         }
                       >
@@ -2272,13 +2282,13 @@ export default function Clients() {
                   <button
                     type="button"
                     onClick={() => void handleDeleteDetailCotizacion()}
-                    disabled={deletingDetailId === detail.id || detail.dgii_status === "accepted"}
+                    disabled={deletingDetailId === detail.id || !canDeleteCotizacion(detail.dgii_status)}
                     className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-800 hover:bg-red-50 disabled:opacity-50"
                   >
                     {deletingDetailId === detail.id
                       ? "Eliminando…"
-                      : detail.dgii_status === "accepted"
-                        ? "Ya es factura: no se puede eliminar"
+                      : !canDeleteCotizacion(detail.dgii_status)
+                        ? "Ya fue enviada a DGII: no se puede eliminar"
                         : "Eliminar cotización"}
                   </button>
                 </div>

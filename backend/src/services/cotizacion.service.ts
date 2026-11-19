@@ -846,7 +846,11 @@ export const cotizacionService = {
   async deleteCotizacion(id: number, companyId: number) {
     const existing = await prisma.cotizacion.findFirst({
       where: { id, companyId },
-      select: { id: true, dgiiStatus: true },
+      select: {
+        id: true,
+        dgiiStatus: true,
+        company: { select: { dgiiEnvironment: true } },
+      },
     });
     if (!existing) {
       return {
@@ -855,12 +859,17 @@ export const cotizacionService = {
         message: "Cotizacion no encontrada.",
       };
     }
-    if (existing.dgiiStatus === "accepted") {
+    const hasBeenSubmitted = Boolean(existing.dgiiStatus?.trim());
+    const isProduccion = existing.company.dgiiEnvironment === "PRODUCCION";
+    // En Producción cualquier envío a DGII (aceptado, rechazado o lo que sea) ya es un hecho real
+    // ante DGII -- borrarlo esconde ese intento. En Certificación no hay restricción: son
+    // pruebas, no facturas reales, así que se puede borrar aunque DGII la haya "aceptado".
+    if (isProduccion && hasBeenSubmitted) {
       return {
         ok: false as const,
         status: 409,
         message:
-          "Esta cotización ya fue aceptada por DGII y es una factura electrónica: no se puede eliminar.",
+          "En ambiente de Producción no se puede eliminar un comprobante que ya fue enviado a DGII (aceptado, rechazado o pendiente).",
       };
     }
     await prisma.cotizacion.delete({

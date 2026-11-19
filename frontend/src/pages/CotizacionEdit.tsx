@@ -11,6 +11,7 @@ import { calculateTotalsFromItems, itemLineTotalValue } from "../utils/tax";
 import { formatPhoneInput, isValidPhone } from "../utils/phone";
 import ClientRncAutocomplete from "../components/ClientRncAutocomplete";
 import ConfirmModal from "../components/ConfirmModal";
+import UnidadMedidaSelect from "../components/UnidadMedidaSelect";
 import { formatMoney } from "../utils/money";
 import {
   DEFAULT_ECF_TIPO,
@@ -19,11 +20,8 @@ import {
   ECF_TIPO_REQUIERE_REFERENCIA,
   isConsumoMenor250Rfce,
 } from "../config/ecfTipos";
-import {
-  BIEN_O_SERVICIO_OPTIONS,
-  DEFAULT_UNIDAD_MEDIDA,
-  UNIDAD_MEDIDA_OPTIONS,
-} from "../config/unidadesMedida";
+import { BIEN_O_SERVICIO_OPTIONS, DEFAULT_UNIDAD_MEDIDA } from "../config/unidadesMedida";
+import { addCustomUnidadMedida, getCustomUnidadesMedida } from "../config/customUnidadesMedida";
 
 type ItemRow = CotizacionItemDraft & { key: string };
 
@@ -35,11 +33,6 @@ const newRow = (): ItemRow => ({
   description: "",
   unit_price: 0,
 });
-
-const unitOptionsFor = (currentUnit: string) =>
-  UNIDAD_MEDIDA_OPTIONS.some((o) => o.value === currentUnit)
-    ? UNIDAD_MEDIDA_OPTIONS
-    : [{ value: currentUnit, label: currentUnit }, ...UNIDAD_MEDIDA_OPTIONS];
 
 export default function CotizacionEdit() {
   const { id } = useParams();
@@ -82,6 +75,7 @@ export default function CotizacionEdit() {
   const [ecfTipo, setEcfTipo] = useState(DEFAULT_ECF_TIPO);
   const [ecfReferenceNcf, setEcfReferenceNcf] = useState("");
   const [items, setItems] = useState<ItemRow[]>(() => [newRow()]);
+  const [customUnits, setCustomUnits] = useState<string[]>(() => getCustomUnidadesMedida());
   const [calcMode, setCalcMode] = useState<"auto" | "manual">("auto");
   const [manualSubtotal, setManualSubtotal] = useState(0);
   const [manualItbisRate, setManualItbisRate] = useState(18);
@@ -187,6 +181,10 @@ export default function CotizacionEdit() {
   const addItem = () => setItems((prev) => [...prev, newRow()]);
   const removeItem = (key: string) => {
     setItems((prev) => (prev.length <= 1 ? prev : prev.filter((r) => r.key !== key)));
+  };
+
+  const handleAddCustomUnit = (value: string) => {
+    setCustomUnits(addCustomUnidadMedida(value));
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -445,7 +443,7 @@ export default function CotizacionEdit() {
                     <th className="border border-slate-300 px-1 sm:px-2 py-2 min-w-[4rem]">Cant.</th>
                     <th className="border border-slate-300 px-1 sm:px-2 py-2 min-w-[8rem]">Unidad de medida</th>
                     <th className="border border-slate-300 px-1 sm:px-2 py-2 min-w-[7rem]">Bien o servicio</th>
-                    <th className="border border-slate-300 px-1 sm:px-2 py-2 min-w-[8rem]">Descripción</th>
+                    <th className="border border-slate-300 px-1 sm:px-2 py-2 min-w-[18rem]">Descripción</th>
                     <th className="border border-slate-300 px-1 sm:px-2 py-2 text-right min-w-[5rem]">P. unitario</th>
                     <th className="border border-slate-300 px-1 sm:px-2 py-2 text-right min-w-[5rem]">Valor</th>
                     <th className="border border-slate-300 px-1 sm:px-2 py-2 w-10" />
@@ -457,17 +455,12 @@ export default function CotizacionEdit() {
                       <td className="border border-slate-200 px-2 py-1 text-center text-slate-500 text-xs">{idx + 1}</td>
                       <td className="border border-slate-200 p-1"><input type="number" min={0} step="any" className="w-full rounded border border-slate-200 px-1 py-0.5 text-xs" value={row.quantity} onChange={(e) => updateItem(row.key, { quantity: Number(e.target.value) })} /></td>
                       <td className="border border-slate-200 p-1">
-                        <select
-                          className="w-full rounded border border-slate-200 px-1 py-0.5 text-xs"
+                        <UnidadMedidaSelect
                           value={row.unit}
-                          onChange={(e) => updateItem(row.key, { unit: e.target.value })}
-                        >
-                          {unitOptionsFor(row.unit).map((o) => (
-                            <option key={o.value} value={o.value}>
-                              {o.label}
-                            </option>
-                          ))}
-                        </select>
+                          onChange={(unit) => updateItem(row.key, { unit })}
+                          customUnits={customUnits}
+                          onAddCustomUnit={handleAddCustomUnit}
+                        />
                       </td>
                       <td className="border border-slate-200 p-1">
                         <select

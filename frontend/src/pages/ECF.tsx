@@ -63,6 +63,16 @@ export default function ECF({ company }: { company: AuthCompany }) {
   const [dgiiResponseModal, setDgiiResponseModal] = useState<DgiiResponseModalPayload | null>(null);
   /** Columna "Detalle" es para certificación/pruebas; una vez en Producción deja de mostrarse. */
   const isDgiiCertification = !company?.dgiiEnvironment || company.dgiiEnvironment === "CERTIFICACION";
+  const isDgiiProduccion = company?.dgiiEnvironment === "PRODUCCION";
+  /**
+   * En Producción cualquier envío a DGII (aceptado, rechazado o lo que sea) ya es un hecho real
+   * ante DGII -- no se puede eliminar. En Certificación no hay restricción: son pruebas, no
+   * facturas reales, así que se puede borrar aunque DGII la haya "aceptado".
+   */
+  const canDeleteCotizacion = (dgiiStatus: string | null | undefined): boolean => {
+    if (!isDgiiProduccion) return true;
+    return !dgiiStatus?.trim();
+  };
 
   const loadRows = useCallback(async () => {
       try {
@@ -285,8 +295,18 @@ export default function ECF({ company }: { company: AuthCompany }) {
     return undefined;
   }, [company.dgiiConsultUrl, company.dgiiPaso4ConsultUrl]);
 
+  /**
+   * Solo las que aún no tienen un veredicto firme de DGII: "accepted"/"rejected" ya son
+   * definitivas (volver a consultarlas no cambia nada, solo gasta tiempo y llamadas a DGII).
+   */
   const withTrackIds = useMemo(
-    () => rows.filter((r) => Boolean(r.dgii_track_id?.trim())),
+    () =>
+      rows.filter(
+        (r) =>
+          Boolean(r.dgii_track_id?.trim()) &&
+          r.dgii_status !== "accepted" &&
+          r.dgii_status !== "rejected",
+      ),
     [rows],
   );
 
@@ -393,7 +413,8 @@ export default function ECF({ company }: { company: AuthCompany }) {
             </button>
             {withTrackIds.length === 0 && !loading ? (
               <span className="text-xs text-slate-500">
-                No hay cotizaciones con track ID para consultar.
+                No hay cotizaciones pendientes de verificar (las aceptadas/rechazadas ya tienen
+                veredicto firme de DGII).
               </span>
             ) : null}
           </>
@@ -666,12 +687,12 @@ export default function ECF({ company }: { company: AuthCompany }) {
                           disabled={
                             syncDgiiAllProgress != null ||
                             deletingId === row.id ||
-                            row.dgii_status === "accepted"
+                            !canDeleteCotizacion(row.dgii_status)
                           }
                           className="rounded-lg border border-red-200 p-2 text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
                           title={
-                            row.dgii_status === "accepted"
-                              ? "Ya fue aceptada por DGII (factura): no se puede eliminar."
+                            !canDeleteCotizacion(row.dgii_status)
+                              ? "En Producción no se puede eliminar un comprobante ya enviado a DGII."
                               : "Eliminar cotización"
                           }
                         >
@@ -796,11 +817,20 @@ export default function ECF({ company }: { company: AuthCompany }) {
                 </div>
 
                 {detailCotizacion.dgii_track_id?.trim() ? (
-                  <p className="text-xs text-slate-600">
-                    La consulta del estado en DGII se hace de forma única con el botón{" "}
-                    <span className="font-semibold text-slate-800">Actualizar estados DGII</span>{" "}
-                    arriba en la página; se actualizan todas las filas que tengan track ID.
-                  </p>
+                  detailCotizacion.dgii_status === "accepted" ||
+                  detailCotizacion.dgii_status === "rejected" ? (
+                    <p className="text-xs text-slate-600">
+                      Esta cotización ya tiene un veredicto firme de DGII ({statusLabel(detailCotizacion.dgii_status)});
+                      no hace falta volver a consultarla.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-slate-600">
+                      La consulta del estado en DGII se hace de forma única con el botón{" "}
+                      <span className="font-semibold text-slate-800">Actualizar estados DGII</span>{" "}
+                      arriba en la página; se actualizan las filas pendientes que tengan track ID
+                      (las ya aceptadas o rechazadas se saltan).
+                    </p>
+                  )
                 ) : null}
 
                 {detailCotizacion.dgii_track_id?.trim() && dgiiQueryError ? (
@@ -890,14 +920,14 @@ export default function ECF({ company }: { company: AuthCompany }) {
                     disabled={
                       syncDgiiAllProgress != null ||
                       deletingId === detailCotizacion.id ||
-                      detailCotizacion.dgii_status === "accepted"
+                      !canDeleteCotizacion(detailCotizacion.dgii_status)
                     }
                     className="mt-2 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-800 hover:bg-red-50 disabled:opacity-50"
                   >
                     {deletingId === detailCotizacion.id
                       ? "Eliminando…"
-                      : detailCotizacion.dgii_status === "accepted"
-                        ? "Ya es factura: no se puede eliminar"
+                      : !canDeleteCotizacion(detailCotizacion.dgii_status)
+                        ? "Ya fue enviada a DGII: no se puede eliminar"
                         : "Eliminar cotización"}
                   </button>
                 </div>

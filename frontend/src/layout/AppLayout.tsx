@@ -15,7 +15,14 @@ export default function AppLayout({
   onLogout: () => void;
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem("sidebarCollapsed") === "1",
+  );
   const [accountOpen, setAccountOpen] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem("sidebarCollapsed", collapsed ? "1" : "0");
+  }, [collapsed]);
   const sidebarLogoUrl = companyUploadedLogoUrl(company);
   const [appVersion, setAppVersion] = useState<string | null>(null);
   const [updateMessage, setUpdateMessage] = useState<string | null>(null);
@@ -88,11 +95,30 @@ export default function AppLayout({
         />
       )}
 
+      {/* Desktop reopen button (shown only while the sidebar is collapsed) */}
+      {collapsed && (
+        <button
+          onClick={() => setCollapsed(false)}
+          className="hidden lg:flex fixed top-4 left-4 z-40 p-2 bg-white text-[#0b57d0] border border-slate-200 rounded-lg transition hover:scale-105 active:scale-95 shadow-sm"
+          aria-label="Abrir menú"
+          title="Abrir menú"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M9 5l7 7-7 7"
+            />
+          </svg>
+        </button>
+      )}
+
       {/* Sidebar */}
       <aside
-        className={`fixed lg:sticky lg:self-start top-0 left-0 h-screen w-64 bg-white text-slate-700 p-4 flex flex-col z-40 transition-transform duration-300 lg:translate-x-0 border-r border-slate-200 ${
+        className={`fixed lg:sticky lg:self-start top-0 left-0 h-screen w-64 bg-white text-slate-700 p-4 flex flex-col z-40 transition-all duration-300 lg:translate-x-0 border-r border-slate-200 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+        } ${collapsed ? "lg:w-0 lg:p-0 lg:border-r-0 lg:overflow-hidden" : ""}`}
       >
         {/* TOP */}
         <div>
@@ -137,6 +163,21 @@ export default function AppLayout({
                   strokeLinejoin="round"
                   strokeWidth={2}
                   d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+            <button
+              onClick={() => setCollapsed(true)}
+              className="hidden lg:block text-slate-600 p-1 hover:text-slate-900"
+              aria-label="Cerrar menú"
+              title="Cerrar menú"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 19l-7-7 7-7"
                 />
               </svg>
             </button>
