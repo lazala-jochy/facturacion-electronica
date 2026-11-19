@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { listCotizaciones } from "../services/cotizaciones";
 import { AUTH_STORAGE_KEY, type AuthSession } from "../types/session";
 import { MONTHS } from "../utils/months";
@@ -22,6 +23,7 @@ type Movement = {
   type: MovementType;
   amount: number;
   reference: string;
+  cotizacionId: number;
 };
 
 const money = (value: number) =>
@@ -86,6 +88,7 @@ export default function Invoices() {
           type: "ingreso",
           amount: row.total,
           reference: `COT-${row.number}`,
+          cotizacionId: row.id,
         }));
         setAllMovements(mapped);
       } catch (err) {
@@ -395,7 +398,15 @@ export default function Invoices() {
                         {new Date(m.date).toLocaleDateString("es-DO")}
                       </td>
                       <td className="px-3 py-2 text-slate-900">{m.description}</td>
-                      <td className="px-3 py-2 font-mono text-slate-700">{m.reference}</td>
+                      <td className="px-3 py-2 font-mono">
+                        <Link
+                          to={`/cotizaciones/${m.cotizacionId}/editar`}
+                          className="text-[#0b57d0] hover:underline"
+                          title="Ir a la cotización"
+                        >
+                          {m.reference}
+                        </Link>
+                      </td>
                       <td className="px-3 py-2">
                         <span
                           className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -447,11 +458,6 @@ export default function Invoices() {
             </div>
           </div>
         )}
-
-        <p className="mt-4 text-xs text-slate-500">
-          Nota: actualmente los movimientos provienen de cotizaciones (ingresos). Cuando agreguemos
-          módulo de egresos, las salidas se reflejarán automáticamente en este reporte.
-        </p>
       </div>
     </div>
   );

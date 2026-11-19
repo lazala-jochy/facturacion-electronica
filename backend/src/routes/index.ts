@@ -72,6 +72,11 @@ export const buildRouter = () => {
     requireAuth,
     asyncHandler(cotizacionesController.downloadCotizacionPdf),
   );
+  router.post(
+    "/cotizaciones/:id/send-email",
+    requireAuth,
+    asyncHandler(cotizacionesController.sendCotizacionEmail),
+  );
   router.get(
     "/cotizaciones/:id/ecf/xml",
     requireAuth,

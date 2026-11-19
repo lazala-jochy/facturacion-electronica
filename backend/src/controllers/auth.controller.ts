@@ -75,6 +75,8 @@ const updateCompanyBodyFromReq = (req: Request): UpdateCompanyBody => {
     certificate_password: pickStr(b, "certificate_password"),
     ecf_gateway_base_url: pickStr(b, "ecf_gateway_base_url"),
     ecf_gateway_api_key: pickStr(b, "ecf_gateway_api_key"),
+    smtp_email: pickStr(b, "smtp_email"),
+    smtp_app_password: pickStr(b, "smtp_app_password"),
   };
 };
 

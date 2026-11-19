@@ -8,6 +8,7 @@ type Props = {
   onSelect: (client: ClientListItem) => void;
   className: string;
   required?: boolean;
+  disabled?: boolean;
 };
 
 /** Autocompleta cliente por RNC/cédula mientras se escribe; al elegir, rellena nombre/dirección/tel/email. */
@@ -17,6 +18,7 @@ export default function ClientRncAutocomplete({
   onSelect,
   className,
   required,
+  disabled,
 }: Props) {
   const [clients, setClients] = useState<ClientListItem[]>([]);
   const [open, setOpen] = useState(false);
@@ -95,9 +97,10 @@ export default function ClientRncAutocomplete({
         }}
         onFocus={() => setOpen(true)}
         required={required}
+        disabled={disabled}
         autoComplete="off"
       />
-      {open && matches.length > 0 && (
+      {!disabled && open && matches.length > 0 && (
         <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded border border-slate-300 bg-white text-xs shadow-lg">
           {matches.map((client) => (
             <li key={client.id}>

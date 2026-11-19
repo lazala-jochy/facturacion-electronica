@@ -2,7 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import { ECF_CONSUMO_RFCE_TOTAL_THRESHOLD_RD } from "../config/dgiiEcf.constants";
 import { codigoSeguridadRfceDesdeSignedEcf, extractXmlTagValue } from "../utils/ecfXmlExtract";
-import { buildEcfNumber, normalizeEcfTipo } from "../utils/ecfTipo";
+import { buildEcfNumber, normalizeEcfTipo, parseEncfSequence } from "../utils/ecfTipo";
 import { signXmlWithP12Buffer } from "./signer";
 import { validateEcfPayload, type EcfPayload, type RfcePayload } from "./validation";
 import { refinePayloadForEcfTipo } from "./ecfTipoHandlers";
@@ -10,6 +10,8 @@ import { plantillaEcf32ConsumoIntegra } from "./xmlBuilder/plantillas/ecf32Consu
 import { plantillaRfce32 } from "./xmlBuilder/plantillas/rfce32";
 import { submitSignedRfceWithTenantConfig } from "./dgiiEcfApi.service";
 import { resolveP12ForEcf, type SubmitEcfErr } from "./ecf.service";
+import { extractEncfFromDgiiResponse, isDgiiSequenceRejection } from "../utils/dgiiRejection";
+import { allocateNextAfterUsedSeq, markEcfNcfSeqUsed } from "./ecfSeq.service";
 
 type CotizacionWithRelations = Prisma.CotizacionGetPayload<{
   include: { company: true; client: true; items: true };
@@ -275,6 +277,34 @@ export async function submitConsumoMenor250RfceForCotizacion(
       },
     });
 
+    // DGII rechazó por e-NCF/código de seguridad ya usado (equivalente RFCE del 1209): si no se
+    // avanza el correlativo acá, el próximo "Reenviar" regenera el MISMO e-NCF y DGII lo rechaza
+    // de nuevo en bucle -- a diferencia del flujo e-CF normal, RFCE no pasaba por
+    // persistCotizacionAfterDgiiSubmission (que sí hace este avance), por eso no auto-incrementaba.
+    if (dgiiStatus === "rejected" && isDgiiSequenceRejection(dgiiResponse.rawResponse)) {
+      const cotRow = await prisma.cotizacion.findUnique({
+        where: { id: cotizacionId },
+        select: { ecfTipo: true, ecfNcfSeq: true },
+      });
+      const tipo = normalizeEcfTipo(cotRow?.ecfTipo ?? "32");
+      const fromEncf = extractEncfFromDgiiResponse(dgiiResponse.rawResponse);
+      const encfSeq = fromEncf?.seq ?? 0;
+      const cotSeq = cotRow?.ecfNcfSeq && cotRow.ecfNcfSeq > 0 ? cotRow.ecfNcfSeq : 0;
+      const usedSeq = Math.max(cotSeq, encfSeq);
+      await prisma.$transaction(async (tx) => {
+        if (usedSeq > 0) {
+          await markEcfNcfSeqUsed(tx, companyId, tipo, usedSeq);
+        }
+        const newSeq = await allocateNextAfterUsedSeq(tx, companyId, tipo, usedSeq, {
+          excludeCotizacionId: cotizacionId,
+        });
+        await tx.cotizacion.update({
+          where: { id: cotizacionId },
+          data: { ecfNcfSeq: newSeq },
+        });
+      });
+    }
+
     return {
       ok: true,
       ecf_number: packResult.pack.ecf_number,
@@ -318,7 +348,20 @@ export async function buildConsumoMenor250SignedPack(
   if (!options.forceRegenerate) {
     const stored = await loadStoredConsumoMenor250Pack(cotizacionId, companyId);
     if (stored) {
-      return { ok: true, pack: stored };
+      // El pack cacheado trae su propio e-NCF (derivado del XML ya firmado). Si mientras tanto
+      // se avanzó ecfNcfSeq (ej. DGII rechazó por "e-NCF ya usado" y se asignó el siguiente
+      // correlativo libre), ese pack quedó apuntando al e-NCF VIEJO: reusarlo reenvía el mismo
+      // e-NCF que DGII ya rechazó, en bucle, aunque la cotización ya tenga el correlativo nuevo.
+      const cotSeqRow = await prisma.cotizacion.findFirst({
+        where: { id: cotizacionId, companyId },
+        select: { ecfNcfSeq: true },
+      });
+      const storedSeq = parseEncfSequence(stored.ecf_number)?.seq ?? null;
+      const currentSeq =
+        cotSeqRow?.ecfNcfSeq && cotSeqRow.ecfNcfSeq > 0 ? cotSeqRow.ecfNcfSeq : null;
+      if (storedSeq != null && currentSeq != null && storedSeq === currentSeq) {
+        return { ok: true, pack: stored };
+      }
     }
   }
 

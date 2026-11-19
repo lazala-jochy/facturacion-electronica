@@ -9,12 +9,14 @@ import {
   getCotizacion,
   listCotizaciones,
   queryDgiiEcfForCotizacion,
+  sendCotizacionEmail,
   type CotizacionDetail,
   type CotizacionListItem,
 } from "../services/cotizaciones";
 import PageHeaderCard from "../components/PageHeaderCard";
 import PageShell from "../components/PageShell";
 import DgiiResponseModal, { type DgiiResponseModalPayload } from "../components/DgiiResponseModal";
+import ConfirmModal from "../components/ConfirmModal";
 import { MONTHS } from "../utils/months";
 
 export default function ECF({ company }: { company: AuthCompany }) {
@@ -37,6 +39,20 @@ export default function ECF({ company }: { company: AuthCompany }) {
   const [riError, setRiError] = useState("");
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [deleteError, setDeleteError] = useState("");
+  /** Confirmación previa a eliminar (modal propio, no window.confirm). */
+  const [pendingDelete, setPendingDelete] = useState<{
+    id: number;
+    number: number;
+    clientLabel: string;
+  } | null>(null);
+  const [sendingEmailId, setSendingEmailId] = useState<number | null>(null);
+  const [emailError, setEmailError] = useState("");
+  const [emailSuccess, setEmailSuccess] = useState("");
+  /** Confirmación previa a enviar por correo (modal propio, no window.confirm). */
+  const [pendingEmailSend, setPendingEmailSend] = useState<{
+    id: number;
+    clientEmail: string;
+  } | null>(null);
   const [query, setQuery] = useState("");
   const [yearFilter, setYearFilter] = useState("all");
   const [monthFilter, setMonthFilter] = useState("all");
@@ -45,6 +61,8 @@ export default function ECF({ company }: { company: AuthCompany }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
   const [dgiiResponseModal, setDgiiResponseModal] = useState<DgiiResponseModalPayload | null>(null);
+  /** Columna "Detalle" es para certificación/pruebas; una vez en Producción deja de mostrarse. */
+  const isDgiiCertification = !company?.dgiiEnvironment || company.dgiiEnvironment === "CERTIFICACION";
 
   const loadRows = useCallback(async () => {
       try {
@@ -182,15 +200,16 @@ export default function ECF({ company }: { company: AuthCompany }) {
     }
   };
 
-  const handleDeleteCotizacion = async (
+  const handleDeleteCotizacion = (
     id: number,
     meta: { number: number; clientLabel: string },
   ) => {
     if (syncDgiiAllProgress != null || deletingId != null) return;
-    const ok = window.confirm(
-      `¿Eliminar la cotización ${meta.number} (${meta.clientLabel})? Esta acción no se puede deshacer.`,
-    );
-    if (!ok) return;
+    setDeleteError("");
+    setPendingDelete({ id, ...meta });
+  };
+
+  const proceedDeleteCotizacion = async (id: number) => {
     setDeleteError("");
     setDeletingId(id);
     try {
@@ -206,6 +225,45 @@ export default function ECF({ company }: { company: AuthCompany }) {
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const confirmPendingDelete = () => {
+    const pending = pendingDelete;
+    if (!pending) return;
+    setPendingDelete(null);
+    void proceedDeleteCotizacion(pending.id);
+  };
+
+  const handleSendEmailClick = (id: number, clientEmail: string | null | undefined) => {
+    setEmailError("");
+    setEmailSuccess("");
+    const email = clientEmail?.trim() ?? "";
+    if (!email) {
+      setEmailError("El cliente no tiene correo registrado. Agregalo en Clientes antes de enviar.");
+      return;
+    }
+    setPendingEmailSend({ id, clientEmail: email });
+  };
+
+  const proceedSendEmail = async (id: number, clientEmail: string) => {
+    setSendingEmailId(id);
+    setEmailError("");
+    setEmailSuccess("");
+    try {
+      const out = await sendCotizacionEmail(id);
+      setEmailSuccess(out.message || `Enviado a ${clientEmail}.`);
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : "No se pudo enviar el correo.");
+    } finally {
+      setSendingEmailId(null);
+    }
+  };
+
+  const confirmPendingEmailSend = () => {
+    const pending = pendingEmailSend;
+    if (!pending) return;
+    setPendingEmailSend(null);
+    void proceedSendEmail(pending.id, pending.clientEmail);
   };
 
   const handleDownloadRepresentacion = async (id: number) => {
@@ -424,8 +482,8 @@ export default function ECF({ company }: { company: AuthCompany }) {
                 <th className="p-2 sm:p-3">Estado</th>
                 <th className="p-2 sm:p-3">Track ID</th>
                 <th className="p-2 sm:p-3">Rep.</th>
-                <th className="p-2 sm:p-3">Detalle</th>
-                <th className="p-2 sm:p-3">Eliminar</th>
+                {isDgiiCertification && <th className="p-2 sm:p-3">Detalle</th>}
+                <th className="p-2 sm:p-3">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -519,51 +577,120 @@ export default function ECF({ company }: { company: AuthCompany }) {
                         <span className="text-slate-300">—</span>
                       )}
                     </td>
-                    <td className="p-2 sm:p-3">
-                      <button
-                        type="button"
-                        onClick={() => void handleOpenDetail(row.id)}
-                        className="rounded-lg border border-slate-200 p-2 text-slate-700 hover:bg-slate-50"
-                        title="Ver detalle"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-4 w-4"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth={2}
+                    {isDgiiCertification && (
+                      <td className="p-2 sm:p-3">
+                        <button
+                          type="button"
+                          onClick={() => void handleOpenDetail(row.id)}
+                          className="rounded-lg border border-slate-200 p-2 text-slate-700 hover:bg-slate-50"
+                          title="Ver detalle"
                         >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                          />
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                          />
-                        </svg>
-                      </button>
-                    </td>
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-4 w-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={2}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                            />
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                            />
+                          </svg>
+                        </button>
+                      </td>
+                    )}
                     <td className="p-2 sm:p-3">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void handleDeleteCotizacion(row.id, {
-                            number: row.number,
-                            clientLabel: row.client_name,
-                          })
-                        }
-                        disabled={
-                          syncDgiiAllProgress != null || deletingId === row.id
-                        }
-                        className="rounded-lg border border-red-200 px-2 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
-                        title="Eliminar cotización"
-                      >
-                        {deletingId === row.id ? "…" : "Eliminar"}
-                      </button>
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleSendEmailClick(row.id, row.client_email)}
+                          disabled={sendingEmailId === row.id}
+                          className="rounded-lg border border-emerald-200 p-2 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Enviar por correo"
+                        >
+                          {sendingEmailId === row.id ? (
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              className="h-4 w-4 animate-spin"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <circle
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                fill="none"
+                                opacity="0.25"
+                              />
+                              <path
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                              />
+                            </svg>
+                          ) : (
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              className="h-4 w-4"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              strokeWidth={2}
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                              />
+                            </svg>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleDeleteCotizacion(row.id, {
+                              number: row.number,
+                              clientLabel: row.client_name,
+                            })
+                          }
+                          disabled={
+                            syncDgiiAllProgress != null ||
+                            deletingId === row.id ||
+                            row.dgii_status === "accepted"
+                          }
+                          className="rounded-lg border border-red-200 p-2 text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                          title={
+                            row.dgii_status === "accepted"
+                              ? "Ya fue aceptada por DGII (factura): no se puede eliminar."
+                              : "Eliminar cotización"
+                          }
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-4 w-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={2}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M4 7h16M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"
+                            />
+                          </svg>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -586,6 +713,16 @@ export default function ECF({ company }: { company: AuthCompany }) {
         {!loading && deleteError && (
           <div className="border-t border-red-100 bg-red-50/80 px-4 py-2 text-center text-xs text-red-800">
             {deleteError}
+          </div>
+        )}
+        {!loading && emailError && (
+          <div className="border-t border-red-100 bg-red-50/80 px-4 py-2 text-center text-xs text-red-800">
+            {emailError}
+          </div>
+        )}
+        {!loading && emailSuccess && (
+          <div className="border-t border-emerald-100 bg-emerald-50/80 px-4 py-2 text-center text-xs text-emerald-800">
+            {emailSuccess}
           </div>
         )}
         {!loading && !error && ecfRows.length === 0 && (
@@ -752,13 +889,16 @@ export default function ECF({ company }: { company: AuthCompany }) {
                     }
                     disabled={
                       syncDgiiAllProgress != null ||
-                      deletingId === detailCotizacion.id
+                      deletingId === detailCotizacion.id ||
+                      detailCotizacion.dgii_status === "accepted"
                     }
                     className="mt-2 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-800 hover:bg-red-50 disabled:opacity-50"
                   >
                     {deletingId === detailCotizacion.id
                       ? "Eliminando…"
-                      : "Eliminar cotización"}
+                      : detailCotizacion.dgii_status === "accepted"
+                        ? "Ya es factura: no se puede eliminar"
+                        : "Eliminar cotización"}
                   </button>
                 </div>
               </div>
@@ -771,6 +911,29 @@ export default function ECF({ company }: { company: AuthCompany }) {
         open={dgiiResponseModal != null}
         payload={dgiiResponseModal}
         onClose={() => setDgiiResponseModal(null)}
+      />
+
+      <ConfirmModal
+        open={pendingDelete != null}
+        title="Eliminar cotización"
+        message={
+          pendingDelete
+            ? `¿Eliminar la cotización ${pendingDelete.number} (${pendingDelete.clientLabel})? Esta acción no se puede deshacer.`
+            : ""
+        }
+        confirmLabel="Eliminar"
+        variant="danger"
+        onConfirm={confirmPendingDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
+
+      <ConfirmModal
+        open={pendingEmailSend != null}
+        title="Enviar por correo"
+        message={`Se enviará la cotización o factura (según su estado) por correo a ${pendingEmailSend?.clientEmail ?? ""}.\n\n¿Deseas continuar?`}
+        confirmLabel="Enviar"
+        onConfirm={confirmPendingEmailSend}
+        onCancel={() => setPendingEmailSend(null)}
       />
     </PageShell>
   );

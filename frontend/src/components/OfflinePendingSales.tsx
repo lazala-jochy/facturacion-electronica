@@ -10,6 +10,7 @@ import {
   subscribeOfflineSync,
   runOfflineSync,
 } from "../offline/syncEngine";
+import { formatMoney } from "../utils/money";
 
 const statusLabel: Record<OfflineCotizacion["status"], string> = {
   pendiente: "Pendiente de sincronizar",
@@ -72,7 +73,7 @@ export default function OfflinePendingSales({ companyId }: { companyId?: number 
           >
             <span className="min-w-0 truncate text-slate-800">
               {e.payload.client.name} —{" "}
-              <span className="font-mono">RD$ {(e.payload.cotizacion.total ?? 0).toFixed(2)}</span>
+              <span className="font-mono">RD$ {formatMoney(e.payload.cotizacion.total ?? 0)}</span>
             </span>
             <span className="flex shrink-0 items-center gap-2">
               <span

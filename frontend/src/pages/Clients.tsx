@@ -13,6 +13,7 @@ import {
   submitConsumoMenor250Rfce,
   submitEcf,
   retryQueuedDgiiSubmit,
+  sendCotizacionEmail,
   type CotizacionDetail,
 } from "../services/cotizaciones";
 import { ecfTipoDisplayLabel, isConsumoMenor250Rfce } from "../config/ecfTipos";
@@ -20,6 +21,7 @@ import { formatEcfNumberDisplay } from "../utils/ecfNumber";
 import { MONTHS } from "../utils/months";
 import DgiiResponseModal, { type DgiiResponseModalPayload } from "../components/DgiiResponseModal";
 import DgiiRejectionHint from "../components/DgiiRejectionHint";
+import ConfirmModal from "../components/ConfirmModal";
 
 // Helper para formatear moneda
 const formatCurrency = (value: number) => {
@@ -203,6 +205,14 @@ export default function Clients() {
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
   const [sendingEcfId, setSendingEcfId] = useState<number | null>(null);
   const [downloadError, setDownloadError] = useState<string>("");
+  const [sendingEmailId, setSendingEmailId] = useState<number | null>(null);
+  const [emailError, setEmailError] = useState<string>("");
+  const [emailSuccess, setEmailSuccess] = useState<string>("");
+  /** Confirmación previa a enviar la cotización por correo (modal propio, no window.confirm). */
+  const [pendingEmailSend, setPendingEmailSend] = useState<{
+    cotizacionId: number;
+    clientEmail: string;
+  } | null>(null);
   const [ecfError, setEcfError] = useState<string>("");
   const [ecfSuccess, setEcfSuccess] = useState<string>("");
   const [ecfWarning, setEcfWarning] = useState<string>("");
@@ -215,6 +225,17 @@ export default function Clients() {
   const [dgiiCertProfile, setDgiiCertProfile] = useState<"paso2" | "paso4">("paso2");
   const [modalEncryptionSecret, setModalEncryptionSecret] = useState("");
   const [ecfCertModalLoading, setEcfCertModalLoading] = useState(false);
+  /** Confirmación previa a enviar/reenviar a DGII (modal propio, no window.confirm). */
+  const [pendingDgiiAction, setPendingDgiiAction] = useState<
+    { kind: "send"; cotizacionId: number } | { kind: "retry"; cotizacionId: number } | null
+  >(null);
+  /** Confirmación previa a eliminar cliente/cotización (modal propio, no window.confirm). */
+  const [pendingDelete, setPendingDelete] = useState<
+    | { kind: "client"; client: ClientListItem }
+    | { kind: "cotizacionRow"; client: ClientListItem; cot: ClientCotizacion }
+    | { kind: "detailCotizacion" }
+    | null
+  >(null);
   const [query, setQuery] = useState("");
   const [yearFilter, setYearFilter] = useState("all");
   const [monthFilter, setMonthFilter] = useState("all");
@@ -337,6 +358,38 @@ export default function Clients() {
     } finally {
       setDownloadingId(null);
     }
+  };
+
+  const handleSendEmailClick = (cotizacionId: number, clientEmail: string | null) => {
+    setEmailError("");
+    setEmailSuccess("");
+    const email = clientEmail?.trim() ?? "";
+    if (!email) {
+      setEmailError("El cliente no tiene correo registrado. Agregalo en el perfil del cliente antes de enviar.");
+      return;
+    }
+    setPendingEmailSend({ cotizacionId, clientEmail: email });
+  };
+
+  const proceedSendEmail = async (cotizacionId: number, clientEmail: string) => {
+    setSendingEmailId(cotizacionId);
+    setEmailError("");
+    setEmailSuccess("");
+    try {
+      const out = await sendCotizacionEmail(cotizacionId);
+      setEmailSuccess(out.message || `Cotización enviada a ${clientEmail}.`);
+    } catch (error) {
+      setEmailError(error instanceof Error ? error.message : "No se pudo enviar el correo.");
+    } finally {
+      setSendingEmailId(null);
+    }
+  };
+
+  const confirmPendingEmailSend = () => {
+    const pending = pendingEmailSend;
+    if (!pending) return;
+    setPendingEmailSend(null);
+    void proceedSendEmail(pending.cotizacionId, pending.clientEmail);
   };
 
   const closeEcfXmlViewer = () => {
@@ -546,13 +599,13 @@ export default function Clients() {
       );
       return;
     }
-    if (
-      !window.confirm(
-        "Está a punto de enviar este comprobante a la DGII.\n\nUna vez enviado, no podrá modificarlo ni cancelarlo.\n\n¿Desea continuar?",
-      )
-    ) {
-      return;
-    }
+    setPendingDgiiAction({ kind: "send", cotizacionId });
+  };
+
+  const proceedSendEcf = async (cotizacionId: number) => {
+    const cotRow = clients
+      .flatMap((c) => c.cotizaciones.map((co) => ({ ...co, clientId: c.id })))
+      .find((co) => co.id === cotizacionId);
     setSendingEcfId(cotizacionId);
     setEcfError("");
     setEcfSuccess("");
@@ -669,13 +722,12 @@ export default function Clients() {
       );
       return;
     }
-    if (
-      !window.confirm(
-        "Está a punto de reenviar este comprobante a la DGII.\n\n¿Desea continuar?",
-      )
-    ) {
-      return;
-    }
+    setPendingDgiiAction({ kind: "retry", cotizacionId });
+  };
+
+  const proceedRetryQueuedDgiiSubmit = async (cotizacionId: number) => {
+    const encForSend =
+      ecfEncryptionSecret.trim() || company?.certificate_keyphrase?.trim() || "";
     setSendingEcfId(cotizacionId);
     setEcfError("");
     setEcfSuccess("");
@@ -708,6 +760,30 @@ export default function Clients() {
       setEcfError(error instanceof Error ? error.message : "No se pudo reintentar el envío.");
     } finally {
       setSendingEcfId(null);
+    }
+  };
+
+  const confirmPendingDgiiAction = () => {
+    const action = pendingDgiiAction;
+    if (!action) return;
+    setPendingDgiiAction(null);
+    if (action.kind === "send") {
+      void proceedSendEcf(action.cotizacionId);
+    } else {
+      void proceedRetryQueuedDgiiSubmit(action.cotizacionId);
+    }
+  };
+
+  const confirmPendingDelete = () => {
+    const action = pendingDelete;
+    if (!action) return;
+    setPendingDelete(null);
+    if (action.kind === "client") {
+      void proceedDeleteClient(action.client);
+    } else if (action.kind === "cotizacionRow") {
+      void proceedDeleteCotizacionRow(action.cot);
+    } else {
+      void proceedDeleteDetailCotizacion();
     }
   };
 
@@ -868,34 +944,28 @@ export default function Clients() {
   };
 
 
-  const handleDeleteCotizacionRow = async (
+  const handleDeleteCotizacionRow = (
     client: ClientListItem,
     cot: ClientCotizacion | null,
   ) => {
     setCrudError("");
     setCrudMessage("");
+    setPendingDelete(cot ? { kind: "cotizacionRow", client, cot } : { kind: "client", client });
+  };
 
-    if (!cot) {
-      const confirmed = window.confirm(
-        `¿Seguro que deseas eliminar el cliente "${client.name}"? No tiene cotizaciones asociadas.`,
+  const proceedDeleteClient = async (client: ClientListItem) => {
+    try {
+      await deleteClient(client.id);
+      await refreshClients();
+      setCrudMessage("Cliente eliminado correctamente.");
+    } catch (error) {
+      setCrudError(
+        error instanceof Error ? error.message : "No se pudo eliminar el cliente.",
       );
-      if (!confirmed) return;
-      try {
-        await deleteClient(client.id);
-        await refreshClients();
-        setCrudMessage("Cliente eliminado correctamente.");
-      } catch (error) {
-        setCrudError(
-          error instanceof Error ? error.message : "No se pudo eliminar el cliente.",
-        );
-      }
-      return;
     }
+  };
 
-    const confirmed = window.confirm(
-      `¿Seguro que deseas eliminar la cotización ${cot.number} de "${client.name}"?`,
-    );
-    if (!confirmed) return;
+  const proceedDeleteCotizacionRow = async (cot: ClientCotizacion) => {
     try {
       await deleteCotizacion(cot.id);
       await refreshClients();
@@ -907,14 +977,15 @@ export default function Clients() {
     }
   };
 
-  const handleDeleteDetailCotizacion = async () => {
+  const handleDeleteDetailCotizacion = () => {
     if (!detail?.id) return;
-    const confirmed = window.confirm(
-      `¿Eliminar la cotización ${detail.number} de ${detail.client.name}? No se puede deshacer.`,
-    );
-    if (!confirmed) return;
     setCrudError("");
     setCrudMessage("");
+    setPendingDelete({ kind: "detailCotizacion" });
+  };
+
+  const proceedDeleteDetailCotizacion = async () => {
+    if (!detail?.id) return;
     setDeletingDetailId(detail.id);
     try {
       await deleteCotizacion(detail.id);
@@ -1383,9 +1454,23 @@ export default function Clients() {
                                   (!rfceIntegraReady && dgiiSendLocked) ||
                                   !isOnline
                                 }
-                                className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${dgiiSendBtnClass}`}
+                                className={`inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${dgiiSendBtnClass}`}
                                 title={sendTitle}
                               >
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  className="h-3.5 w-3.5 shrink-0"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                  strokeWidth={2}
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                                  />
+                                </svg>
                                 {sendLabel}
                               </button>
                               {isRfceRow && !rfceIntegraReady && !dgiiSendLocked ? (
@@ -1497,18 +1582,119 @@ export default function Clients() {
                         )}
                         <td className="px-4 sm:px-6 py-4 text-center">
                           <div className="flex items-center justify-center gap-2">
-                            <Link
-                              to={cot ? `/cotizaciones/${cot.id}/editar` : "#"}
-                              className="rounded border border-gray-200 px-2.5 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                            {cot && dgiiStatus === "accepted" ? (
+                              <span
+                                className="rounded-lg border border-slate-100 p-2 text-slate-300 cursor-not-allowed"
+                                title="Ya fue aceptada por DGII (factura): no se puede editar."
+                              >
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  className="h-4 w-4"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                  strokeWidth={2}
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                                  />
+                                </svg>
+                              </span>
+                            ) : (
+                              <Link
+                                to={cot ? `/cotizaciones/${cot.id}/editar` : "#"}
+                                className="rounded-lg border border-slate-200 p-2 text-slate-700 hover:bg-slate-50"
+                                title="Editar cotización"
+                              >
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  className="h-4 w-4"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                  strokeWidth={2}
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                                  />
+                                </svg>
+                              </Link>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => cot && handleSendEmailClick(cot.id, client.email)}
+                              disabled={!cot || sendingEmailId === cot.id}
+                              className="rounded-lg border border-emerald-200 p-2 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Enviar por correo"
                             >
-                              Editar
-                            </Link>
+                              {cot && sendingEmailId === cot.id ? (
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  className="h-4 w-4 animate-spin"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <circle
+                                    cx="12"
+                                    cy="12"
+                                    r="10"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    fill="none"
+                                    opacity="0.25"
+                                  />
+                                  <path
+                                    fill="currentColor"
+                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                  />
+                                </svg>
+                              ) : (
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  className="h-4 w-4"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                  strokeWidth={2}
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                                  />
+                                </svg>
+                              )}
+                            </button>
                             <button
                               type="button"
                               onClick={() => handleDeleteCotizacionRow(client, cot)}
-                              className="rounded border border-red-200 px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
+                              disabled={cot != null && dgiiStatus === "accepted"}
+                              className="rounded-lg border border-red-200 p-2 text-red-700 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                              title={
+                                cot && dgiiStatus === "accepted"
+                                  ? "Ya fue aceptada por DGII (factura): no se puede eliminar."
+                                  : "Eliminar cotización"
+                              }
                             >
-                              Eliminar
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="h-4 w-4"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M4 7h16M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"
+                                />
+                              </svg>
                             </button>
                           </div>
                         </td>
@@ -1606,9 +1792,23 @@ export default function Clients() {
                           <button
                             onClick={() => handleSendEcf(cot.id)}
                             disabled={sendingEcfId === cot.id || dgiiSendLocked || !isOnline}
-                            className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${dgiiSendBtnClass}`}
+                            className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${dgiiSendBtnClass}`}
                             title={sendTitle}
                           >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              className="h-3.5 w-3.5 shrink-0"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              strokeWidth={2}
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                              />
+                            </svg>
                             {sendLabel}
                           </button>
                           <button
@@ -1740,18 +1940,119 @@ export default function Clients() {
                       </div>
                     </div>
                     <div className="mt-3 flex items-center gap-2">
-                      <Link
-                        to={cot ? `/cotizaciones/${cot.id}/editar` : "#"}
-                        className="rounded border border-gray-200 px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                      {cot && dgiiStatus === "accepted" ? (
+                        <span
+                          className="rounded-lg border border-slate-100 p-2 text-slate-300 cursor-not-allowed"
+                          title="Ya fue aceptada por DGII (factura): no se puede editar."
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-4 w-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={2}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                            />
+                          </svg>
+                        </span>
+                      ) : (
+                        <Link
+                          to={cot ? `/cotizaciones/${cot.id}/editar` : "#"}
+                          className="rounded-lg border border-slate-200 p-2 text-slate-700 hover:bg-slate-50"
+                          title="Editar cotización"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-4 w-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={2}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                            />
+                          </svg>
+                        </Link>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => cot && handleSendEmailClick(cot.id, client.email)}
+                        disabled={!cot || sendingEmailId === cot.id}
+                        className="rounded-lg border border-emerald-200 p-2 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Enviar por correo"
                       >
-                        Editar
-                      </Link>
+                        {cot && sendingEmailId === cot.id ? (
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-4 w-4 animate-spin"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <circle
+                              cx="12"
+                              cy="12"
+                              r="10"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              fill="none"
+                              opacity="0.25"
+                            />
+                            <path
+                              fill="currentColor"
+                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                            />
+                          </svg>
+                        ) : (
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-4 w-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={2}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                            />
+                          </svg>
+                        )}
+                      </button>
                       <button
                         type="button"
                         onClick={() => handleDeleteCotizacionRow(client, cot)}
-                        className="rounded border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50"
+                        disabled={cot != null && dgiiStatus === "accepted"}
+                        className="rounded-lg border border-red-200 p-2 text-red-700 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                        title={
+                          cot && dgiiStatus === "accepted"
+                            ? "Ya fue aceptada por DGII (factura): no se puede eliminar."
+                            : "Eliminar cotización"
+                        }
                       >
-                        Eliminar
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-4 w-4"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth={2}
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M4 7h16M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"
+                          />
+                        </svg>
                       </button>
                     </div>
                   </div>
@@ -1805,6 +2106,18 @@ export default function Clients() {
         <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700 text-sm">
           <p className="font-semibold">Error al descargar</p>
           <p className="mt-1">{downloadError}</p>
+        </div>
+      )}
+      {emailError && (
+        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700 text-sm">
+          <p className="font-semibold">Error al enviar correo</p>
+          <p className="mt-1">{emailError}</p>
+        </div>
+      )}
+      {emailSuccess && (
+        <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-700 text-sm">
+          <p className="font-semibold">Correo enviado</p>
+          <p className="mt-1">{emailSuccess}</p>
         </div>
       )}
       {ecfError && (
@@ -1959,10 +2272,14 @@ export default function Clients() {
                   <button
                     type="button"
                     onClick={() => void handleDeleteDetailCotizacion()}
-                    disabled={deletingDetailId === detail.id}
+                    disabled={deletingDetailId === detail.id || detail.dgii_status === "accepted"}
                     className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-800 hover:bg-red-50 disabled:opacity-50"
                   >
-                    {deletingDetailId === detail.id ? "Eliminando…" : "Eliminar cotización"}
+                    {deletingDetailId === detail.id
+                      ? "Eliminando…"
+                      : detail.dgii_status === "accepted"
+                        ? "Ya es factura: no se puede eliminar"
+                        : "Eliminar cotización"}
                   </button>
                 </div>
                 <div className="rounded-lg border border-slate-200 p-3">
@@ -2307,6 +2624,46 @@ export default function Clients() {
         open={dgiiResponseModal != null}
         payload={dgiiResponseModal}
         onClose={() => setDgiiResponseModal(null)}
+      />
+
+      <ConfirmModal
+        open={pendingDgiiAction != null}
+        title={pendingDgiiAction?.kind === "retry" ? "Reenviar a la DGII" : "Enviar a la DGII"}
+        message={
+          pendingDgiiAction?.kind === "retry"
+            ? "Está a punto de reenviar este comprobante a la DGII.\n\n¿Desea continuar?"
+            : "Está a punto de enviar este comprobante a la DGII.\n\nUna vez enviado, no podrá modificarlo ni cancelarlo.\n\n¿Desea continuar?"
+        }
+        confirmLabel={pendingDgiiAction?.kind === "retry" ? "Reenviar" : "Enviar"}
+        onConfirm={confirmPendingDgiiAction}
+        onCancel={() => setPendingDgiiAction(null)}
+      />
+
+      <ConfirmModal
+        open={pendingDelete != null}
+        title={pendingDelete?.kind === "client" ? "Eliminar cliente" : "Eliminar cotización"}
+        message={
+          pendingDelete?.kind === "client"
+            ? `¿Seguro que deseas eliminar el cliente "${pendingDelete.client.name}"? No tiene cotizaciones asociadas.`
+            : pendingDelete?.kind === "cotizacionRow"
+              ? `¿Seguro que deseas eliminar la cotización ${pendingDelete.cot.number} de "${pendingDelete.client.name}"?`
+              : detail
+                ? `¿Eliminar la cotización ${detail.number} de ${detail.client.name}? No se puede deshacer.`
+                : ""
+        }
+        confirmLabel="Eliminar"
+        variant="danger"
+        onConfirm={confirmPendingDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
+
+      <ConfirmModal
+        open={pendingEmailSend != null}
+        title="Enviar por correo"
+        message={`Se enviará la cotización o factura (según su estado) por correo a ${pendingEmailSend?.clientEmail ?? ""}.\n\n¿Deseas continuar?`}
+        confirmLabel="Enviar"
+        onConfirm={confirmPendingEmailSend}
+        onCancel={() => setPendingEmailSend(null)}
       />
     </div>
   );

@@ -37,6 +37,8 @@ import {
 import {
   saveCompanySignatureFile,
   removeUploadedCompanySignatureFiles,
+  uploadCompanySignatureToBucket,
+  removeCompanySignatureFromBucket,
 } from "../utils/companySignature";
 import { normalizeEmail } from "../utils/email";
 import { hashPassword, verifyPassword } from "../utils/password";
@@ -96,6 +98,7 @@ export type PublicCompany = Pick<
   | "tokenExpiration"
   | "ecfGatewayBaseUrl"
   | "ecfGatewayApiKey"
+  | "smtpEmail"
 > & {
   /** Descifrado de dgiiPasswordEnc; mismo contrato externo que antes (texto plano). */
   dgiiPassword: string | null;
@@ -110,6 +113,10 @@ export type PublicCompany = Pick<
   app_secrets_key_configured: boolean;
   /** Descifrada de appSecretsKeyEnc, para precargar el campo en Perfil de empresa. */
   app_secrets_key: string | null;
+  /** Indica si ya hay un App Password de Gmail guardado. */
+  smtp_app_password_configured: boolean;
+  /** Descifrado de smtpAppPasswordEnc, para precargar el campo en Perfil de empresa. */
+  smtp_app_password: string | null;
 };
 
 const REFRESH_TOKEN_DAYS = Math.max(
@@ -218,6 +225,7 @@ const publicCompany = (c: Company): PublicCompany => ({
   dgiiPaso4EcfReceiveUrl: c.dgiiPaso4EcfReceiveUrl,
   ecfGatewayBaseUrl: c.ecfGatewayBaseUrl,
   ecfGatewayApiKey: c.ecfGatewayApiKey,
+  smtpEmail: c.smtpEmail,
   certificatePath: c.certificatePath,
   tokenExpiration: c.tokenExpiration,
   certificateConfigured: companyHasCertificateRecord(c),
@@ -234,6 +242,9 @@ const publicCompany = (c: Company): PublicCompany => ({
   // Perfil de empresa (si no, el usuario tiene que volver a tipearla a mano en cada guardado,
   // aunque dejarla vacía ya conserva la actual -- mala experiencia que esto evita).
   app_secrets_key: decryptAppSecretsKey(c.appSecretsKeyEnc),
+  /** Igual que dgiiPassword: se devuelve descifrada para precargar el campo en Perfil de empresa. */
+  smtp_app_password_configured: Boolean(c.smtpAppPasswordEnc),
+  smtp_app_password: decryptCompanySecret(c.smtpAppPasswordEnc, c),
 });
 
 const publicUser = (u: User) => ({
@@ -828,6 +839,23 @@ export const authService = {
       ecfGatewayMerge.ecfGatewayApiKey = (body.ecf_gateway_api_key ?? "").trim() || null;
     }
 
+    const smtpMerge: Partial<Pick<Company, "smtpEmail" | "smtpAppPasswordEnc">> = {};
+    if (body.smtp_email !== undefined) {
+      const smtpEmailRaw = (body.smtp_email ?? "").trim();
+      if (smtpEmailRaw && !isValidEmailFormat(smtpEmailRaw)) {
+        return { ok: false, status: 400, message: "El correo Gmail no es válido." };
+      }
+      smtpMerge.smtpEmail = smtpEmailRaw || null;
+    }
+    if (body.smtp_app_password !== undefined) {
+      // Google lo muestra con espacios para legibilidad (ej. "abcd efgh ijkl mnop"), pero el
+      // App Password real no los lleva -- guardarlos tal cual rompería la autenticación SMTP.
+      const rawAppPassword = (body.smtp_app_password ?? "").replace(/\s+/g, "");
+      smtpMerge.smtpAppPasswordEnc = rawAppPassword
+        ? encryptCompanySecret(rawAppPassword, existingCompany)
+        : null;
+    }
+
     if (!name || !rnc || !address || !fullName || !cedula) {
       return {
         ok: false,
@@ -887,6 +915,7 @@ export const authService = {
             ...dgiiTenantMerge,
             ...(hasPaso4InBody ? dgiiPaso4Merge : {}),
             ...ecfGatewayMerge,
+            ...smtpMerge,
             ...(appSecretsKeyUpdate !== undefined
               ? { appSecretsKeyEnc: appSecretsKeyUpdate }
               : {}),
@@ -962,7 +991,23 @@ export const authService = {
     }
 
     const signatureFile = opts?.signatureFile;
-    if (signatureFile?.buffer?.length && uploadsRoot) {
+    if (signatureFile?.buffer?.length && opts?.accessToken) {
+      try {
+        const publicUrl = await uploadCompanySignatureToBucket(
+          opts.accessToken,
+          signatureFile.buffer,
+          signatureFile.mimetype,
+        );
+        if (publicUrl) {
+          companyOut = await prisma.company.update({
+            where: { id: companyId },
+            data: { signatureUrl: publicUrl },
+          });
+        }
+      } catch (e) {
+        console.error("No se pudo subir la firma de la empresa al bucket.", e);
+      }
+    } else if (signatureFile?.buffer?.length && uploadsRoot) {
       try {
         const relative = await saveCompanySignatureFile(
           uploadsRoot,
@@ -978,6 +1023,16 @@ export const authService = {
         }
       } catch (e) {
         console.error("No se pudo guardar la firma de la empresa.", e);
+      }
+    } else if (opts?.clearSignature && opts?.accessToken) {
+      try {
+        await removeCompanySignatureFromBucket(opts.accessToken);
+        companyOut = await prisma.company.update({
+          where: { id: companyId },
+          data: { signatureUrl: null },
+        });
+      } catch (e) {
+        console.error("No se pudo quitar la firma de la empresa.", e);
       }
     } else if (opts?.clearSignature && uploadsRoot) {
       try {

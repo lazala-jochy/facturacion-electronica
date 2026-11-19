@@ -26,6 +26,25 @@ import {
 } from "../utils/dgiiRejection";
 import { buildEcfNumber } from "../utils/ecfTipo";
 import { retryQueuedCotizacionSubmit } from "../services/dgiiSubmitQueue.service";
+import { resolveCompanyLogoImage } from "../utils/companyLogo";
+import { sendCompanyEmail, SmtpNotConfiguredError, type MailAttachment } from "../utils/mailer";
+import { isValidEmailFormat } from "../utils/validation";
+
+const escapeHtml = (raw: string): string =>
+  raw.replace(/[&<>"']/g, (ch) => {
+    switch (ch) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      default:
+        return "&#39;";
+    }
+  });
 const stripTenantFromBody = (body: Record<string, unknown>) => {
   delete body.company_id;
   delete body.companyId;
@@ -284,6 +303,7 @@ export const listCotizaciones: RequestHandler = async (req, res) => {
       created_at: c.createdAt.toISOString(),
       client_name: c.client.name,
       client_rnc_cedula: c.client.rncCedula,
+      client_email: c.client.email,
       dgii_status: c.dgiiStatus,
       dgii_track_id: c.dgiiTrackId,
       dgii_submitted_at: c.dgiiSubmittedAt?.toISOString() ?? null,
@@ -509,6 +529,128 @@ export const downloadCotizacionPdf: RequestHandler = async (req, res) => {
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
   res.status(200).send(pdfBuffer);
+};
+
+export const sendCotizacionEmail: RequestHandler = async (req, res) => {
+  const companyId = req.auth?.companyId;
+  if (!companyId) {
+    res.status(401).json({ message: "No autorizado." });
+    return;
+  }
+
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ message: "ID invalido." });
+    return;
+  }
+
+  const row = await cotizacionService.getByIdForCompany(id, companyId);
+  if (!row) {
+    res.status(404).json({ message: "Cotizacion no encontrada." });
+    return;
+  }
+
+  const bodyTo = typeof (req.body as Record<string, unknown>)?.to === "string"
+    ? ((req.body as Record<string, unknown>).to as string).trim()
+    : "";
+  const to = bodyTo || row.client.email?.trim() || "";
+  if (!to) {
+    res.status(400).json({
+      message:
+        "El cliente no tiene correo registrado. Agregalo en Clientes o indicá uno para este envío.",
+    });
+    return;
+  }
+  if (!isValidEmailFormat(to)) {
+    res.status(400).json({ message: "El correo del destinatario no es válido." });
+    return;
+  }
+
+  const uploadsRoot = getUploadsRoot();
+
+  // Ya aceptada por DGII: es una factura electrónica firme -- se envía la representación
+  // impresa oficial (con QR de consulta), no el PDF de pre-factura/cotización.
+  const isFactura = row.dgiiStatus === "accepted";
+  let pdfBuffer: Buffer;
+  let pdfFilename: string;
+  let docLabel: string;
+  if (isFactura) {
+    const ri = await ensureRepresentacionImpresaPdfForCotizacion(id, companyId, uploadsRoot);
+    if (!ri.ok) {
+      res.status(ri.status).json({ message: ri.message });
+      return;
+    }
+    pdfBuffer = ri.buffer;
+    pdfFilename = ri.filename;
+    docLabel = "factura";
+  } else {
+    const signer = req.auth?.userId
+      ? await prisma.user.findUnique({
+          where: { id: req.auth.userId },
+          select: { fullName: true },
+        })
+      : null;
+    pdfBuffer = await buildCotizacionPdfBuffer(row, {
+      uploadsRoot,
+      signerFullName: signer?.fullName,
+    });
+    pdfFilename = `cotizacion-${row.number}.pdf`;
+    docLabel = "cotización";
+  }
+
+  const logoImage = row.company.id != null
+    ? await resolveCompanyLogoImage(uploadsRoot, row.company.id, row.company.logoUrl)
+    : null;
+
+  const attachments: MailAttachment[] = [
+    {
+      filename: pdfFilename,
+      content: pdfBuffer,
+      contentType: "application/pdf",
+    },
+  ];
+  let logoHtml = "";
+  if (logoImage) {
+    if (Buffer.isBuffer(logoImage)) {
+      attachments.push({ content: logoImage, cid: "company-logo" });
+    } else {
+      attachments.push({ path: logoImage, cid: "company-logo" });
+    }
+    logoHtml = `<img src="cid:company-logo" alt="${escapeHtml(row.company.name)}" style="max-height:56px;display:block;margin-bottom:16px;" />`;
+  }
+
+  const money = (value: number) =>
+    new Intl.NumberFormat("es-DO", { style: "currency", currency: "DOP" }).format(value);
+
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;color:#1f2937;max-width:560px;margin:0 auto;">
+      ${logoHtml}
+      <p>Estimado/a ${escapeHtml(row.client.name)},</p>
+      <p>Adjuntamos la ${docLabel} <strong>Nº ${row.number}</strong> por un monto de
+        <strong>${money(row.total)}</strong>, emitida por ${escapeHtml(row.company.name)}.</p>
+      <p>Cualquier consulta, quedamos atentos.</p>
+      <p style="margin-top:24px;color:#6b7280;font-size:12px;">Correo enviado automáticamente desde el sistema de facturación de ${escapeHtml(row.company.name)}.</p>
+    </div>
+  `;
+
+  try {
+    await sendCompanyEmail(row.company, {
+      to,
+      subject: `${isFactura ? "Factura" : "Cotización"} Nº ${row.number} - ${row.company.name}`,
+      html,
+      attachments,
+    });
+  } catch (e) {
+    if (e instanceof SmtpNotConfiguredError) {
+      res.status(400).json({ message: e.message });
+      return;
+    }
+    const msg = e instanceof Error ? e.message : "No se pudo enviar el correo.";
+    res.status(502).json({ message: msg });
+    return;
+  }
+
+  res.json({ message: `${isFactura ? "Factura" : "Cotización"} enviada a ${to}.` });
 };
 
 export const downloadRepresentacionImpresaEcf: RequestHandler = async (req, res) => {

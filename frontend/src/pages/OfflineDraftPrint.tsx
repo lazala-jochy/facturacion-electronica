@@ -4,6 +4,7 @@ import type { OfflineCotizacion } from "../offline/db";
 import { getOfflineCotizacion } from "../offline/offlineQueue";
 import { getCachedCompanyProfile } from "../offline/cacheRefresh";
 import { itemLineTotalValue } from "../utils/tax";
+import { formatMoney } from "../utils/money";
 import type { AuthCompany } from "../types/session";
 
 /**
@@ -82,9 +83,9 @@ export default function OfflineDraftPrint() {
               <td className="py-1 text-right">
                 {it.quantity} {it.unit}
               </td>
-              <td className="py-1 text-right">RD$ {it.unit_price.toFixed(2)}</td>
+              <td className="py-1 text-right">RD$ {formatMoney(it.unit_price)}</td>
               <td className="py-1 text-right">
-                RD$ {itemLineTotalValue(it.quantity, it.unit_price).toFixed(2)}
+                RD$ {formatMoney(itemLineTotalValue(it.quantity, it.unit_price))}
               </td>
             </tr>
           ))}
@@ -94,15 +95,15 @@ export default function OfflineDraftPrint() {
       <div className="mt-3 ml-auto w-48 space-y-1 text-sm">
         <div className="flex justify-between">
           <span className="text-slate-600">Subtotal</span>
-          <span>RD$ {(cotizacion.subtotal ?? 0).toFixed(2)}</span>
+          <span>RD$ {formatMoney(cotizacion.subtotal ?? 0)}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-slate-600">ITBIS</span>
-          <span>RD$ {(cotizacion.itbis ?? 0).toFixed(2)}</span>
+          <span>RD$ {formatMoney(cotizacion.itbis ?? 0)}</span>
         </div>
         <div className="flex justify-between border-t border-slate-300 pt-1 font-semibold">
           <span>Total</span>
-          <span>RD$ {(cotizacion.total ?? 0).toFixed(2)}</span>
+          <span>RD$ {formatMoney(cotizacion.total ?? 0)}</span>
         </div>
       </div>
 

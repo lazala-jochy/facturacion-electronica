@@ -44,6 +44,7 @@ export const toPublicCompany = (c: Record<string, any>, appSecretsKey: string) =
   dgiiPaso4EcfReceiveUrl: c.dgii_paso4_ecf_receive_url,
   ecfGatewayBaseUrl: c.ecf_gateway_base_url,
   ecfGatewayApiKey: c.ecf_gateway_api_key,
+  smtpEmail: c.smtp_email,
   certificatePath: c.certificate_path,
   tokenExpiration: c.token_expiration,
   certificateConfigured: Boolean(c.certificate_salt && c.certificate_enc_path && c.certificate_password_enc),
@@ -59,4 +60,6 @@ export const toPublicCompany = (c: Record<string, any>, appSecretsKey: string) =
   // empresa (si no, hay que volver a tipearla a mano en cada guardado aunque dejarla vacía ya
   // conserve la actual).
   app_secrets_key: appSecretsKey,
+  smtp_app_password_configured: Boolean(c.smtp_app_password_enc),
+  smtp_app_password: decryptAppSecret(c.smtp_app_password_enc, appSecretsKey),
 });

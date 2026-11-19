@@ -78,4 +78,8 @@ export type UpdateCompanyBody = {
   /** DGII Communication Gateway (ecf-gateway) — conector local. */
   ecf_gateway_base_url?: string;
   ecf_gateway_api_key?: string;
+  /** Correo Gmail (SMTP) desde el que se envían cotizaciones a clientes. */
+  smtp_email?: string;
+  /** App Password de Gmail (no la contraseña normal de la cuenta). */
+  smtp_app_password?: string;
 };

@@ -26,6 +26,7 @@ export type CotizacionListItem = {
   created_at: string;
   client_name: string;
   client_rnc_cedula?: string;
+  client_email?: string | null;
   dgii_status?: string | null;
   dgii_track_id?: string | null;
   dgii_submitted_at?: string | null;
@@ -430,6 +431,13 @@ export const downloadCotizacionPDF = async (id: number, fileName?: string) => {
     );
   }
 };
+
+/** Envía la cotización por correo (Gmail configurado en Perfil de empresa) al cliente. */
+export const sendCotizacionEmail = (id: number, to?: string) =>
+  apiFetch<{ message: string }>(`/cotizaciones/${id}/send-email`, {
+    method: "POST",
+    body: JSON.stringify(to ? { to } : {}),
+  });
 
 /** Representación impresa e-CF (PDF con QR consulta timbre DGII). */
 export const downloadRepresentacionImpresaEcf = async (id: number, fileName?: string) => {

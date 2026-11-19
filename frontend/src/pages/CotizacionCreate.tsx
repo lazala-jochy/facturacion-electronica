@@ -14,6 +14,8 @@ import {
 } from "../utils/tax";
 import { formatPhoneInput, isValidPhone } from "../utils/phone";
 import ClientRncAutocomplete from "../components/ClientRncAutocomplete";
+import ConfirmModal from "../components/ConfirmModal";
+import { formatMoney } from "../utils/money";
 import {
   DEFAULT_ECF_TIPO,
   ECF_CONSUMO_RFCE_THRESHOLD_RD,
@@ -98,6 +100,8 @@ export default function CotizacionCreate() {
     localId: string;
     clientName: string;
   } | null>(null);
+  /** Confirmación previa a guardar (modal propio, no window.confirm). */
+  const [pendingSave, setPendingSave] = useState<CreateClientWithCotizacionPayload | null>(null);
 
   const lineTotals = items.map((it) =>
     itemLineTotalValue(it.quantity, it.unit_price),
@@ -222,6 +226,12 @@ export default function CotizacionCreate() {
       items: payloadItems,
     };
 
+    setPendingSave(payload);
+  };
+
+  const proceedSave = async (payload: CreateClientWithCotizacionPayload) => {
+    if (!company) return;
+
     const resetForm = () => {
       setClientName("");
       setClientAddress("");
@@ -275,6 +285,13 @@ export default function CotizacionCreate() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const confirmPendingSave = () => {
+    const payload = pendingSave;
+    if (!payload) return;
+    setPendingSave(null);
+    void proceedSave(payload);
   };
 
   if (!company) {
@@ -635,10 +652,7 @@ export default function CotizacionCreate() {
                       />
                     </td>
                     <td className="border border-slate-200 px-1 sm:px-2 py-1 sm:py-1.5 text-right font-mono text-slate-800 text-xs">
-                      {itemLineTotalValue(
-                        row.quantity,
-                        row.unit_price,
-                      ).toFixed(2)}
+                      {formatMoney(itemLineTotalValue(row.quantity, row.unit_price))}
                     </td>
                     <td className="border border-slate-200 p-0.5 sm:p-1 text-center">
                       <button
@@ -691,7 +705,7 @@ export default function CotizacionCreate() {
                   />
                 ) : (
                   <span className="font-mono font-medium">
-                    RD$ {totals.subtotal.toFixed(2)}
+                    RD$ {formatMoney(totals.subtotal)}
                   </span>
                 )}
               </div>
@@ -716,19 +730,19 @@ export default function CotizacionCreate() {
                       <span className="text-xs text-slate-500">%</span>
                     </div>
                     <span className="w-20 text-right font-mono font-medium">
-                      RD$ {manualItbis.toFixed(2)}
+                      RD$ {formatMoney(manualItbis)}
                     </span>
                   </div>
                 ) : (
                   <span className="font-mono font-medium">
-                    RD$ {totals.itbis.toFixed(2)}
+                    RD$ {formatMoney(totals.itbis)}
                   </span>
                 )}
               </div>
               <div className="flex justify-between border-t border-slate-300 pt-2 font-semibold text-slate-900">
                 <span>Total</span>
                 {exento ? (
-                  <span className="font-mono">RD$ {displayTotals.total.toFixed(2)}</span>
+                  <span className="font-mono">RD$ {formatMoney(displayTotals.total)}</span>
                 ) : calcMode === "manual" ? (
                   <input
                     type="number"
@@ -739,7 +753,7 @@ export default function CotizacionCreate() {
                     className="w-32 rounded border border-slate-300 px-2 py-1 text-right font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
                   />
                 ) : (
-                  <span className="font-mono">RD$ {totals.total.toFixed(2)}</span>
+                  <span className="font-mono">RD$ {formatMoney(totals.total)}</span>
                 )}
               </div>
             </div>
@@ -801,6 +815,17 @@ export default function CotizacionCreate() {
         </div>
       </form>
       </div>
+
+      <ConfirmModal
+        open={pendingSave != null}
+        title="Guardar cotización"
+        message={`Vas a guardar la cotización para "${pendingSave?.client.name ?? ""}" por RD$ ${
+          pendingSave ? formatMoney(pendingSave.cotizacion.total ?? 0) : "0.00"
+        }.\n\n¿Deseas continuar?`}
+        confirmLabel="Guardar"
+        onConfirm={confirmPendingSave}
+        onCancel={() => setPendingSave(null)}
+      />
     </div>
   );
 }

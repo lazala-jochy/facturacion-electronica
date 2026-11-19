@@ -54,6 +54,11 @@ export type AuthCompany = {
   /** DGII Communication Gateway (ecf-gateway) — conector local, ver CompanyProfile. */
   ecfGatewayBaseUrl?: string | null;
   ecfGatewayApiKey?: string | null;
+  /** Correo Gmail (SMTP) desde el que se envían cotizaciones a clientes. */
+  smtpEmail?: string | null;
+  smtp_app_password_configured?: boolean;
+  /** Descifrado, para precargar el campo en Perfil de empresa. */
+  smtp_app_password?: string | null;
   certificatePath?: string | null;
   tokenExpiration?: string | null;
   token_cached?: boolean;

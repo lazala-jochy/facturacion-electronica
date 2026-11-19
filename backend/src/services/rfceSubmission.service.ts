@@ -182,20 +182,6 @@ export async function submitRfceToDgii(
   appendRfceLog(`[rfce-response] content-type=${contentType}`);
   appendRfceLog(`[rfce-response] body=${compactBody(rawResponse, 1200)}`);
 
-  if (!response.ok) {
-    const snippet = compactBody(rawResponse);
-    const isHtmlError = contentType.includes("text/html") || rawResponse.trim().startsWith("<html");
-    const hint = isHtmlError
-      ? " La respuesta es HTML genérica, lo cual puede indicar URL incorrecta o servicio no disponible."
-      : "";
-    appendRfceLog(`[rfce-error] HTTP ${response.status}${hint}`);
-    throw new DgiiEcfError(
-      `Recepción DGII RFCE HTTP ${response.status}.${hint} ${snippet}`,
-      "RECEPTION_FAILED",
-      response.status,
-    );
-  }
-
   const looksHtml =
     contentType.includes("text/html") ||
     rawResponse.trim().slice(0, 200).toLowerCase().startsWith("<!doctype html") ||
@@ -212,10 +198,27 @@ export async function submitRfceToDgii(
 
   const rfceFields = parseRfceResponseBody(rawResponse);
   const accepted = isRfceAccepted(rfceFields);
+  // DGII devuelve los rechazos de negocio (ej. e-NCF ya usado) con HTTP 400 -- no es una falla de
+  // transporte. Si el cuerpo trae codigo/mensajes/estado reconocibles, es un "Rechazado" legítimo:
+  // hay que devolverlo como resultado normal (status "rejected") para que quien llama pueda
+  // persistirlo y avanzar el correlativo, igual que el flujo e-CF normal. Solo se lanza excepción
+  // cuando ni siquiera se puede interpretar el cuerpo como respuesta DGII (falla real de transporte).
+  const hasRecognizableDgiiBody =
+    rfceFields.codigo !== null || rfceFields.mensajes.length > 0 || Boolean(rfceFields.estado);
+
+  if (!response.ok && !hasRecognizableDgiiBody) {
+    const snippet = compactBody(rawResponse);
+    appendRfceLog(`[rfce-error] HTTP ${response.status}`);
+    throw new DgiiEcfError(
+      `Recepción DGII RFCE HTTP ${response.status}. ${snippet}`,
+      "RECEPTION_FAILED",
+      response.status,
+    );
+  }
 
   appendRfceLog(
-    `[rfce-result] codigo=${rfceFields.codigo} estado=${rfceFields.estado} encf=${rfceFields.encf} ` +
-    `secuenciaUtilizada=${rfceFields.secuenciaUtilizada} accepted=${accepted}`,
+    `[rfce-result] http=${response.status} codigo=${rfceFields.codigo} estado=${rfceFields.estado} ` +
+    `encf=${rfceFields.encf} secuenciaUtilizada=${rfceFields.secuenciaUtilizada} accepted=${accepted}`,
   );
 
   if (rfceFields.mensajes.length > 0) {
@@ -225,11 +228,6 @@ export async function submitRfceToDgii(
   if (!accepted) {
     const msgDetail = rfceFields.mensajes.map((m) => m.valor).join("; ") || rfceFields.estado || "";
     appendRfceLog(`[rfce-rejected] ${msgDetail}`);
-    throw new DgiiEcfError(
-      `DGII RFCE: ${rfceFields.estado || "Rechazado"} (codigo=${rfceFields.codigo}). ${msgDetail || compactBody(rawResponse)}`,
-      "RECEPTION_FAILED",
-      response.status,
-    );
   }
 
   return {

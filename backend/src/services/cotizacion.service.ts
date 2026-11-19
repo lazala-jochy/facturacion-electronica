@@ -639,6 +639,14 @@ export const cotizacionService = {
         message: "Cotizacion no encontrada.",
       };
     }
+    if (existing.dgiiStatus === "accepted") {
+      return {
+        ok: false as const,
+        status: 409,
+        message:
+          "Esta cotización ya fue aceptada por DGII y es una factura electrónica: no se puede editar.",
+      };
+    }
 
     const cName = input.client.name?.trim();
     const cRnc = input.client.rnc_cedula?.trim();
@@ -838,13 +846,21 @@ export const cotizacionService = {
   async deleteCotizacion(id: number, companyId: number) {
     const existing = await prisma.cotizacion.findFirst({
       where: { id, companyId },
-      select: { id: true },
+      select: { id: true, dgiiStatus: true },
     });
     if (!existing) {
       return {
         ok: false as const,
         status: 404,
         message: "Cotizacion no encontrada.",
+      };
+    }
+    if (existing.dgiiStatus === "accepted") {
+      return {
+        ok: false as const,
+        status: 409,
+        message:
+          "Esta cotización ya fue aceptada por DGII y es una factura electrónica: no se puede eliminar.",
       };
     }
     await prisma.cotizacion.delete({

@@ -33,6 +33,23 @@ test("isDgiiSequenceRejection: mensaje DGII secuencia ya utilizado (1209)", () =
   assert.equal(isDgiiSequenceRejection(raw), true);
 });
 
+test("isDgiiSequenceRejection: RFCE código 75 (e-NCF + código de seguridad ya usados)", () => {
+  const raw = JSON.stringify({
+    codigo: 2,
+    estado: "Rechazado",
+    mensajes: [
+      {
+        codigo: "75",
+        valor:
+          "La combinación e-NCF y código de seguridad de este Resumen de Factura de Consumo ya han sido utilizados previamente.",
+      },
+    ],
+    encf: "E320000000013",
+    secuenciaUtilizada: false,
+  });
+  assert.equal(isDgiiSequenceRejection(raw), true);
+});
+
 test("isDgiiSequenceRejection: error validación XML no es secuencia aunque venga secuenciaUtilizada", () => {
   const body = {
     trackId: "7576546d-09de-49d8-87f8-b0816bcaf2b2",

@@ -16,6 +16,7 @@ import {
   UNIDAD_MEDIDA_OPTIONS,
 } from "../config/unidadesMedida";
 import { calculateTotals, itemLineTotalValue } from "../utils/tax";
+import { formatMoney } from "../utils/money";
 
 export default function OfflineDraftEdit() {
   const { localId } = useParams<{ localId: string }>();
@@ -268,15 +269,15 @@ export default function OfflineDraftEdit() {
         <div className="ml-auto w-56 space-y-1 text-sm">
           <div className="flex justify-between">
             <span className="text-slate-600">Subtotal</span>
-            <span>RD$ {totals.subtotal.toFixed(2)}</span>
+            <span>RD$ {formatMoney(totals.subtotal)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-600">ITBIS</span>
-            <span>RD$ {totals.itbis.toFixed(2)}</span>
+            <span>RD$ {formatMoney(totals.itbis)}</span>
           </div>
           <div className="flex justify-between border-t border-slate-300 pt-1 font-semibold">
             <span>Total</span>
-            <span>RD$ {totals.total.toFixed(2)}</span>
+            <span>RD$ {formatMoney(totals.total)}</span>
           </div>
         </div>
 

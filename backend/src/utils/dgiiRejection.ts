@@ -109,6 +109,10 @@ function textoSugiereSecuencia(textoNorm: string): boolean {
     "duplicidad de secuencia",
     "codigo 1209",
     "(1209)",
+    // RFCE (resumen de factura de consumo, <250k) rechaza con texto propio, código 75 --
+    // no usa ninguna de las frases de arriba, por eso no auto-avanzaba la secuencia.
+    "combinacion e-ncf y codigo de seguridad",
+    "ya han sido utilizados previamente",
   ];
   return patterns.some((p) => textoNorm.includes(p));
 }
@@ -117,6 +121,13 @@ function codigoEs1209(v: unknown): boolean {
   if (v === 1209 || v === "1209") return true;
   const n = typeof v === "string" ? parseInt(v, 10) : typeof v === "number" ? v : NaN;
   return n === 1209;
+}
+
+/** Código RFCE equivalente a 1209: e-NCF + código de seguridad ya usados previamente. */
+function codigoEs75(v: unknown): boolean {
+  if (v === 75 || v === "75") return true;
+  const n = typeof v === "string" ? parseInt(v, 10) : typeof v === "number" ? v : NaN;
+  return n === 75;
 }
 
 /**
@@ -137,7 +148,7 @@ export function isDgiiSequenceRejection(raw: string | null | undefined): boolean
       for (const m of msgs) {
         if (m == null || typeof m !== "object" || Array.isArray(m)) continue;
         const rec = m as Record<string, unknown>;
-        if (codigoEs1209(rec.codigo)) return true;
+        if (codigoEs1209(rec.codigo) || codigoEs75(rec.codigo)) return true;
         const valor = typeof rec.valor === "string" ? rec.valor : "";
         if (valor.trim() && textoSugiereSecuencia(normPhrase(valor))) return true;
       }
