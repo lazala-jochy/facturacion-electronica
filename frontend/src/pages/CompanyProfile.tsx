@@ -121,9 +121,6 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
   const [ecfGatewayBaseUrl, setEcfGatewayBaseUrl] = useState(session.company.ecfGatewayBaseUrl ?? "");
   const [ecfGatewayApiKey, setEcfGatewayApiKey] = useState(session.company.ecfGatewayApiKey ?? "");
   const [showEcfGatewayApiKey, setShowEcfGatewayApiKey] = useState(false);
-  const [smtpEmail, setSmtpEmail] = useState(session.company.smtpEmail ?? "");
-  const [smtpAppPassword, setSmtpAppPassword] = useState(session.company.smtp_app_password ?? "");
-  const [showSmtpAppPassword, setShowSmtpAppPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [testingDgii, setTestingDgii] = useState(false);
   const [error, setError] = useState("");
@@ -178,11 +175,6 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
     setEcfGatewayBaseUrl(session.company.ecfGatewayBaseUrl ?? "");
     setEcfGatewayApiKey(session.company.ecfGatewayApiKey ?? "");
   }, [session.company.ecfGatewayBaseUrl, session.company.ecfGatewayApiKey]);
-
-  useEffect(() => {
-    setSmtpEmail(session.company.smtpEmail ?? "");
-    setSmtpAppPassword(session.company.smtp_app_password ?? "");
-  }, [session.company.smtpEmail, session.company.smtp_app_password]);
 
   const uploadedFromSession = companyUploadedLogoUrl(session.company);
   const previewImageSrc =
@@ -327,8 +319,6 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
         if (appSecretsKeyTrim) fd.append("app_secrets_key", appSecretsKeyTrim);
         fd.append("ecf_gateway_base_url", ecfGatewayBaseUrl.trim());
         fd.append("ecf_gateway_api_key", ecfGatewayApiKey.trim());
-        fd.append("smtp_email", smtpEmail.trim());
-        fd.append("smtp_app_password", smtpAppPassword.trim());
         if (certificateFile || session.company.certificateConfigured) {
           fd.append("certificate_keyphrase", certificatePassword.trim());
         }
@@ -371,8 +361,6 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
             ...(appSecretsKeyTrim ? { app_secrets_key: appSecretsKeyTrim } : {}),
             ecf_gateway_base_url: ecfGatewayBaseUrl.trim(),
             ecf_gateway_api_key: ecfGatewayApiKey.trim(),
-            smtp_email: smtpEmail.trim(),
-            smtp_app_password: smtpAppPassword.trim(),
             ...(session.company.certificateConfigured || pwdTrim
               ? { certificate_keyphrase: certificatePassword.trim() }
               : {}),
@@ -399,8 +387,6 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
       setDgiiPassword(res.company.dgiiPassword ?? "");
       setEcfGatewayBaseUrl(res.company.ecfGatewayBaseUrl ?? "");
       setEcfGatewayApiKey(res.company.ecfGatewayApiKey ?? "");
-      setSmtpEmail(res.company.smtpEmail ?? "");
-      setSmtpAppPassword(res.company.smtp_app_password ?? "");
       setClearCertificate(false);
       setAppSecretsKey(res.company.app_secrets_key ?? "");
       setSuccess(res.message?.trim() ? res.message : "Perfil de empresa actualizado.");
@@ -557,9 +543,9 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
           </div>
         )}
 
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm divide-y divide-slate-100">
+        <div className="space-y-4 sm:space-y-6">
           {/* Logo */}
-          <section className="px-6 py-8 sm:px-8">
+          <section className="rounded-xl border border-slate-200 bg-white px-6 py-8 shadow-sm sm:px-8">
             <SectionTitle
               title="Logo de la empresa"
               description="Se muestra en la barra lateral, cotizaciones y PDF de representación impresa."
@@ -610,7 +596,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
           </section>
 
           {/* Firma autorizada */}
-          <section className="px-6 py-8 sm:px-8">
+          <section className="rounded-xl border border-slate-200 bg-white px-6 py-8 shadow-sm sm:px-8">
             <SectionTitle
               title="Firma autorizada"
               description="Imagen de la firma que se muestra debajo del nombre completo en el PDF de cotizaciones."
@@ -659,7 +645,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
           </section>
 
           {/* Account */}
-          <section className="px-6 py-8 sm:px-8">
+          <section className="rounded-xl border border-slate-200 bg-white px-6 py-8 shadow-sm sm:px-8">
             <SectionTitle
               title="Responsable de la cuenta"
               description="Persona vinculada al usuario que opera la plataforma."
@@ -702,7 +688,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
           </section>
 
           {/* Emisor */}
-          <section className="px-6 py-8 sm:px-8">
+          <section className="rounded-xl border border-slate-200 bg-white px-6 py-8 shadow-sm sm:px-8">
             <SectionTitle
               title="Datos del emisor"
               description="Información fiscal que aparece en el XML y la representación impresa del e-CF."
@@ -766,7 +752,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
           </section>
 
           {/* DGII */}
-          <section className="px-6 py-8 sm:px-8">
+          <section className="rounded-xl border border-slate-200 bg-white px-6 py-8 shadow-sm sm:px-8">
             <SectionTitle
               title="Integración DGII"
               description="Credenciales del portal para obtener token al enviar e-CF. Las URLs de recepción se configuran en Pruebas DGII."
@@ -810,7 +796,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
           </section>
 
           {/* APP_SECRETS_KEY */}
-          <section className="px-6 py-8 sm:px-8">
+          <section className="rounded-xl border border-slate-200 bg-white px-6 py-8 shadow-sm sm:px-8">
             <SectionTitle
               title="Clave de secretos de la empresa (APP_SECRETS_KEY)"
               description="Clave base64 de 32 bytes con la que se cifran la contraseña DGII y la clave del certificado en la base de datos. Se guarda cifrada en el servidor; este campo aparece precargado con la clave actual para que no haya que volver a tipearla en cada guardado."
@@ -852,7 +838,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
           </section>
 
           {/* ECF Gateway Connector */}
-          <section className="px-6 py-8 sm:px-8">
+          <section className="rounded-xl border border-slate-200 bg-white px-6 py-8 shadow-sm sm:px-8">
             <SectionTitle
               title="DGII Communication Gateway (conector local)"
               description="URL y API key del connector que registraste en el panel admin del gateway (sección Connectors del tenant). Se generan ahí una sola vez; si la perdiste, revocá y creá uno nuevo."
@@ -891,59 +877,8 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
             </div>
           </section>
 
-          {/* Correo (Gmail) */}
-          <section className="px-6 py-8 sm:px-8">
-            <SectionTitle
-              title="Correo para enviar cotizaciones (Gmail)"
-              description="Cuenta Gmail desde la que se envían las cotizaciones a los clientes. Usá un App Password, no la contraseña normal de la cuenta: generalo en myaccount.google.com/apppasswords (requiere verificación en dos pasos activada)."
-            />
-            <div className="max-w-2xl space-y-5">
-              <StatusLine
-                ok={Boolean(smtpEmail.trim() && session.company.smtp_app_password_configured)}
-                label={
-                  smtpEmail.trim() && session.company.smtp_app_password_configured
-                    ? "Correo Gmail configurado"
-                    : "Correo Gmail pendiente"
-                }
-              />
-              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                <Field label="Correo Gmail" htmlFor="smtp-email-prof">
-                  <input
-                    id="smtp-email-prof"
-                    type="email"
-                    className={inputCls}
-                    autoComplete="off"
-                    placeholder="empresa@gmail.com"
-                    value={smtpEmail}
-                    onChange={(e) => setSmtpEmail(e.target.value)}
-                  />
-                </Field>
-                <Field label="App Password" htmlFor="smtp-app-pass-prof">
-                  <div className="relative">
-                    <input
-                      id="smtp-app-pass-prof"
-                      type={showSmtpAppPassword ? "text" : "password"}
-                      autoComplete="new-password"
-                      className={`${inputCls} pr-10`}
-                      placeholder="xxxx xxxx xxxx xxxx"
-                      value={smtpAppPassword}
-                      onChange={(e) => setSmtpAppPassword(e.target.value)}
-                    />
-                    <span className="absolute inset-y-0 right-0 flex items-center pr-1 pt-1">
-                      <EyeToggle
-                        visible={showSmtpAppPassword}
-                        onToggle={() => setShowSmtpAppPassword((v) => !v)}
-                        label={showSmtpAppPassword ? "Ocultar App Password" : "Mostrar App Password"}
-                      />
-                    </span>
-                  </div>
-                </Field>
-              </div>
-            </div>
-          </section>
-
           {/* Certificate */}
-          <section className="px-6 py-8 sm:px-8">
+          <section className="rounded-xl border border-slate-200 bg-white px-6 py-8 shadow-sm sm:px-8">
             <SectionTitle
               title="Certificado digital"
               description="Archivo .p12 o .pfx cifrado en el servidor. La contraseña abre el certificado y actúa como clave de cifrado (mín. 8 caracteres)."
