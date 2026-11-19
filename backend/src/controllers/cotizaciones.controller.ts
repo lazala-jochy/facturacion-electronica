@@ -528,6 +528,7 @@ export const downloadCotizacionPdf: RequestHandler = async (req, res) => {
 
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+  res.setHeader("Cache-Control", "no-store");
   res.status(200).send(pdfBuffer);
 };
 
@@ -675,6 +676,7 @@ export const downloadRepresentacionImpresaEcf: RequestHandler = async (req, res)
 
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename="${out.filename}"`);
+  res.setHeader("Cache-Control", "no-store");
   res.status(200).send(out.buffer);
 };
 

@@ -7,3 +7,13 @@ export function BuildingIcon({ className }: { className?: string }) {
     </svg>
   );
 }
+
+/** Icono vectorial “perfil de usuario”. */
+export function UserIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+      <circle cx="12" cy="8" r="3.5" />
+      <path d="M4.5 20a7.5 7.5 0 0115 0" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}

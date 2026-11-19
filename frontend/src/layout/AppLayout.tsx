@@ -1,7 +1,7 @@
 import { Outlet, NavLink } from "react-router-dom";
 import { useEffect, useState } from "react";
 import type { AuthCompany } from "../types/session";
-import { BuildingIcon } from "../icons/branding";
+import { BuildingIcon, UserIcon } from "../icons/branding";
 import { companyUploadedLogoUrl } from "../utils/companyLogo";
 import { RouteErrorBoundary } from "../components/RouteErrorBoundary";
 import OfflineBanner from "../components/OfflineBanner";
@@ -18,8 +18,6 @@ export default function AppLayout({
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem("sidebarCollapsed") === "1",
   );
-  const [accountOpen, setAccountOpen] = useState(false);
-
   useEffect(() => {
     localStorage.setItem("sidebarCollapsed", collapsed ? "1" : "0");
   }, [collapsed]);
@@ -288,63 +286,49 @@ export default function AppLayout({
         </div>
 
         {/* BOTTOM */}
-        <div className="mt-auto relative">
-          <button
-            type="button"
-            onClick={() => setAccountOpen((prev) => !prev)}
-            className="w-full p-2 rounded bg-slate-100 hover:bg-slate-200 transition-all duration-200 hover:scale-[1.02] text-left flex items-center justify-between text-slate-700"
+        <div className="mt-auto space-y-1">
+          <NavLink
+            to="/company-profile"
+            onClick={() => setSidebarOpen(false)}
+            className={({ isActive }) =>
+              `flex items-center gap-2 p-2 rounded transition-all duration-200 ${
+                isActive
+                  ? "bg-indigo-50 text-indigo-700 border border-indigo-100"
+                  : "hover:bg-slate-50 hover:translate-x-1 text-slate-700"
+              }`
+            }
           >
-            <span>Cuenta</span>
-            <span className="text-xs">{accountOpen ? "▲" : "▼"}</span>
-          </button>
+            <UserIcon className="h-4 w-4 shrink-0" />
+            <span>Perfil de empresa</span>
+          </NavLink>
 
-          {accountOpen && (
-            <div className="mt-2 w-full rounded-md bg-white text-slate-800 shadow-lg border border-slate-200 overflow-hidden">
-              <NavLink
-                to="/company-profile"
-                onClick={() => {
-                  setAccountOpen(false);
-                  setSidebarOpen(false);
-                }}
-                className={({ isActive }) =>
-                  `block px-3 py-2 text-sm transition-all duration-200 ${
-                    isActive ? "bg-indigo-50 text-indigo-700" : "hover:bg-slate-50"
-                  }`
-                }
-              >
-                Perfil de empresa
-              </NavLink>
-              {window.electronAPI?.checkForUpdates ? (
-                <div className="border-t border-slate-100">
-                  <button
-                    type="button"
-                    onClick={() => void handleCheckForUpdates()}
-                    disabled={checkingUpdate}
-                    className="block w-full text-left px-3 py-2 text-sm hover:bg-slate-50 transition-all duration-200 disabled:opacity-60"
-                  >
-                    {checkingUpdate ? "Buscando…" : "Buscar actualizaciones"}
-                  </button>
-                  {(appVersion || updateMessage) && (
-                    <p className="px-3 pb-2 text-[11px] text-slate-500 leading-snug">
-                      {appVersion ? `Versión actual: v${appVersion}` : null}
-                      {appVersion && updateMessage ? " · " : null}
-                      {updateMessage}
-                    </p>
-                  )}
-                </div>
-              ) : null}
+          {window.electronAPI?.checkForUpdates ? (
+            <div className="px-2">
               <button
                 type="button"
-                onClick={() => {
-                  setAccountOpen(false);
-                  onLogout();
-                }}
-                className="block w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-all duration-200 border-t border-slate-100"
+                onClick={() => void handleCheckForUpdates()}
+                disabled={checkingUpdate}
+                className="text-xs text-slate-500 hover:text-slate-700 transition-all duration-200 disabled:opacity-60"
               >
-                Cerrar sesión
+                {checkingUpdate ? "Buscando actualizaciones…" : "Buscar actualizaciones"}
               </button>
+              {(appVersion || updateMessage) && (
+                <p className="text-[11px] text-slate-500 leading-snug">
+                  {appVersion ? `Versión actual: v${appVersion}` : null}
+                  {appVersion && updateMessage ? " · " : null}
+                  {updateMessage}
+                </p>
+              )}
             </div>
-          )}
+          ) : null}
+
+          <button
+            type="button"
+            onClick={onLogout}
+            className="mt-2 w-full p-2 rounded text-left text-sm text-red-600 hover:bg-red-50 transition-all duration-200 border border-red-100"
+          >
+            Cerrar sesión
+          </button>
         </div>
       </aside>
 
