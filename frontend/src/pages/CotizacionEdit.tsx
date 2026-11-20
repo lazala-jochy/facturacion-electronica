@@ -82,6 +82,9 @@ export default function CotizacionEdit() {
   const [manualItbis, setManualItbis] = useState(0);
   const [manualTotal, setManualTotal] = useState(0);
   const [exento, setExento] = useState(false);
+  /** Retención a terceros (ej. Gran Contribuyente retiene a proveedor sin RNC). "" = no aplica. */
+  const [retencionIsrPct, setRetencionIsrPct] = useState("");
+  const [retencionItbisPct, setRetencionItbisPct] = useState("");
   const [numberLabel, setNumberLabel] = useState<string>("—");
   /** Ya aceptada por DGII: es una factura electrónica firme, pasa a solo lectura. */
   const [isLocked, setIsLocked] = useState(false);
@@ -106,6 +109,18 @@ export default function CotizacionEdit() {
   const displayTotals = exento
     ? { subtotal: calcModeTotals.subtotal, itbis: 0, total: calcModeTotals.subtotal }
     : calcModeTotals;
+
+  const retencionIsrMonto =
+    Number(retencionIsrPct) > 0
+      ? Number(((displayTotals.subtotal * Number(retencionIsrPct)) / 100).toFixed(2))
+      : 0;
+  const retencionItbisMonto =
+    Number(retencionItbisPct) > 0
+      ? Number(((displayTotals.itbis * Number(retencionItbisPct)) / 100).toFixed(2))
+      : 0;
+  const totalAPagar = Number(
+    (displayTotals.total - retencionIsrMonto - retencionItbisMonto).toFixed(2),
+  );
 
   useEffect(() => {
     if (calcMode === "manual") {
@@ -163,6 +178,8 @@ export default function CotizacionEdit() {
         setManualSubtotal(loadedSubtotal);
         setManualItbisRate(Number.isFinite(loadedRate) && loadedRate >= 0 ? loadedRate : 18);
         setExento(Boolean(c.exento));
+        setRetencionIsrPct(c.retencion_isr_pct ? String(c.retencion_isr_pct) : "");
+        setRetencionItbisPct(c.retencion_itbis_pct ? String(c.retencion_itbis_pct) : "");
         setIsLocked(c.dgii_status === "accepted");
       } catch (err) {
         setError(err instanceof Error ? err.message : "No se pudo cargar la cotización.");
@@ -251,6 +268,8 @@ export default function CotizacionEdit() {
         itbis: displayTotals.itbis,
         total: displayTotals.total,
         exento,
+        retencion_isr_pct: Number(retencionIsrPct) > 0 ? Number(retencionIsrPct) : undefined,
+        retencion_itbis_pct: Number(retencionItbisPct) > 0 ? Number(retencionItbisPct) : undefined,
       },
       items: payloadItems,
       ...(enc.length >= 8 ? { certificate_encryption_secret: enc } : {}),
@@ -520,6 +539,38 @@ export default function CotizacionEdit() {
                   )}
                 </div>
                 <div className="flex justify-between border-t border-slate-300 pt-2 font-semibold text-slate-900"><span>Total</span>{exento ? <span className="font-mono">RD$ {formatMoney(displayTotals.total)}</span> : calcMode === "manual" ? <input type="number" step="0.01" min={0} value={manualTotal} onChange={(e) => setManualTotal(Number(e.target.value))} className="w-32 rounded border border-slate-300 px-2 py-1 text-right font-mono text-xs" /> : <span className="font-mono">RD$ {formatMoney(totals.total)}</span>}</div>
+
+                <div className="mt-2 border-t border-dashed border-slate-300 pt-2">
+                  <p className="text-[11px] font-medium uppercase text-slate-500">Retención a terceros (opcional)</p>
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <span className="text-slate-600">% ISR</span>
+                    <input type="number" step="1" min={0} max={100} placeholder="0" value={retencionIsrPct} onChange={(e) => setRetencionIsrPct(e.target.value)} className="w-20 rounded border border-slate-300 px-2 py-1 text-right font-mono text-xs" />
+                  </div>
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <span className="text-slate-600">% ITBIS</span>
+                    <input type="number" step="1" min={0} max={100} placeholder="0" value={retencionItbisPct} onChange={(e) => setRetencionItbisPct(e.target.value)} className="w-20 rounded border border-slate-300 px-2 py-1 text-right font-mono text-xs" />
+                  </div>
+                  {(retencionIsrMonto > 0 || retencionItbisMonto > 0) && (
+                    <>
+                      {retencionItbisMonto > 0 && (
+                        <div className="mt-1 flex justify-between text-slate-600">
+                          <span>Retención ITBIS</span>
+                          <span className="font-mono">-RD$ {formatMoney(retencionItbisMonto)}</span>
+                        </div>
+                      )}
+                      {retencionIsrMonto > 0 && (
+                        <div className="mt-1 flex justify-between text-slate-600">
+                          <span>Retención ISR</span>
+                          <span className="font-mono">-RD$ {formatMoney(retencionIsrMonto)}</span>
+                        </div>
+                      )}
+                      <div className="mt-1 flex justify-between border-t border-slate-300 pt-2 font-semibold text-slate-900">
+                        <span>Total a pagar</span>
+                        <span className="font-mono">RD$ {formatMoney(totalAPagar)}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
 

@@ -4,6 +4,7 @@ import { AUTH_STORAGE_KEY, type AuthSession } from "../types/session";
 import { ApiError } from "../services/api";
 import {
   createClientWithCotizacion,
+  importarBorradorCotizacionAmway,
   type CotizacionItemDraft,
   type CreateClientWithCotizacionPayload,
 } from "../services/cotizaciones";
@@ -28,6 +29,9 @@ import { BIEN_O_SERVICIO_OPTIONS, DEFAULT_UNIDAD_MEDIDA } from "../config/unidad
 import { addCustomUnidadMedida, getCustomUnidadesMedida } from "../config/customUnidadesMedida";
 
 type ItemRow = CotizacionItemDraft & { key: string };
+
+/** Importar cotización desde PDF de Amway: función interna, solo para este usuario. */
+const AMWAY_IMPORT_ALLOWED_EMAIL = "lazalajochy@gmail.com";
 
 const newRow = (): ItemRow => ({
   key: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
@@ -83,6 +87,9 @@ export default function CotizacionCreate() {
   const [manualItbis, setManualItbis] = useState(0);
   const [manualTotal, setManualTotal] = useState(0);
   const [exento, setExento] = useState(false);
+  /** Retención a terceros (ej. Gran Contribuyente retiene a proveedor sin RNC). "" = no aplica. */
+  const [retencionIsrPct, setRetencionIsrPct] = useState("");
+  const [retencionItbisPct, setRetencionItbisPct] = useState("");
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -96,6 +103,48 @@ export default function CotizacionCreate() {
   } | null>(null);
   /** Confirmación previa a guardar (modal propio, no window.confirm). */
   const [pendingSave, setPendingSave] = useState<CreateClientWithCotizacionPayload | null>(null);
+
+  const [importing, setImporting] = useState(false);
+  const [importNotice, setImportNotice] = useState("");
+
+  const handleImportAmwayPdf = async (file: File | null) => {
+    if (!file) return;
+    setImporting(true);
+    setError("");
+    setImportNotice("");
+    try {
+      const borrador = await importarBorradorCotizacionAmway(file);
+      setClientName(borrador.client.name);
+      setClientAddress(borrador.client.address);
+      setClientRnc(borrador.client.rnc_cedula);
+      setPaymentMethod(borrador.cotizacion.payment_method);
+      setComment(borrador.cotizacion.comment);
+      setRetencionIsrPct(
+        borrador.cotizacion.retencion_isr_pct != null
+          ? String(borrador.cotizacion.retencion_isr_pct)
+          : "",
+      );
+      setRetencionItbisPct(
+        borrador.cotizacion.retencion_itbis_pct != null
+          ? String(borrador.cotizacion.retencion_itbis_pct)
+          : "",
+      );
+      if (borrador.items.length > 0) {
+        setItems(
+          borrador.items.map((it) => ({
+            ...newRow(),
+            description: it.description,
+            unit_price: it.unit_price,
+          })),
+        );
+      }
+      setImportNotice(borrador.aviso);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo leer el PDF.");
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const lineTotals = items.map((it) =>
     itemLineTotalValue(it.quantity, it.unit_price),
@@ -114,6 +163,18 @@ export default function CotizacionCreate() {
   const displayTotals = exento
     ? { subtotal: calcModeTotals.subtotal, itbis: 0, total: calcModeTotals.subtotal }
     : calcModeTotals;
+
+  const retencionIsrMonto =
+    Number(retencionIsrPct) > 0
+      ? Number(((displayTotals.subtotal * Number(retencionIsrPct)) / 100).toFixed(2))
+      : 0;
+  const retencionItbisMonto =
+    Number(retencionItbisPct) > 0
+      ? Number(((displayTotals.itbis * Number(retencionItbisPct)) / 100).toFixed(2))
+      : 0;
+  const totalAPagar = Number(
+    (displayTotals.total - retencionIsrMonto - retencionItbisMonto).toFixed(2),
+  );
 
   useEffect(() => {
     if (calcMode === "manual") {
@@ -220,6 +281,8 @@ export default function CotizacionCreate() {
         itbis: displayTotals.itbis,
         total: displayTotals.total,
         exento,
+        retencion_isr_pct: Number(retencionIsrPct) > 0 ? Number(retencionIsrPct) : undefined,
+        retencion_itbis_pct: Number(retencionItbisPct) > 0 ? Number(retencionItbisPct) : undefined,
       },
       items: payloadItems,
     };
@@ -247,6 +310,9 @@ export default function CotizacionCreate() {
       setManualSubtotal(0);
       setManualItbis(0);
       setManualTotal(0);
+      setRetencionIsrPct("");
+      setRetencionItbisPct("");
+      setImportNotice("");
     };
 
     // No se decide "offline" por el heartbeat cacheado (puede dar falso negativo si el backend
@@ -310,12 +376,38 @@ export default function CotizacionCreate() {
           <h1 className="text-3xl font-extrabold text-[#0b57d0]">Nueva cotización</h1>
           <p className="text-slate-600">Crea una cotización con datos del cliente e items.</p>
           <p className="text-xs text-slate-500 mt-1">{company.name} · RNC {company.rnc}</p>
-          <Link
-            to="/clients"
-            className="mt-3 inline-block text-sm font-medium text-[#0b57d0] hover:underline whitespace-nowrap"
-          >
-            Ver clientes
-          </Link>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <Link
+              to="/clients"
+              className="text-sm font-medium text-[#0b57d0] hover:underline whitespace-nowrap"
+            >
+              Ver clientes
+            </Link>
+            {session?.user?.email?.trim().toLowerCase() === AMWAY_IMPORT_ALLOWED_EMAIL && (
+              <label
+                className={`inline-flex cursor-pointer items-center gap-2 rounded border border-[#0b57d0] px-3 py-1.5 text-sm font-medium text-[#0b57d0] hover:bg-blue-50 ${
+                  importing ? "opacity-60 pointer-events-none" : ""
+                }`}
+              >
+                {importing ? "Leyendo PDF..." : "Importar desde PDF de Amway"}
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  className="hidden"
+                  disabled={importing}
+                  onChange={(e) => {
+                    void handleImportAmwayPdf(e.target.files?.[0] ?? null);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            )}
+          </div>
+          {importNotice && (
+            <p className="mt-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+              {importNotice}
+            </p>
+          )}
         </div>
 
         <form
@@ -745,6 +837,58 @@ export default function CotizacionCreate() {
                   />
                 ) : (
                   <span className="font-mono">RD$ {formatMoney(totals.total)}</span>
+                )}
+              </div>
+
+              <div className="mt-2 border-t border-dashed border-slate-300 pt-2">
+                <p className="text-[11px] font-medium uppercase text-slate-500">
+                  Retención a terceros (opcional)
+                </p>
+                <div className="mt-1 flex items-center justify-between gap-2">
+                  <span className="text-slate-600">% ISR</span>
+                  <input
+                    type="number"
+                    step="1"
+                    min={0}
+                    max={100}
+                    placeholder="0"
+                    value={retencionIsrPct}
+                    onChange={(e) => setRetencionIsrPct(e.target.value)}
+                    className="w-20 rounded border border-slate-300 px-2 py-1 text-right font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                </div>
+                <div className="mt-1 flex items-center justify-between gap-2">
+                  <span className="text-slate-600">% ITBIS</span>
+                  <input
+                    type="number"
+                    step="1"
+                    min={0}
+                    max={100}
+                    placeholder="0"
+                    value={retencionItbisPct}
+                    onChange={(e) => setRetencionItbisPct(e.target.value)}
+                    className="w-20 rounded border border-slate-300 px-2 py-1 text-right font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                </div>
+                {(retencionIsrMonto > 0 || retencionItbisMonto > 0) && (
+                  <>
+                    {retencionItbisMonto > 0 && (
+                      <div className="mt-1 flex justify-between text-slate-600">
+                        <span>Retención ITBIS</span>
+                        <span className="font-mono">-RD$ {formatMoney(retencionItbisMonto)}</span>
+                      </div>
+                    )}
+                    {retencionIsrMonto > 0 && (
+                      <div className="mt-1 flex justify-between text-slate-600">
+                        <span>Retención ISR</span>
+                        <span className="font-mono">-RD$ {formatMoney(retencionIsrMonto)}</span>
+                      </div>
+                    )}
+                    <div className="mt-1 flex justify-between border-t border-slate-300 pt-2 font-semibold text-slate-900">
+                      <span>Total a pagar</span>
+                      <span className="font-mono">RD$ {formatMoney(totalAPagar)}</span>
+                    </div>
+                  </>
                 )}
               </div>
             </div>

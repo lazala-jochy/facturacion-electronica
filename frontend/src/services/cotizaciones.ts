@@ -52,6 +52,12 @@ export type CotizacionDetail = {
   itbis?: number;
   total: number;
   exento?: boolean;
+  /** Retención a terceros (ej. Gran Contribuyente retiene a proveedor sin RNC). Null si no aplica. */
+  retencion_isr_pct?: number | null;
+  retencion_isr_monto?: number | null;
+  retencion_itbis_pct?: number | null;
+  retencion_itbis_monto?: number | null;
+  total_a_pagar?: number;
   dgii_status?: string | null;
   dgii_track_id?: string | null;
   dgii_response?: string | null;
@@ -104,12 +110,55 @@ export type CreateClientWithCotizacionPayload = {
     itbis?: number;
     total?: number;
     exento?: boolean;
+    /** Retención a terceros (ej. Gran Contribuyente retiene a proveedor sin RNC). Omitir = no aplica. */
+    retencion_isr_pct?: number;
+    retencion_itbis_pct?: number;
   };
   items: CotizacionItemDraft[];
   /** Clave de cifrado del .p12 (mín. 8); obligatoria si la empresa tiene certificado sin clave guardada en perfil. */
   certificate_encryption_secret?: string;
   /** Generada al crear en modo offline; evita duplicar la venta si la sincronización reintenta. */
   idempotency_key?: string;
+};
+
+export type BorradorCotizacionAmway = {
+  client: {
+    name: string;
+    address: string;
+    rnc_cedula: string;
+  };
+  cotizacion: {
+    payment_method: string;
+    comment: string;
+    retencion_isr_pct?: number;
+    retencion_itbis_pct?: number;
+  };
+  items: Array<{ description: string; unit_price: number }>;
+  aviso: string;
+};
+
+/** Sube un PDF de reporte de comisión Amway y devuelve un borrador para precargar el formulario (no guarda nada). */
+export const importarBorradorCotizacionAmway = async (
+  file: File,
+): Promise<BorradorCotizacionAmway> => {
+  const session = readAuthSessionFromStorage();
+  if (!session?.token) throw new ApiError("No hay sesión.", 401);
+
+  const fd = new FormData();
+  fd.append("document", file);
+
+  const response = await authenticatedFetch("/cotizaciones/borrador-desde-pdf-amway", {
+    method: "POST",
+    body: fd,
+  });
+  const data = (await response.json().catch(() => ({}))) as {
+    message?: string;
+    borrador?: BorradorCotizacionAmway;
+  };
+  if (!response.ok || !data.borrador) {
+    throw new ApiError(data.message ?? "No se pudo leer el PDF.", response.status);
+  }
+  return data.borrador;
 };
 
 export const createClientWithCotizacion = (payload: CreateClientWithCotizacionPayload) =>

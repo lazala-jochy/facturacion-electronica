@@ -20,6 +20,9 @@ type CotizacionForPdf = {
   itbis: number;
   total: number;
   exento?: boolean;
+  /** Retención a terceros (ej. Gran Contribuyente retiene a proveedor sin RNC). Null si no aplica. */
+  retencionIsrMonto?: number | null;
+  retencionItbisMonto?: number | null;
   company: {
     id?: number;
     name: string;
@@ -360,6 +363,18 @@ const drawTotalesBox = (doc: PdfDoc, cotizacion: CotizacionForPdf, topY: number)
     { label: "Total ITBIS", value: moneyOrDash(cotizacion.itbis) },
     { label: "Monto Total", value: money(cotizacion.total), bold: true },
   ];
+
+  const retencionIsr = cotizacion.retencionIsrMonto ?? 0;
+  const retencionItbis = cotizacion.retencionItbisMonto ?? 0;
+  if (retencionIsr > 0 || retencionItbis > 0) {
+    if (retencionItbis > 0) lines.push({ label: "Retención ITBIS", value: `-${money(retencionItbis)}` });
+    if (retencionIsr > 0) lines.push({ label: "Retención ISR", value: `-${money(retencionIsr)}` });
+    lines.push({
+      label: "Total a Pagar",
+      value: money(cotizacion.total - retencionIsr - retencionItbis),
+      bold: true,
+    });
+  }
 
   const boxH = TOTALES_ROW_H_PT * lines.length + 6;
   const boxTop = topY;

@@ -42,6 +42,12 @@ export const buildRouter = () => {
     requireAuth,
     asyncHandler(cotizacionesController.createClientWithCotizacion),
   );
+  router.post(
+    "/cotizaciones/borrador-desde-pdf-amway",
+    requireAuth,
+    compra606DocumentUpload,
+    asyncHandler(cotizacionesController.borradorCotizacionDesdeAmwayHandler),
+  );
   router.get(
     "/cotizaciones",
     requireAuth,

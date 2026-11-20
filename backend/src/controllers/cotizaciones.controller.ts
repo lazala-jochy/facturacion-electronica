@@ -28,7 +28,10 @@ import { buildEcfNumber } from "../utils/ecfTipo";
 import { retryQueuedCotizacionSubmit } from "../services/dgiiSubmitQueue.service";
 import { resolveCompanyLogoImage } from "../utils/companyLogo";
 import { sendCompanyEmail, MailNotConfiguredError, type MailAttachment } from "../utils/mailer";
+import { extraerBorradorCotizacionDesdeArchivoAmway } from "../utils/amwayBonoExtract";
 import { isValidEmailFormat } from "../utils/validation";
+
+const round2 = (value: number): number => Math.round(value * 100) / 100;
 
 const escapeHtml = (raw: string): string =>
   raw.replace(/[&<>"']/g, (ch) => {
@@ -52,6 +55,12 @@ const stripTenantFromBody = (body: Record<string, unknown>) => {
 
 const pickStr = (b: Record<string, unknown>, k: string): string | undefined =>
   typeof b[k] === "string" ? (b[k] as string) : undefined;
+
+/** Porcentaje de retención (ej. retencion_isr_pct): null si no viene o no es un número > 0. */
+const pickPct = (b: Record<string, unknown>, k: string): number | null => {
+  const n = Number(b[k]);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
 
 /** Tras crear/editar cotización: firma y guarda XML si la empresa tiene certificado. */
 const trySignDraftEcfAfterWrite = async (
@@ -95,6 +104,11 @@ const serializeCotizacion = (
   itbis: c.itbis,
   total: c.total,
   exento: c.exento,
+  retencion_isr_pct: c.retencionIsrPct,
+  retencion_isr_monto: c.retencionIsrMonto,
+  retencion_itbis_pct: c.retencionItbisPct,
+  retencion_itbis_monto: c.retencionItbisMonto,
+  total_a_pagar: round2(c.total - (c.retencionIsrMonto ?? 0) - (c.retencionItbisMonto ?? 0)),
   dgii_track_id: c.dgiiTrackId,
   dgii_status: c.dgiiStatus,
   dgii_response: c.dgiiResponse,
@@ -147,6 +161,26 @@ const serializeCotizacion = (
     total_value: i.totalValue,
   })),
 });
+
+/** Borrador de cotización desde un PDF de reporte de comisión Amway (solo lectura; no guarda nada). */
+export const borradorCotizacionDesdeAmwayHandler: RequestHandler = async (req, res) => {
+  const companyId = req.auth?.companyId;
+  if (!companyId) {
+    res.status(401).json({ message: "No autorizado." });
+    return;
+  }
+  const file = req.file;
+  if (!file?.buffer?.length) {
+    res.status(400).json({ message: "Suba el PDF del reporte de comisión de Amway." });
+    return;
+  }
+  const out = await extraerBorradorCotizacionDesdeArchivoAmway(file.buffer, file.mimetype);
+  if (!out.ok) {
+    res.status(out.status).json({ message: out.message });
+    return;
+  }
+  res.json(out);
+};
 
 export const createClientWithCotizacion: RequestHandler = async (req, res) => {
   const companyId = req.auth?.companyId;
@@ -238,6 +272,8 @@ export const createClientWithCotizacion: RequestHandler = async (req, res) => {
       itbis: Number(cot.itbis),
       total: Number(cot.total),
       exento: Boolean(cot.exento),
+      retencion_isr_pct: pickPct(cot, "retencion_isr_pct"),
+      retencion_itbis_pct: pickPct(cot, "retencion_itbis_pct"),
     },
     items,
     idempotency_key: pickStr(body, "idempotency_key"),
@@ -426,6 +462,8 @@ export const updateCotizacionById: RequestHandler = async (req, res) => {
       itbis: Number(cot.itbis),
       total: Number(cot.total),
       exento: Boolean(cot.exento),
+      retencion_isr_pct: pickPct(cot, "retencion_isr_pct"),
+      retencion_itbis_pct: pickPct(cot, "retencion_itbis_pct"),
     },
     items,
   });
