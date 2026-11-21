@@ -52,12 +52,6 @@ export type CotizacionDetail = {
   itbis?: number;
   total: number;
   exento?: boolean;
-  /** Retención a terceros (ej. Gran Contribuyente retiene a proveedor sin RNC). Null si no aplica. */
-  retencion_isr_pct?: number | null;
-  retencion_isr_monto?: number | null;
-  retencion_itbis_pct?: number | null;
-  retencion_itbis_monto?: number | null;
-  total_a_pagar?: number;
   dgii_status?: string | null;
   dgii_track_id?: string | null;
   dgii_response?: string | null;
@@ -110,9 +104,6 @@ export type CreateClientWithCotizacionPayload = {
     itbis?: number;
     total?: number;
     exento?: boolean;
-    /** Retención a terceros (ej. Gran Contribuyente retiene a proveedor sin RNC). Omitir = no aplica. */
-    retencion_isr_pct?: number;
-    retencion_itbis_pct?: number;
   };
   items: CotizacionItemDraft[];
   /** Clave de cifrado del .p12 (mín. 8); obligatoria si la empresa tiene certificado sin clave guardada en perfil. */
@@ -130,8 +121,6 @@ export type BorradorCotizacionAmway = {
   cotizacion: {
     payment_method: string;
     comment: string;
-    retencion_isr_pct?: number;
-    retencion_itbis_pct?: number;
   };
   items: Array<{ description: string; unit_price: number }>;
   aviso: string;

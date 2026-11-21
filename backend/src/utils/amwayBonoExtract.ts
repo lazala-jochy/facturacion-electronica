@@ -20,9 +20,6 @@ export type BorradorCotizacionAmway = {
   cotizacion: {
     payment_method: string;
     comment: string;
-    /** Retención a terceros detectada en el PDF (ej. Amway retiene ITBIS/ISR al IBO sin RNC). */
-    retencion_isr_pct?: number;
-    retencion_itbis_pct?: number;
   };
   items: ItemBorradorAmway[];
   aviso: string;
@@ -96,26 +93,6 @@ export const parseAmwayBonoTexto = (texto: string): BorradorCotizacionAmway => {
     });
   }
 
-  // Retención a terceros: "DR Taxes/Impuestos..." = ISR retenido sobre el subtotal gravado;
-  // "ITBIS retenido" = ITBIS retenido sobre el ITBIS facturado. Se expresan como % para que el
-  // monto se recalcule en el sistema a partir de los items (no de estas cifras del PDF).
-  const subtotalBase = items.reduce((acc, it) => acc + it.unit_price, 0);
-  const itbisFacturado = matchMoney(texto, /ITBIS\s*\.{0,}\s*\.18000[^\n]*?([\d.,]+)(?!-)/i);
-  const itbisRetenido = matchMoney(
-    texto,
-    /ITBIS\s+retenido[^\n]*?\.18000[^\n]*?([\d,]+\.\d{2})-/i,
-  );
-  const drTaxes = matchMoney(
-    texto,
-    /DR\s+Taxes\/Impuestos\s+de\s+la\s+Republica\s+Dominica[^\n]*?([\d.,]+)-?/i,
-  );
-  const pct = (parte: number | null, base: number): number | undefined =>
-    parte != null && parte > 0 && base > 0
-      ? Math.round(((parte / base) * 100) * 100) / 100
-      : undefined;
-  const retencionIsrPct = pct(drTaxes, subtotalBase);
-  const retencionItbisPct = pct(itbisRetenido, itbisFacturado ?? 0);
-
   const faltantes: string[] = [];
   if (!clientName) faltantes.push("cliente");
   if (items.length === 0) faltantes.push("montos de comisión");
@@ -136,16 +113,12 @@ export const parseAmwayBonoTexto = (texto: string): BorradorCotizacionAmway => {
     cotizacion: {
       payment_method: "Depósito",
       comment,
-      retencion_isr_pct: retencionIsrPct,
-      retencion_itbis_pct: retencionItbisPct,
     },
     items,
     aviso:
       faltantes.length > 0
         ? `Datos extraídos del PDF -- no se detectó: ${faltantes.join(", ")}. Completá el formulario antes de guardar.`
-        : retencionIsrPct != null || retencionItbisPct != null
-          ? `Datos extraídos del PDF de Amway, incluida la retención (ISR ${retencionIsrPct ?? 0}% / ITBIS ${retencionItbisPct ?? 0}%). El RNC/cédula del cliente no viene en el reporte -- completalo antes de guardar. Revisá montos, ítems y retención.`
-          : "Datos extraídos del PDF de Amway. El RNC/cédula del cliente no viene en el reporte -- completalo antes de guardar. Revisá montos e ítems.",
+        : "Datos extraídos del PDF de Amway. El RNC/cédula del cliente no viene en el reporte -- completalo antes de guardar. Revisá montos e ítems.",
   };
 };
 

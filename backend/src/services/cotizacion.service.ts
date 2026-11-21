@@ -48,10 +48,6 @@ export type CreateClientWithCotizacionInput = {
     itbis?: number;
     total?: number;
     exento?: boolean;
-    /// Retención a terceros (ej. Gran Contribuyente retiene ITBIS/ISR a proveedor sin RNC).
-    /// Informativa: no cambia subtotal/itbis/total (el e-CF sigue reportando el bruto).
-    retencion_isr_pct?: number | null;
-    retencion_itbis_pct?: number | null;
   };
   items?: IncomingItem[];
   /** Generada por el navegador al crear en modo offline; evita duplicar la venta al sincronizar. */
@@ -66,32 +62,6 @@ const trimOrNull = (v: string | undefined | null) => {
 };
 const toDocDigits = (value: string) => value.replace(/\D/g, "");
 const round2 = (value: number) => Math.round(value * 100) / 100;
-
-/**
- * Retención a terceros: ISR se calcula sobre el subtotal gravado, ITBIS sobre el ITBIS facturado
- * (patrón observado en facturas de proveedores sin RNC a Grandes Contribuyentes, ej. Amway: ISR 15%
- * del subtotal + ITBIS 100% retenido). Null si no se indica porcentaje -- no aplica retención.
- */
-const computeRetencion = (
-  totals: { subtotal: number; itbis: number },
-  input: { retencion_isr_pct?: number | null; retencion_itbis_pct?: number | null },
-): {
-  retencionIsrPct: number | null;
-  retencionIsrMonto: number | null;
-  retencionItbisPct: number | null;
-  retencionItbisMonto: number | null;
-} => {
-  const isrPct = Number(input.retencion_isr_pct);
-  const itbisPct = Number(input.retencion_itbis_pct);
-  const hasIsr = Number.isFinite(isrPct) && isrPct > 0;
-  const hasItbis = Number.isFinite(itbisPct) && itbisPct > 0;
-  return {
-    retencionIsrPct: hasIsr ? isrPct : null,
-    retencionIsrMonto: hasIsr ? round2((totals.subtotal * isrPct) / 100) : null,
-    retencionItbisPct: hasItbis ? itbisPct : null,
-    retencionItbisMonto: hasItbis ? round2((totals.itbis * itbisPct) / 100) : null,
-  };
-};
 
 export const isPaymentMethodCredito = (paymentMethod: string | null | undefined): boolean =>
   /cr[eé]dito/i.test(paymentMethod?.trim() ?? "");
@@ -509,7 +479,6 @@ export const cotizacionService = {
     const totals = exento
       ? { subtotal: calcTotals.subtotal, itbis: 0, total: calcTotals.subtotal }
       : calcTotals;
-    const retencion = computeRetencion(totals, input.cotizacion);
 
     let result;
     try {
@@ -579,10 +548,6 @@ export const cotizacionService = {
           itbis: totals.itbis,
           total: totals.total,
           exento,
-          retencionIsrPct: retencion.retencionIsrPct,
-          retencionIsrMonto: retencion.retencionIsrMonto,
-          retencionItbisPct: retencion.retencionItbisPct,
-          retencionItbisMonto: retencion.retencionItbisMonto,
         },
       });
 
@@ -775,7 +740,6 @@ export const cotizacionService = {
     const totals = exento
       ? { subtotal: calcTotals.subtotal, itbis: 0, total: calcTotals.subtotal }
       : calcTotals;
-    const retencion = computeRetencion(totals, input.cotizacion);
 
     let cotizacion;
     try {
@@ -827,10 +791,6 @@ export const cotizacionService = {
           itbis: totals.itbis,
           total: totals.total,
           exento,
-          retencionIsrPct: retencion.retencionIsrPct,
-          retencionIsrMonto: retencion.retencionIsrMonto,
-          retencionItbisPct: retencion.retencionItbisPct,
-          retencionItbisMonto: retencion.retencionItbisMonto,
           ...(resetDgiiAfterNonSequenceReject
             ? {
                 dgiiStatus: null,

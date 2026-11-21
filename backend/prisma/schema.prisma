@@ -228,12 +228,6 @@ model Cotizacion {
   total          Float
   /// Exenta de ITBIS: fuerza itbis=0 y usa el bloque de totales exentos en el e-CF.
   exento         Boolean          @default(false) @map("exento")
-  /// Retención a terceros (ej. Gran Contribuyente retiene a proveedor sin RNC): informativa,
-  /// no afecta subtotal/itbis/total del e-CF (esos siguen siendo el monto bruto fiscal).
-  retencionIsrPct      Float?     @map("retencion_isr_pct")
-  retencionIsrMonto    Float?     @map("retencion_isr_monto")
-  retencionItbisPct    Float?     @map("retencion_itbis_pct")
-  retencionItbisMonto  Float?     @map("retencion_itbis_monto")
   dgiiTrackId    String?          @map("dgii_track_id")
   dgiiStatus     String?          @map("dgii_status")
   dgiiResponse   String?          @map("dgii_response")
