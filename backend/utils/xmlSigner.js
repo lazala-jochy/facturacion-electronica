@@ -16,6 +16,42 @@ const SHA256_DIGEST = "http://www.w3.org/2001/04/xmlenc#sha256";
 /** Raíz del comprobante electrónico. */
 const ECF_ROOT_XPATH = "/*[local-name(.)='ECF']";
 const DOTNET_SIGNER_PROJECT = path.join(process.cwd(), "dotnet", "DgiiXmlSigner", "DgiiXmlSigner.csproj");
+const DOTNET_SIGNER_DLL = path.join(
+  path.dirname(DOTNET_SIGNER_PROJECT),
+  "bin",
+  "Debug",
+  "net10.0",
+  "DgiiXmlSigner.dll",
+);
+/**
+ * Ejecutable self-contained (`dotnet publish --self-contained`), el mismo que usa
+ * dgiiXmlSigner.ts -- unico camino disponible en Docker/Render, donde no existe el SDK de
+ * .NET ni el codigo fuente del firmador, solo este binario empaquetado.
+ */
+const SELF_CONTAINED_SIGNER_BIN = path.join(
+  process.cwd(),
+  "dotnet-signer",
+  process.platform === "win32" ? "DgiiXmlSigner.exe" : "DgiiXmlSigner",
+);
+
+function signerIsAvailable() {
+  return (
+    fs.existsSync(SELF_CONTAINED_SIGNER_BIN) ||
+    fs.existsSync(DOTNET_SIGNER_DLL) ||
+    fs.existsSync(DOTNET_SIGNER_PROJECT)
+  );
+}
+
+/** Mismo orden de preferencia que dgiiXmlSigner.ts: binario empaquetado > DLL local > `dotnet run`. */
+function resolveSignerCommand(extraArgs) {
+  if (fs.existsSync(SELF_CONTAINED_SIGNER_BIN)) {
+    return { command: SELF_CONTAINED_SIGNER_BIN, args: extraArgs };
+  }
+  if (fs.existsSync(DOTNET_SIGNER_DLL)) {
+    return { command: "dotnet", args: [DOTNET_SIGNER_DLL, ...extraArgs] };
+  }
+  return { command: "dotnet", args: ["run", "--project", DOTNET_SIGNER_PROJECT, "--", ...extraArgs] };
+}
 
 /**
  * @returns {string}
@@ -68,8 +104,10 @@ function loadPkcs12MaterialFromBuffer(p12Buffer, password) {
 
 function signXmlEnvelope(xml, p12Buffer, passphrase) {
   loadPkcs12MaterialFromBuffer(p12Buffer, passphrase);
-  if (!fs.existsSync(DOTNET_SIGNER_PROJECT)) {
-    throw new Error(`No se encontró el firmador DGII .NET en ${DOTNET_SIGNER_PROJECT}.`);
+  if (!signerIsAvailable()) {
+    throw new Error(
+      `No se encontró el firmador DGII .NET (ni el ejecutable empaquetado en ${SELF_CONTAINED_SIGNER_BIN} ni el proyecto en ${DOTNET_SIGNER_PROJECT}).`,
+    );
   }
 
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "dgii-ecf-xmlsign-"));
@@ -81,13 +119,10 @@ function signXmlEnvelope(xml, p12Buffer, passphrase) {
     fs.writeFileSync(inputPath, xml.replace(/^\uFEFF/, ""), "utf8");
     fs.writeFileSync(certPath, p12Buffer);
     fs.writeFileSync(passwordPath, passphrase ?? "", "utf8");
-    const result = spawnSync(
-      "dotnet",
-      ["run", "--project", DOTNET_SIGNER_PROJECT, "--", inputPath, certPath, passwordPath, outputPath, "modern-sha256"],
-      { cwd: process.cwd(), encoding: "utf8", maxBuffer: 1024 * 1024 * 4 },
-    );
+    const { command, args } = resolveSignerCommand([inputPath, certPath, passwordPath, outputPath, "modern-sha256"]);
+    const result = spawnSync(command, args, { cwd: process.cwd(), encoding: "utf8", maxBuffer: 1024 * 1024 * 4 });
     if (result.status !== 0) {
-      const message = [result.stderr, result.stdout].filter(Boolean).join("\n").trim();
+      const message = [result.error?.message, result.stderr, result.stdout].filter(Boolean).join("\n").trim();
       throw new Error(`No se pudo firmar XML e-CF con el firmador DGII .NET. ${message}`);
     }
     return fs.readFileSync(outputPath, "utf8");
