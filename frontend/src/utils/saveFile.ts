@@ -54,3 +54,7 @@ export const saveFile = async (
 export const PDF_FILE_TYPES = [
   { description: "PDF", accept: { "application/pdf": [".pdf"] } },
 ];
+
+export const XML_FILE_TYPES = [
+  { description: "XML", accept: { "application/xml": [".xml"] } },
+];

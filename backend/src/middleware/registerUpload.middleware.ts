@@ -34,3 +34,9 @@ export const compra606DocumentUpload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 }).single("document");
 
+/** XML arbitrario a firmar con el certificado de la empresa (hasta 5 MB). */
+export const xmlFirmaUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+}).single("xml");
+

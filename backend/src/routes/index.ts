@@ -6,6 +6,7 @@ import * as ecfExcelBatchController from "../controllers/ecfExcelBatch.controlle
 import * as portalConsumoMenor250Controller from "../controllers/portalConsumoMenor250.controller";
 import * as commercialApprovalsController from "../controllers/commercialApprovals.controller";
 import * as dgiiFormatosController from "../controllers/dgiiFormatos.controller";
+import * as xmlFirmaController from "../controllers/xmlFirma.controller";
 import { asyncHandler } from "../middleware/asyncHandler";
 import { requireAuth } from "../middleware/auth.middleware";
 import {
@@ -14,6 +15,7 @@ import {
   compra606DocumentUpload,
   ecfCertificateUpload,
   ecfExcelUpload,
+  xmlFirmaUpload,
 } from "../middleware/registerUpload.middleware";
 
 export const buildRouter = () => {
@@ -197,6 +199,13 @@ export const buildRouter = () => {
     requireAuth,
     asyncHandler(dgiiFormatosController.llenar607DesdeEcfHandler),
   );
+  router.post(
+    "/xml-firmar/sign",
+    requireAuth,
+    xmlFirmaUpload,
+    asyncHandler(xmlFirmaController.signUploadedXmlHandler),
+  );
+
   router.get(
     "/dgii-formatos/606/borrador",
     requireAuth,
