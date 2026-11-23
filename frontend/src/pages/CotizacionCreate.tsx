@@ -30,8 +30,8 @@ import { addCustomUnidadMedida, getCustomUnidadesMedida } from "../config/custom
 
 type ItemRow = CotizacionItemDraft & { key: string };
 
-/** Importar cotización desde PDF de Amway: función interna, solo para este usuario. */
-const AMWAY_IMPORT_ALLOWED_EMAIL = "lazalajochy@gmail.com";
+/** Importar cotización desde PDF de Amway: función interna, solo para estas empresas. */
+const AMWAY_IMPORT_ALLOWED_RNCS = new Set(["133746514", "00115198913"]);
 
 const newRow = (): ItemRow => ({
   key: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
@@ -354,7 +354,7 @@ export default function CotizacionCreate() {
             >
               Ver clientes
             </Link>
-            {session?.user?.email?.trim().toLowerCase() === AMWAY_IMPORT_ALLOWED_EMAIL && (
+            {AMWAY_IMPORT_ALLOWED_RNCS.has(session?.company?.rnc?.replace(/\D/g, "") ?? "") && (
               <label
                 className={`inline-flex cursor-pointer items-center gap-2 rounded border border-[#0b57d0] px-3 py-1.5 text-sm font-medium text-[#0b57d0] hover:bg-blue-50 ${
                   importing ? "opacity-60 pointer-events-none" : ""
