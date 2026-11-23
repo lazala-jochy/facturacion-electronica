@@ -58,3 +58,7 @@ export const PDF_FILE_TYPES = [
 export const XML_FILE_TYPES = [
   { description: "XML", accept: { "application/xml": [".xml"] } },
 ];
+
+export const ZIP_FILE_TYPES = [
+  { description: "ZIP", accept: { "application/zip": [".zip"] } },
+];

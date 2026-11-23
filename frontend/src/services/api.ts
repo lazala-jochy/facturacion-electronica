@@ -5,6 +5,7 @@ import {
   type AuthSession,
   type AuthUser,
 } from "../types/session";
+import { saveFile, ZIP_FILE_TYPES } from "../utils/saveFile";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
 
@@ -298,8 +299,9 @@ export const apiFetch = async <T>(
 };
 
 /**
- * Descarga un ZIP generado en el servidor (lotes de prueba ECF, ACECF, etc.) y dispara la
- * descarga del navegador. Reemplaza la carpeta del Escritorio que usaba la app de Electron.
+ * Descarga un ZIP generado en el servidor (lotes de prueba ECF, ACECF, etc.). Deja elegir
+ * carpeta/nombre con el selector nativo del navegador cuando está disponible (Chrome/Edge);
+ * si no, cae a la descarga automática de siempre a la carpeta de Descargas.
  */
 export const downloadZipFromPath = async (path: string, fallbackFilename: string): Promise<string> => {
   const response = await authenticatedFetch(path);
@@ -311,11 +313,6 @@ export const downloadZipFromPath = async (path: string, fallbackFilename: string
   const disp = response.headers.get("Content-Disposition") ?? "";
   const match = /filename="([^"]+)"/i.exec(disp);
   const filename = match?.[1] ?? fallbackFilename;
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
+  await saveFile(blob, filename, ZIP_FILE_TYPES);
   return filename;
 };
