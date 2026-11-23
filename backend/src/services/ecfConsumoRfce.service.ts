@@ -12,6 +12,7 @@ import { submitSignedRfceWithTenantConfig } from "./dgiiEcfApi.service";
 import { resolveP12ForEcf, type SubmitEcfErr } from "./ecf.service";
 import { extractEncfFromDgiiResponse, isDgiiSequenceRejection } from "../utils/dgiiRejection";
 import { allocateNextAfterUsedSeq, markEcfNcfSeqUsed } from "./ecfSeq.service";
+import { normalizeDgiiEnvironment } from "../utils/dgiiEnvironment";
 
 type CotizacionWithRelations = Prisma.CotizacionGetPayload<{
   include: { company: true; client: true; items: true };
@@ -291,16 +292,17 @@ export async function submitConsumoMenor250RfceForCotizacion(
       const encfSeq = fromEncf?.seq ?? 0;
       const cotSeq = cotRow?.ecfNcfSeq && cotRow.ecfNcfSeq > 0 ? cotRow.ecfNcfSeq : 0;
       const usedSeq = Math.max(cotSeq, encfSeq);
+      const environment = normalizeDgiiEnvironment(companyRow.dgiiEnvironment);
       await prisma.$transaction(async (tx) => {
         if (usedSeq > 0) {
-          await markEcfNcfSeqUsed(tx, companyId, tipo, usedSeq);
+          await markEcfNcfSeqUsed(tx, companyId, tipo, environment, usedSeq);
         }
-        const newSeq = await allocateNextAfterUsedSeq(tx, companyId, tipo, usedSeq, {
+        const newSeq = await allocateNextAfterUsedSeq(tx, companyId, tipo, environment, usedSeq, {
           excludeCotizacionId: cotizacionId,
         });
         await tx.cotizacion.update({
           where: { id: cotizacionId },
-          data: { ecfNcfSeq: newSeq },
+          data: { ecfNcfSeq: newSeq, dgiiEnvironment: environment },
         });
       });
     }

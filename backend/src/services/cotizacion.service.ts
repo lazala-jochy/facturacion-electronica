@@ -15,6 +15,7 @@ import {
 } from "./ecfSeq.service";
 import { isValidPhoneFormat } from "../utils/validation";
 import { validateCotizacionEcfBusiness } from "./ecfTipoHandlers";
+import { normalizeDgiiEnvironment } from "../utils/dgiiEnvironment";
 
 export type IncomingItem = {
   quantity: number;
@@ -200,16 +201,21 @@ export async function ensureCotizacionSeqAdvancedAfterSequenceReject(
   const raw = cot.dgiiResponse?.trim() ?? "";
 
   const advanceToNext = async (usedSeq: number) => {
+    const companyRow = await prisma.company.findUnique({
+      where: { id: companyId },
+      select: { dgiiEnvironment: true },
+    });
+    const environment = normalizeDgiiEnvironment(companyRow?.dgiiEnvironment);
     const newSeq = await prisma.$transaction(async (tx) => {
       if (usedSeq > 0) {
-        await markEcfNcfSeqUsed(tx, companyId, tipo, usedSeq);
+        await markEcfNcfSeqUsed(tx, companyId, tipo, environment, usedSeq);
       }
-      const next = await allocateNextAfterUsedSeq(tx, companyId, tipo, usedSeq, {
+      const next = await allocateNextAfterUsedSeq(tx, companyId, tipo, environment, usedSeq, {
         excludeCotizacionId: cotizacionId,
       });
       await tx.cotizacion.update({
         where: { id: cotizacionId },
-        data: { ecfNcfSeq: next, signedXml: null },
+        data: { ecfNcfSeq: next, dgiiEnvironment: environment, signedXml: null },
       });
       return next;
     });
@@ -251,8 +257,9 @@ export async function persistCotizacionAfterDgiiSubmission(
   return prisma.$transaction(async (tx) => {
     const cotRow = await tx.cotizacion.findFirst({
       where: { id: cotizacionId, companyId },
-      select: { ecfNcfSeq: true },
+      select: { ecfNcfSeq: true, company: { select: { dgiiEnvironment: true } } },
     });
+    const environment = normalizeDgiiEnvironment(cotRow?.company.dgiiEnvironment);
 
     const sequenceReject = isDgiiSequenceRejection(dgiiResponse.rawResponse);
 
@@ -264,14 +271,14 @@ export async function persistCotizacionAfterDgiiSubmission(
         const cotSeq = cotRow?.ecfNcfSeq && cotRow.ecfNcfSeq > 0 ? cotRow.ecfNcfSeq : 0;
         const usedSeq = Math.max(cotSeq, encfSeq);
         if (usedSeq > 0) {
-          await markEcfNcfSeqUsed(tx, companyId, tipo, usedSeq);
+          await markEcfNcfSeqUsed(tx, companyId, tipo, environment, usedSeq);
         }
         const newSeq =
           usedSeq > 0
-            ? await allocateNextAfterUsedSeq(tx, companyId, tipo, usedSeq, {
+            ? await allocateNextAfterUsedSeq(tx, companyId, tipo, environment, usedSeq, {
                 excludeCotizacionId: cotizacionId,
               })
-            : await allocateEcfNcfSeq(tx, companyId, tipo);
+            : await allocateEcfNcfSeq(tx, companyId, tipo, environment);
         await tx.cotizacion.update({
           where: { id: cotizacionId },
           data: {
@@ -281,6 +288,7 @@ export async function persistCotizacionAfterDgiiSubmission(
             dgiiResponse: dgiiResponse.rawResponse,
             dgiiSubmittedAt,
             ecfNcfSeq: newSeq,
+            dgiiEnvironment: environment,
           },
         });
         return { newSeq };
@@ -300,7 +308,7 @@ export async function persistCotizacionAfterDgiiSubmission(
     }
 
     if (cotRow?.ecfNcfSeq && cotRow.ecfNcfSeq > 0) {
-      await markEcfNcfSeqUsed(tx, companyId, tipo, cotRow.ecfNcfSeq);
+      await markEcfNcfSeqUsed(tx, companyId, tipo, environment, cotRow.ecfNcfSeq);
     }
 
     await tx.cotizacion.update({
@@ -525,8 +533,14 @@ export const cotizacionService = {
             },
           });
 
+      const companyRow = await tx.company.findUnique({
+        where: { id: companyId },
+        select: { dgiiEnvironment: true },
+      });
+      const environment = normalizeDgiiEnvironment(companyRow?.dgiiEnvironment);
+
       const number = await nextCotizacionNumber(tx, companyId);
-      const ecfNcfSeq = await allocateEcfNcfSeq(tx, companyId, ecfTipo);
+      const ecfNcfSeq = await allocateEcfNcfSeq(tx, companyId, ecfTipo, environment);
 
       const cotizacion = await tx.cotizacion.create({
         data: {
@@ -542,6 +556,7 @@ export const cotizacionService = {
           comment,
           ecfTipo,
           ecfNcfSeq,
+          dgiiEnvironment: environment,
           ecfReferenceNcf,
           idempotencyKey,
           subtotal: totals.subtotal,
@@ -760,13 +775,20 @@ export const cotizacionService = {
       let ecfNcfSeq = existing.ecfNcfSeq;
       let ecfTipoFinal = ecfTipo;
       let ecfReferenceFinal = ecfReferenceNcf;
+      let dgiiEnvironmentFinal = existing.dgiiEnvironment;
 
       if (dgiiLocked) {
         ecfTipoFinal = existing.ecfTipo;
         ecfNcfSeq = existing.ecfNcfSeq;
         ecfReferenceFinal = existing.ecfReferenceNcf;
       } else       if (ecfTipoFinal !== existing.ecfTipo) {
-        ecfNcfSeq = await allocateEcfNcfSeq(tx, companyId, ecfTipoFinal);
+        const companyRow = await tx.company.findUnique({
+          where: { id: companyId },
+          select: { dgiiEnvironment: true },
+        });
+        const environment = normalizeDgiiEnvironment(companyRow?.dgiiEnvironment);
+        ecfNcfSeq = await allocateEcfNcfSeq(tx, companyId, ecfTipoFinal, environment);
+        dgiiEnvironmentFinal = environment;
       }
 
       const resetDgiiAfterNonSequenceReject =
@@ -786,6 +808,7 @@ export const cotizacionService = {
           fiscalLegend,
           ecfTipo: ecfTipoFinal,
           ecfNcfSeq,
+          dgiiEnvironment: dgiiEnvironmentFinal,
           ecfReferenceNcf: ecfReferenceFinal,
           subtotal: totals.subtotal,
           itbis: totals.itbis,

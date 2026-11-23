@@ -126,15 +126,18 @@ model Compra606 {
   @@map("compras_606")
 }
 
-/// Última secuencia e-NCF consumida por empresa y tipo (cola DGII: siguiente = lastSeq + 1).
+/// Última secuencia e-NCF consumida por empresa, tipo y ambiente (cola DGII: siguiente = lastSeq + 1).
+/// Certificación y producción nunca comparten contador -- cada combinación empresa+tipo+ambiente
+/// tiene el suyo propio, y arranca en 0 (primer e-NCF = 1).
 model CompanyEcfSeqCounter {
-  id        Int     @id @default(autoincrement())
-  companyId Int     @map("company_id")
-  ecfTipo   String  @map("ecf_tipo")
-  lastSeq   Int     @default(0) @map("last_seq")
-  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  id          Int     @id @default(autoincrement())
+  companyId   Int     @map("company_id")
+  ecfTipo     String  @map("ecf_tipo")
+  environment String  @default("PRODUCCION")
+  lastSeq     Int     @default(0) @map("last_seq")
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
-  @@unique([companyId, ecfTipo], name: "company_ecf_tipo_seq")
+  @@unique([companyId, ecfTipo, environment], name: "company_ecf_tipo_env_seq")
   @@index([companyId])
   @@map("company_ecf_seq_counters")
 }
@@ -245,6 +248,9 @@ model Cotizacion {
   /// Correlativo e-NCF por empresa y tipo (cola numérica del e-CF).
   ecfNcfSeq      Int              @map("ecf_ncf_seq")
   /// e-NCF / NCF del comprobante asociado (notas débito/crédito, etc.).
+  /// Ambiente DGII (CERTIFICACION/PRODUCCION) vigente al momento de la transmisión; null en
+  /// registros previos a este campo (no reconstruible retroactivamente, ver ecfSeq.service.ts).
+  dgiiEnvironment String?         @map("dgii_environment")
   ecfReferenceNcf String?         @map("ecf_reference_ncf")
   /// Representación impresa (PDF) conservada tras envío e-CF; ruta relativa a uploads.
   ecfRiPdfPath    String?         @map("ecf_ri_pdf_path")
