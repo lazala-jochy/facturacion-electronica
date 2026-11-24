@@ -66,6 +66,8 @@ export type EcfPayload = {
   /** DD-MM-YYYY. Solo aplica (y es obligatorio) si tipoPago = "2". */
   fechaLimitePago?: string;
   terminoPago?: string;
+  /** DD-MM-YYYY. Autorizacion de Secuencia DGII de la empresa; si falta, el builder usa DEFAULT_FECHA_VENC_SEC. */
+  fechaVencimientoSecuencia?: string;
 };
 
 const round2 = (value: number) => Number(value.toFixed(2));

@@ -68,6 +68,7 @@ export type PublicCompany = Pick<
   | "logoUrl"
   | "signatureUrl"
   | "dgiiEcfEndpoint"
+  | "dgiiFechaVencimientoSecuencia"
   | "dgiiUsername"
   | "dgiiAuthUrl"
   | "dgiiReceptionUrl"
@@ -196,6 +197,7 @@ const publicCompany = (c: Company): PublicCompany => ({
   logoUrl: c.logoUrl,
   signatureUrl: c.signatureUrl,
   dgiiEcfEndpoint: c.dgiiEcfEndpoint,
+  dgiiFechaVencimientoSecuencia: c.dgiiFechaVencimientoSecuencia,
   dgiiUsername: c.dgiiUsername,
   dgiiPassword: decryptCompanySecret(c.dgiiPasswordEnc, c),
   dgiiAuthUrl: c.dgiiAuthUrl,
@@ -599,6 +601,19 @@ export const authService = {
       dgiiEcfEndpointUpdate = { dgiiEcfEndpoint: nextEndpoint };
     }
 
+    let dgiiFechaVencimientoSecuenciaUpdate: { dgiiFechaVencimientoSecuencia: string | null } | undefined;
+    if (body.dgii_fecha_vencimiento_secuencia !== undefined) {
+      const raw = (body.dgii_fecha_vencimiento_secuencia ?? "").trim();
+      if (raw && !/^\d{2}-\d{2}-\d{4}$/.test(raw)) {
+        return {
+          ok: false,
+          status: 400,
+          message: "La fecha de vencimiento de secuencia debe tener formato DD-MM-YYYY.",
+        };
+      }
+      dgiiFechaVencimientoSecuenciaUpdate = { dgiiFechaVencimientoSecuencia: raw || null };
+    }
+
     const dgiiTenantMerge: Partial<
       Pick<
         Company,
@@ -912,6 +927,7 @@ export const authService = {
             email: email || null,
             regime: regime || "Régimen general",
             ...(dgiiEcfEndpointUpdate ?? {}),
+            ...(dgiiFechaVencimientoSecuenciaUpdate ?? {}),
             ...dgiiTenantMerge,
             ...(hasPaso4InBody ? dgiiPaso4Merge : {}),
             ...ecfGatewayMerge,

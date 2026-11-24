@@ -22,6 +22,8 @@ export type AuthCompany = {
   certificate_original_name?: string | null;
   /** URL del servicio DGII para envío e-CF (opcional; si no hay, se usa la variable de entorno del servidor). */
   dgiiEcfEndpoint?: string | null;
+  /** DD-MM-YYYY de la Autorización de Secuencia e-CF de esta empresa (si falta, el backend usa un default global). */
+  dgiiFechaVencimientoSecuencia?: string | null;
   dgiiUsername?: string | null;
   dgiiPassword?: string | null;
   dgiiAuthUrl?: string | null;

@@ -20,6 +20,7 @@ import { normalizeEcfTipo } from "../utils/ecfTipo";
 import { parseDgiiCertProfile, type DgiiCertProfile } from "../types/dgiiCertProfile";
 import { ECF_CONSUMO_RFCE_TOTAL_THRESHOLD_RD } from "../config/dgiiEcf.constants";
 import { mapDgiiRawBodyToCotizacionEstado } from "../utils/dgiiEstadoRecepcion";
+import { DEFAULT_FECHA_VENC_SEC } from "./xmlBuilder/common";
 import { isDgiiSequenceRejection } from "../utils/dgiiRejection";
 import {
   ensureCotizacionSeqAdvancedAfterSequenceReject,
@@ -91,6 +92,8 @@ const toPayload = (cotizacion: CotizacionWithRelations): EcfPayload => {
     exento: cotizacion.exento,
     ecfTipo: cotizacion.ecfTipo,
     referenceEncf: cotizacion.ecfReferenceNcf?.trim() || undefined,
+    fechaVencimientoSecuencia:
+      cotizacion.company.dgiiFechaVencimientoSecuencia?.trim() || DEFAULT_FECHA_VENC_SEC,
     ...mapPaymentMethodToEcf(cotizacion.paymentMethod),
     fechaLimitePago: cotizacion.fechaLimitePago
       ? fechaEmisionDdMmYyyy(cotizacion.fechaLimitePago)

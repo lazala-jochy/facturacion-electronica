@@ -43,6 +43,8 @@ export type UpdateCompanyBody = {
   login_email?: string;
   /** URL del endpoint DGII (e-CF). Vacío deja de usar valor por empresa. */
   dgii_ecf_endpoint?: string;
+  /** DD-MM-YYYY, de la Autorizacion de Secuencia que la DGII le dio a esta empresa. Vacío deja de usar valor por empresa (cae al default global). */
+  dgii_fecha_vencimiento_secuencia?: string;
   /** Clave de cifrado del certificado guardada en perfil (se valida contra el .p12 si ya hay certificado). */
   certificate_keyphrase?: string;
   /** Clave maestra de cifrado de secretos DGII de esta empresa (base64 de 32 bytes). */

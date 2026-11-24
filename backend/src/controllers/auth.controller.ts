@@ -45,6 +45,7 @@ const updateCompanyBodyFromReq = (req: Request): UpdateCompanyBody => {
     cedula: pickStr(b, "cedula"),
     login_email: pickStr(b, "login_email"),
     dgii_ecf_endpoint: pickStr(b, "dgii_ecf_endpoint"),
+    dgii_fecha_vencimiento_secuencia: pickStr(b, "dgii_fecha_vencimiento_secuencia"),
     certificate_keyphrase: pickStr(b, "certificate_keyphrase"),
     app_secrets_key: pickStr(b, "app_secrets_key"),
     dgii_username: pickStr(b, "dgii_username"),

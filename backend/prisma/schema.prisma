@@ -33,6 +33,10 @@ model Company {
   certificateOriginalName  String?      @map("certificate_original_name")
   // URL servicio DGII e-CF (legacy: recepción directa sin flujo token).
   dgiiEcfEndpoint            String?      @map("dgii_ecf_endpoint")
+  /// Fecha de vencimiento (DD-MM-YYYY) de la Autorizacion de Secuencia e-CF que la DGII le
+  /// otorgo a esta empresa. Si falta, el XML cae al default global (DGII_ENCF_FECHA_VENC_SECUENCIA
+  /// o "31-12-2028") que rara vez coincide con la autorizacion real de cada RNC.
+  dgiiFechaVencimientoSecuencia String?   @map("dgii_fecha_vencimiento_secuencia")
   dgiiUsername               String?      @map("dgii_username")
   // Cifrado con APP_SECRETS_KEY (ver companyCertificateCrypto.ts); ya no texto plano.
   dgiiPasswordEnc            String?      @map("dgii_password_enc")

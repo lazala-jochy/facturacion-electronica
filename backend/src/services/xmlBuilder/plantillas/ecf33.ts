@@ -28,7 +28,7 @@ export function plantillaEcf33(payload: EcfPayload): string {
   const idDoc = enc.ele("IdDoc");
   idDoc.ele("TipoeCF").txt("33");
   idDoc.ele("eNCF").txt(payload.ecfNumber.trim());
-  idDoc.ele("FechaVencimientoSecuencia").txt(DEFAULT_FECHA_VENC_SEC);
+  idDoc.ele("FechaVencimientoSecuencia").txt(payload.fechaVencimientoSecuencia ?? DEFAULT_FECHA_VENC_SEC);
   idDoc.ele("IndicadorMontoGravado").txt("0");
   idDoc.ele("TipoIngresos").txt("01");
   appendIdDocTipoPagoYFormas(idDoc, payload);

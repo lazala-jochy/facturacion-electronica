@@ -1,0 +1,12 @@
+-- Agrega fecha de vencimiento de secuencia e-CF (DD-MM-YYYY) configurable por empresa.
+--
+-- Antes, src/services/xmlBuilder/common.ts enviaba a la DGII la misma constante global
+-- ("31-12-2028", o DGII_ENCF_FECHA_VENC_SECUENCIA si estaba seteada) para TODAS las
+-- empresas y TODOS los tipos de e-CF. La DGII valida ese campo contra la fecha real de la
+-- Autorizacion de Secuencia que le otorgo a cada RNC -- si no coincide, rechaza con
+-- "Fecha de vencimiento de secuencia invalida" (codigo 145), como le paso a la empresa
+-- ESTERILIZACION Y EQUIPOS JY SRL (company_id=19) en noviembre 2026.
+--
+-- Columna nullable: si una empresa no la configura, el generador de XML sigue cayendo al
+-- default global (sin romper compatibilidad con lo que ya habia).
+ALTER TABLE "companies" ADD COLUMN "dgii_fecha_vencimiento_secuencia" TEXT;

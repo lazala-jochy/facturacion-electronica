@@ -14,6 +14,18 @@ type Props = {
 };
 type ProfileFieldErrorKey = "certificateFile" | "certificatePassword";
 
+/** "DD-MM-YYYY" (formato que espera el backend) -> "YYYY-MM-DD" (formato de <input type="date">). */
+function ddmmyyyyToIso(raw: string): string {
+  const m = raw.trim().match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
+}
+
+/** "YYYY-MM-DD" -> "DD-MM-YYYY". */
+function isoToDdmmyyyy(raw: string): string {
+  const m = raw.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
+}
+
 function companyInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "?";
@@ -115,6 +127,9 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
   const [phone, setPhone] = useState(session.company.phone ?? "");
   const [email, setEmail] = useState(session.company.email ?? "");
   const [regime, setRegime] = useState("Régimen general");
+  const [fechaVencimientoSecuencia, setFechaVencimientoSecuencia] = useState(() =>
+    ddmmyyyyToIso(session.company.dgiiFechaVencimientoSecuencia ?? ""),
+  );
   const [dgiiUsername, setDgiiUsername] = useState(session.company.dgiiUsername ?? "");
   const [dgiiPassword, setDgiiPassword] = useState(session.company.dgiiPassword ?? "");
   const [showDgiiPassword, setShowDgiiPassword] = useState(false);
@@ -314,6 +329,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
         fd.append("phone", phone.trim());
         fd.append("email", email.trim());
         fd.append("regime", regime.trim() || "Régimen general");
+        fd.append("dgii_fecha_vencimiento_secuencia", isoToDdmmyyyy(fechaVencimientoSecuencia));
         fd.append("dgii_username", dgiiUsername.trim());
         fd.append("dgii_password", dgiiPassword.trim());
         if (appSecretsKeyTrim) fd.append("app_secrets_key", appSecretsKeyTrim);
@@ -356,6 +372,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
             phone: phone.trim() || undefined,
             email: email.trim() || undefined,
             regime: regime.trim() || undefined,
+            dgii_fecha_vencimiento_secuencia: isoToDdmmyyyy(fechaVencimientoSecuencia),
             dgii_username: dgiiUsername.trim(),
             dgii_password: dgiiPassword.trim(),
             ...(appSecretsKeyTrim ? { app_secrets_key: appSecretsKeyTrim } : {}),
@@ -383,6 +400,7 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
       setClearCompanySignature(false);
       setCertificateFile(null);
       setCertificatePassword(res.company.certificate_keyphrase ?? "");
+      setFechaVencimientoSecuencia(ddmmyyyyToIso(res.company.dgiiFechaVencimientoSecuencia ?? ""));
       setDgiiUsername(res.company.dgiiUsername ?? "");
       setDgiiPassword(res.company.dgiiPassword ?? "");
       setEcfGatewayBaseUrl(res.company.ecfGatewayBaseUrl ?? "");
@@ -716,6 +734,19 @@ export default function CompanyProfile({ session, onProfileUpdated }: Props) {
               </Field>
               <Field label="Régimen tributario" htmlFor="prof-regime">
                 <input id="prof-regime" className={inputCls} value={regime} onChange={(e) => setRegime(e.target.value)} />
+              </Field>
+              <Field
+                label="Vencimiento de secuencia e-CF"
+                htmlFor="prof-fecha-venc-secuencia"
+                hint="Fecha de la Autorización de Secuencia que la DGII le dio a esta empresa (Oficina Virtual → e-CF). Si se deja vacío, se usa un valor por defecto que puede no coincidir y causar rechazos «Fecha de vencimiento de secuencia inválida»."
+              >
+                <input
+                  id="prof-fecha-venc-secuencia"
+                  type="date"
+                  className={inputCls}
+                  value={fechaVencimientoSecuencia}
+                  onChange={(e) => setFechaVencimientoSecuencia(e.target.value)}
+                />
               </Field>
               <div className="sm:col-span-2">
                 <Field label="Dirección fiscal" htmlFor="prof-address">
