@@ -315,8 +315,19 @@ const extractXmlTagValueFromDoc = (doc: XmlDoc, tagName: string): string => {
   return (first?.textContent ?? "").trim();
 };
 
+/**
+ * `MontoGravadoTotal` YA ES la suma de I1+I2+I3 (XSD DGII) -- sumarlo de nuevo junto al desglose
+ * duplica el monto (p. ej. factura de RD$75,000 al 18% mostraba RD$150,000: Total + I1, ambos
+ * iguales). Por eso se usa `MontoGravadoTotal` solo si existe, y el desglose I1/I2/I3 nada mas
+ * como respaldo para el caso (no esperado en este builder) de que faltara.
+ */
 const gravadoFromDoc = (doc: XmlDoc): string => {
-  const parts = ["MontoGravadoTotal", "MontoGravadoI1", "MontoGravadoI2", "MontoGravadoI3"]
+  const total = extractXmlTagValueFromDoc(doc, "MontoGravadoTotal");
+  if (total) {
+    const n = Number.parseFloat(total) || 0;
+    return n > 0 ? n.toFixed(2) : "";
+  }
+  const parts = ["MontoGravadoI1", "MontoGravadoI2", "MontoGravadoI3"]
     .map((t) => extractXmlTagValueFromDoc(doc, t))
     .filter(Boolean);
   if (!parts.length) return "";

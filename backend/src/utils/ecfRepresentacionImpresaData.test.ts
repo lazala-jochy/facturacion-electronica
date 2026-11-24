@@ -50,6 +50,9 @@ test("parseRepresentacionImpresaData: encabezado tipo 31 y totales", () => {
   assert.equal(data.totales.total, "236.00");
   assert.equal(data.totales.totalItbis, "36.00");
   assert.equal(data.items[0]?.itbisLinea, "36.00");
+  // Bug real (nov 2026): el builder escribe MontoGravadoTotal y MontoGravadoI1 con el mismo
+  // valor (200.00 cada uno) -- sumarlos daba 400.00 en vez de 200.00 en la Representación Impresa.
+  assert.equal(data.totales.subtotalGravado, "200.00");
 });
 
 test("parseRepresentacionImpresaData: ITBIS por línea si no viene ITBISItem en XML", () => {
