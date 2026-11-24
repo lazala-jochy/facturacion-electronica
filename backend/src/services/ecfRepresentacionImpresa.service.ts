@@ -45,7 +45,9 @@ export async function ensureRepresentacionImpresaPdfForCotizacion(
     dgiiTrackId: row.dgiiTrackId,
     uploadsRoot,
   });
-  return { ok: true, buffer, filename: `representacion-ecf-${cotizacionId}.pdf` };
+  const encf = extractXmlTagValue(row.signedXml, "eNCF").replace(/\s/g, "");
+  const filename = encf ? `${encf}.pdf` : `representacion-ecf-${cotizacionId}.pdf`;
+  return { ok: true, buffer, filename };
 }
 
 export type GenerateRiBatchResult = {

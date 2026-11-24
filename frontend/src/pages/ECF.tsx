@@ -316,11 +316,12 @@ export default function ECF({ company }: { company: AuthCompany }) {
     void proceedSendEmail(pending.id, pending.clientEmail);
   };
 
-  const handleDownloadRepresentacion = async (id: number) => {
+  const handleDownloadRepresentacion = async (id: number, ecfNumber?: string) => {
     setRiError("");
     setDownloadingRiId(id);
     try {
-      await downloadRepresentacionImpresaEcf(id);
+      const fileName = ecfNumber?.trim() ? `${ecfNumber.trim()}.pdf` : undefined;
+      await downloadRepresentacionImpresaEcf(id, fileName);
     } catch (err) {
       setRiError(err instanceof Error ? err.message : "No se pudo descargar la representación impresa.");
     } finally {
@@ -672,7 +673,12 @@ export default function ECF({ company }: { company: AuthCompany }) {
                       {row.dgii_track_id?.trim() ? (
                         <button
                           type="button"
-                          onClick={() => void handleDownloadRepresentacion(row.id)}
+                          onClick={() =>
+                            void handleDownloadRepresentacion(
+                              row.id,
+                              formatEcfNumberDisplay(row.ecf_tipo, row.ecf_ncf_seq ?? undefined),
+                            )
+                          }
                           disabled={downloadingRiId === row.id}
                           className="rounded-lg border border-emerald-200 p-1.5 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
                           title="Descargar representación impresa e-CF"
@@ -951,7 +957,15 @@ export default function ECF({ company }: { company: AuthCompany }) {
                     </p>
                     <button
                       type="button"
-                      onClick={() => void handleDownloadRepresentacion(detailCotizacion.id)}
+                      onClick={() =>
+                        void handleDownloadRepresentacion(
+                          detailCotizacion.id,
+                          formatEcfNumberDisplay(
+                            detailCotizacion.ecf_tipo,
+                            detailCotizacion.ecf_ncf_seq ?? undefined,
+                          ),
+                        )
+                      }
                       disabled={downloadingRiId === detailCotizacion.id}
                       className="mt-2 rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-50 disabled:opacity-50"
                     >
