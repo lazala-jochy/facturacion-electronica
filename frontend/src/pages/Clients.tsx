@@ -7,6 +7,7 @@ import {
   deleteCotizacion,
   downloadConsumoMenor250Integra,
   downloadCotizacionPDF,
+  fetchCotizacionPdfBlobUrl,
   generateEcfXml,
   getCotizacion,
   signEcfXmlLocal,
@@ -219,6 +220,8 @@ export default function Clients() {
   const [listLoadError, setListLoadError] = useState("");
   const [usingCachedClients, setUsingCachedClients] = useState(false);
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const [viewingPdfId, setViewingPdfId] = useState<number | null>(null);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [sendingEcfId, setSendingEcfId] = useState<number | null>(null);
   const [downloadError, setDownloadError] = useState<string>("");
   const [sendingEmailId, setSendingEmailId] = useState<number | null>(null);
@@ -374,6 +377,30 @@ export default function Clients() {
     } finally {
       setDownloadingId(null);
     }
+  };
+
+  /**
+   * Previsualiza el PDF en un modal con <iframe> (en vez de abrir pestaña nueva): abrir una
+   * pestaña con window.open() y asignarle la URL del blob recién después de un fetch async no
+   * es confiable -- Chrome bloquea esa navegación diferida por no venir ya "pegada" al clic del
+   * usuario, aunque la pestaña en blanco sí se haya alcanzado a abrir.
+   */
+  const handleViewPdf = async (cotizacionId: number) => {
+    setDownloadError("");
+    setViewingPdfId(cotizacionId);
+    try {
+      const blobUrl = await fetchCotizacionPdfBlobUrl(cotizacionId);
+      setPdfPreviewUrl(blobUrl);
+    } catch (error) {
+      setDownloadError(error instanceof Error ? error.message : "No se pudo abrir el PDF");
+    } finally {
+      setViewingPdfId(null);
+    }
+  };
+
+  const closePdfPreview = () => {
+    if (pdfPreviewUrl) window.URL.revokeObjectURL(pdfPreviewUrl);
+    setPdfPreviewUrl(null);
   };
 
   const handleSendEmailClick = (cotizacionId: number, clientEmail: string | null) => {
@@ -1614,6 +1641,57 @@ export default function Clients() {
 
                         <td className="px-4 sm:px-6 py-4 text-center">
                           {cot ? (
+                            <div className="inline-flex items-center gap-1">
+                            <button
+                              onClick={() => void handleViewPdf(cot.id)}
+                              disabled={viewingPdfId === cot.id}
+                              className="p-2 rounded-lg hover:bg-indigo-100 transition inline-block disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Ver PDF"
+                            >
+                              {viewingPdfId === cot.id ? (
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600 animate-spin"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <circle
+                                    cx="12"
+                                    cy="12"
+                                    r="10"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    fill="none"
+                                    opacity="0.25"
+                                  />
+                                  <path
+                                    fill="currentColor"
+                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                  />
+                                </svg>
+                              ) : (
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                  strokeWidth={2}
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                                  />
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                                  />
+                                </svg>
+                              )}
+                            </button>
                             <button
                               onClick={() => handleDownload(cot.id, client.name)}
                               disabled={downloadingId === cot.id}
@@ -1659,6 +1737,7 @@ export default function Clients() {
                                 </svg>
                               )}
                             </button>
+                            </div>
                           ) : (
                             <span className="text-gray-400">-</span>
                           )}
@@ -1922,6 +2001,56 @@ export default function Clients() {
                               />
                             </svg>
                             {sendLabel}
+                          </button>
+                          <button
+                            onClick={() => void handleViewPdf(cot.id)}
+                            disabled={viewingPdfId === cot.id}
+                            className="p-2 rounded-lg hover:bg-indigo-100 transition flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Ver PDF"
+                          >
+                            {viewingPdfId === cot.id ? (
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="w-4 h-4 text-indigo-600 animate-spin"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <circle
+                                  cx="12"
+                                  cy="12"
+                                  r="10"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  fill="none"
+                                  opacity="0.25"
+                                />
+                                <path
+                                  fill="currentColor"
+                                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                />
+                              </svg>
+                            ) : (
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="w-4 h-4 text-indigo-600"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                                />
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                                />
+                              </svg>
+                            )}
                           </button>
                           <button
                             onClick={() => handleDownload(cot.id, client.name)}
@@ -2513,6 +2642,26 @@ export default function Clients() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {pdfPreviewUrl && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div className="flex h-[90vh] w-full max-w-4xl flex-col rounded-xl bg-white shadow-xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3">
+              <h3 className="text-lg font-semibold text-slate-900">Vista previa — Cotización PDF</h3>
+              <button
+                type="button"
+                onClick={closePdfPreview}
+                className="rounded px-2 py-1 text-slate-500 hover:bg-slate-100"
+              >
+                Cerrar
+              </button>
+            </div>
+            <div className="min-h-0 flex-1">
+              <iframe src={pdfPreviewUrl} title="Vista previa PDF" className="h-full w-full" />
+            </div>
           </div>
         </div>
       )}

@@ -477,6 +477,20 @@ export const downloadCotizacionPDF = async (id: number, fileName?: string) => {
   }
 };
 
+/**
+ * Trae el PDF de la cotización como blob URL para previsualizarlo (p. ej. en una pestaña nueva
+ * o un <iframe>), sin forzar la descarga a disco. Quien la llama es responsable de hacer
+ * `URL.revokeObjectURL` cuando ya no la necesite.
+ */
+export const fetchCotizacionPdfBlobUrl = async (id: number): Promise<string> => {
+  const response = await authenticatedFetch(`/cotizaciones/${id}/pdf`, { method: "GET" });
+  if (!response.ok) {
+    throw new Error("No se pudo cargar el PDF");
+  }
+  const blob = await response.blob();
+  return window.URL.createObjectURL(blob);
+};
+
 /** Envía la cotización por correo (Gmail configurado en Perfil de empresa) al cliente. */
 export const sendCotizacionEmail = (id: number, to?: string) =>
   apiFetch<{ message: string }>(`/cotizaciones/${id}/send-email`, {
