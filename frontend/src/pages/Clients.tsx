@@ -14,6 +14,7 @@ import {
   submitEcf,
   retryQueuedDgiiSubmit,
   sendCotizacionEmail,
+  setEcfNcfSeq,
   type CotizacionDetail,
 } from "../services/cotizaciones";
 import { ecfTipoDisplayLabel, isConsumoMenor250Rfce } from "../config/ecfTipos";
@@ -209,6 +210,11 @@ export default function Clients() {
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
   const [clients, setClients] = useState<ClientListItem[]>([]);
+  /** Edición manual del número de secuencia e-NCF (fila activa + valor + estado). */
+  const [editingSeqId, setEditingSeqId] = useState<number | null>(null);
+  const [seqInput, setSeqInput] = useState("");
+  const [seqSaving, setSeqSaving] = useState(false);
+  const [seqError, setSeqError] = useState("");
   const [loading, setLoading] = useState(true);
   const [listLoadError, setListLoadError] = useState("");
   const [usingCachedClients, setUsingCachedClients] = useState(false);
@@ -987,6 +993,38 @@ export default function Clients() {
     }
   };
 
+  const startEditSeq = (cot: ClientCotizacion) => {
+    setSeqError("");
+    setEditingSeqId(cot.id);
+    setSeqInput(cot.ecf_ncf_seq != null ? String(cot.ecf_ncf_seq) : "");
+  };
+
+  const cancelEditSeq = () => {
+    setEditingSeqId(null);
+    setSeqInput("");
+    setSeqError("");
+  };
+
+  const saveEditSeq = async (id: number) => {
+    const n = Number(seqInput);
+    if (!Number.isInteger(n) || n < 1) {
+      setSeqError("Ingresá un número entero positivo.");
+      return;
+    }
+    setSeqSaving(true);
+    setSeqError("");
+    try {
+      await setEcfNcfSeq(id, n);
+      await refreshClients();
+      setEditingSeqId(null);
+      setSeqInput("");
+    } catch (err) {
+      setSeqError(err instanceof Error ? err.message : "No se pudo actualizar el número.");
+    } finally {
+      setSeqSaving(false);
+    }
+  };
+
   const handleDeleteDetailCotizacion = () => {
     if (!detail?.id) return;
     setCrudError("");
@@ -1394,10 +1432,74 @@ export default function Clients() {
                         </td>
 
                         <td className="px-3 sm:px-4 py-3 font-mono text-xs text-slate-800 whitespace-nowrap">
-                          {cot
-                            ? cot.ecf_number?.trim() ||
-                              formatEcfNumberDisplay(cot.ecf_tipo, cot.ecf_ncf_seq)
-                            : "—"}
+                          {cot && editingSeqId === cot.id ? (
+                            <div className="flex flex-col items-start gap-1">
+                              <input
+                                type="number"
+                                min={1}
+                                className="w-20 rounded border border-slate-300 px-1.5 py-1 text-xs focus:border-indigo-500 focus:outline-none"
+                                value={seqInput}
+                                onChange={(e) => setSeqInput(e.target.value)}
+                                disabled={seqSaving}
+                                autoFocus
+                              />
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  className="text-[10px] font-semibold text-emerald-700 hover:underline disabled:opacity-50"
+                                  onClick={() => void saveEditSeq(cot.id)}
+                                  disabled={seqSaving}
+                                >
+                                  {seqSaving ? "Guardando…" : "Guardar"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="text-[10px] font-semibold text-slate-500 hover:underline"
+                                  onClick={cancelEditSeq}
+                                  disabled={seqSaving}
+                                >
+                                  Cancelar
+                                </button>
+                              </div>
+                              {seqError ? (
+                                <p className="max-w-[9rem] whitespace-normal text-[10px] font-medium text-red-600">
+                                  {seqError}
+                                </p>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <span>
+                                {cot
+                                  ? cot.ecf_number?.trim() ||
+                                    formatEcfNumberDisplay(cot.ecf_tipo, cot.ecf_ncf_seq)
+                                  : "—"}
+                              </span>
+                              {cot && cot.dgii_status !== "accepted" ? (
+                                <button
+                                  type="button"
+                                  title="Cambiar número de secuencia"
+                                  className="text-slate-400 hover:text-[#0b57d0]"
+                                  onClick={() => startEditSeq(cot)}
+                                >
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-3.5 w-3.5"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    strokeWidth={2}
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                                    />
+                                  </svg>
+                                </button>
+                              ) : null}
+                            </div>
+                          )}
                         </td>
 
                         <td className="px-3 sm:px-4 py-3 text-gray-700 font-medium text-sm tabular-nums">
@@ -1929,12 +2031,72 @@ export default function Clients() {
                       </div>
                       <div className="col-span-2">
                         <p className="text-gray-500 text-xs">e-NCF</p>
-                        <p className="font-mono text-xs text-slate-800 break-all">
-                          {cot
-                            ? cot.ecf_number?.trim() ||
-                              formatEcfNumberDisplay(cot.ecf_tipo, cot.ecf_ncf_seq)
-                            : "—"}
-                        </p>
+                        {cot && editingSeqId === cot.id ? (
+                          <div className="mt-1 flex flex-col items-start gap-1">
+                            <input
+                              type="number"
+                              min={1}
+                              className="w-24 rounded border border-slate-300 px-1.5 py-1 text-xs focus:border-indigo-500 focus:outline-none"
+                              value={seqInput}
+                              onChange={(e) => setSeqInput(e.target.value)}
+                              disabled={seqSaving}
+                              autoFocus
+                            />
+                            <div className="flex items-center gap-3">
+                              <button
+                                type="button"
+                                className="text-xs font-semibold text-emerald-700 hover:underline disabled:opacity-50"
+                                onClick={() => void saveEditSeq(cot.id)}
+                                disabled={seqSaving}
+                              >
+                                {seqSaving ? "Guardando…" : "Guardar"}
+                              </button>
+                              <button
+                                type="button"
+                                className="text-xs font-semibold text-slate-500 hover:underline"
+                                onClick={cancelEditSeq}
+                                disabled={seqSaving}
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+                            {seqError ? (
+                              <p className="text-[11px] font-medium text-red-600">{seqError}</p>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <p className="font-mono text-xs text-slate-800 break-all flex items-center gap-1.5">
+                            <span>
+                              {cot
+                                ? cot.ecf_number?.trim() ||
+                                  formatEcfNumberDisplay(cot.ecf_tipo, cot.ecf_ncf_seq)
+                                : "—"}
+                            </span>
+                            {cot && cot.dgii_status !== "accepted" ? (
+                              <button
+                                type="button"
+                                title="Cambiar número de secuencia"
+                                className="text-slate-400 hover:text-[#0b57d0]"
+                                onClick={() => startEditSeq(cot)}
+                              >
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  className="h-3.5 w-3.5"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                  strokeWidth={2}
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                                  />
+                                </svg>
+                              </button>
+                            ) : null}
+                          </p>
+                        )}
                       </div>
                       <div className="col-span-2 sm:col-span-1">
                         <p className="text-gray-500 text-xs">Estado DGII</p>

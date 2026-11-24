@@ -90,6 +90,11 @@ export const buildRouter = () => {
     requireAuth,
     asyncHandler(cotizacionesController.generateEcfXmlByCotizacion),
   );
+  router.put(
+    "/cotizaciones/:id/ecf/ncf-seq",
+    requireAuth,
+    asyncHandler(cotizacionesController.setEcfNcfSeqByCotizacion),
+  );
   router.post(
     "/cotizaciones/:id/ecf/sign",
     requireAuth,

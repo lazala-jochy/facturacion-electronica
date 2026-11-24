@@ -10,6 +10,7 @@ import {
   listCotizaciones,
   queryDgiiEcfForCotizacion,
   sendCotizacionEmail,
+  setEcfNcfSeq,
   type CotizacionDetail,
   type CotizacionListItem,
 } from "../services/cotizaciones";
@@ -61,6 +62,11 @@ export default function ECF({ company }: { company: AuthCompany }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
   const [dgiiResponseModal, setDgiiResponseModal] = useState<DgiiResponseModalPayload | null>(null);
+  /** Edición manual del número de secuencia e-NCF (fila activa + valor + estado). */
+  const [editingSeqId, setEditingSeqId] = useState<number | null>(null);
+  const [seqInput, setSeqInput] = useState("");
+  const [seqSaving, setSeqSaving] = useState(false);
+  const [seqError, setSeqError] = useState("");
   /** Columna "Detalle" es para certificación/pruebas; una vez en Producción deja de mostrarse. */
   const isDgiiCertification = !company?.dgiiEnvironment || company.dgiiEnvironment === "CERTIFICACION";
   const isDgiiProduccion = company?.dgiiEnvironment === "PRODUCCION";
@@ -242,6 +248,40 @@ export default function ECF({ company }: { company: AuthCompany }) {
     if (!pending) return;
     setPendingDelete(null);
     void proceedDeleteCotizacion(pending.id);
+  };
+
+  const startEditSeq = (row: CotizacionListItem) => {
+    setSeqError("");
+    setEditingSeqId(row.id);
+    setSeqInput(row.ecf_ncf_seq != null ? String(row.ecf_ncf_seq) : "");
+  };
+
+  const cancelEditSeq = () => {
+    setEditingSeqId(null);
+    setSeqInput("");
+    setSeqError("");
+  };
+
+  const saveEditSeq = async (id: number) => {
+    const n = Number(seqInput);
+    if (!Number.isInteger(n) || n < 1) {
+      setSeqError("Ingresá un número entero positivo.");
+      return;
+    }
+    setSeqSaving(true);
+    setSeqError("");
+    try {
+      const out = await setEcfNcfSeq(id, n);
+      setRows((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, ecf_ncf_seq: out.ecf_ncf_seq } : r)),
+      );
+      setEditingSeqId(null);
+      setSeqInput("");
+    } catch (err) {
+      setSeqError(err instanceof Error ? err.message : "No se pudo actualizar el número.");
+    } finally {
+      setSeqSaving(false);
+    }
   };
 
   const handleSendEmailClick = (id: number, clientEmail: string | null | undefined) => {
@@ -525,7 +565,69 @@ export default function ECF({ company }: { company: AuthCompany }) {
                       {ecfTipoLabel(row.ecf_tipo) || "—"}
                     </td>
                     <td className="p-2 sm:p-3 font-mono text-[11px] text-slate-800">
-                      {formatEcfNumberDisplay(row.ecf_tipo, row.ecf_ncf_seq ?? undefined)}
+                      {editingSeqId === row.id ? (
+                        <div className="flex flex-col items-center gap-1">
+                          <input
+                            type="number"
+                            min={1}
+                            className="w-20 rounded border border-slate-300 px-1.5 py-1 text-center text-xs focus:border-indigo-500 focus:outline-none"
+                            value={seqInput}
+                            onChange={(e) => setSeqInput(e.target.value)}
+                            disabled={seqSaving}
+                            autoFocus
+                          />
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              className="text-[10px] font-semibold text-emerald-700 hover:underline disabled:opacity-50"
+                              onClick={() => void saveEditSeq(row.id)}
+                              disabled={seqSaving}
+                            >
+                              {seqSaving ? "Guardando…" : "Guardar"}
+                            </button>
+                            <button
+                              type="button"
+                              className="text-[10px] font-semibold text-slate-500 hover:underline"
+                              onClick={cancelEditSeq}
+                              disabled={seqSaving}
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                          {seqError ? (
+                            <p className="max-w-[9rem] whitespace-normal text-[10px] font-medium text-red-600">
+                              {seqError}
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center gap-1.5">
+                          <span>{formatEcfNumberDisplay(row.ecf_tipo, row.ecf_ncf_seq ?? undefined)}</span>
+                          {row.dgii_status !== "accepted" ? (
+                            <button
+                              type="button"
+                              title="Cambiar número de secuencia"
+                              className="text-slate-400 hover:text-[#0b57d0]"
+                              onClick={() => startEditSeq(row)}
+                            >
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="h-3.5 w-3.5"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                                />
+                              </svg>
+                            </button>
+                          ) : null}
+                        </div>
+                      )}
                     </td>
                     <td className="p-2 sm:p-3">
                       {new Intl.NumberFormat("es-DO", {

@@ -185,6 +185,13 @@ export const deleteCotizacion = (id: number) =>
     method: "DELETE",
   });
 
+/** Sobrescribe manualmente el e-NCF de la cotización (bloqueado si la DGII ya la aceptó). */
+export const setEcfNcfSeq = (id: number, ecfNcfSeq: number) =>
+  apiFetch<{ message: string; ecf_ncf_seq: number }>(`/cotizaciones/${id}/ecf/ncf-seq`, {
+    method: "PUT",
+    body: JSON.stringify({ ecf_ncf_seq: ecfNcfSeq }),
+  });
+
 export const generateEcfXml = (id: number) =>
   apiFetch<{ message: string; ecf_number: string; xml: string; signed?: boolean }>(
     `/cotizaciones/${id}/ecf/xml`,

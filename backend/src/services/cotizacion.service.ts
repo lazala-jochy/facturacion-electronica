@@ -1,5 +1,5 @@
 import type { Prisma } from "@prisma/client";
-import { ECF_NCF_SEQ_EXCEEDED_MESSAGE } from "../config/dgiiEcf.constants";
+import { ECF_NCF_SEQ_EXCEEDED_MESSAGE, ECF_NCF_SEQ_MAX } from "../config/dgiiEcf.constants";
 import { prisma } from "../prisma";
 import {
   calculateTotalsFromItems,
@@ -233,6 +233,86 @@ export async function ensureCotizacionSeqAdvancedAfterSequenceReject(
   }
 
   return { advanced: false };
+}
+
+export type SetManualEcfNcfSeqResult =
+  | { ok: true; ecfNcfSeq: number }
+  | { ok: false; status: number; message: string };
+
+/**
+ * Sobrescribe manualmente el e-NCF asignado a una cotización (vista de cotización, "Cambiar
+ * número de secuencia"). Pensado para corregir casos donde el número quedó "atascado" por
+ * reintentos/rechazos previos (ver ensureCotizacionSeqAdvancedAfterSequenceReject) y el usuario
+ * prefiere elegir otro libre a mano, sin perder la asignación automática para el resto de flujo.
+ *
+ * Bloqueado si la DGII ya aceptó esta cotización con su e-NCF actual -- en ese punto es un
+ * comprobante fiscal real y cambiarle el número rompería la trazabilidad ante la DGII.
+ */
+export async function setManualEcfNcfSeq(
+  cotizacionId: number,
+  companyId: number,
+  newSeq: number,
+): Promise<SetManualEcfNcfSeqResult> {
+  const n = Math.floor(newSeq);
+  if (!Number.isFinite(n) || n < 1 || n > ECF_NCF_SEQ_MAX) {
+    return {
+      ok: false,
+      status: 400,
+      message: `El número de secuencia debe ser un entero entre 1 y ${ECF_NCF_SEQ_MAX}.`,
+    };
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const cot = await tx.cotizacion.findFirst({
+      where: { id: cotizacionId, companyId },
+      select: { ecfTipo: true, dgiiStatus: true, company: { select: { dgiiEnvironment: true } } },
+    });
+    if (!cot) return { ok: false, status: 404, message: "Cotización no encontrada." };
+    if (cot.dgiiStatus === "accepted") {
+      return {
+        ok: false,
+        status: 409,
+        message: "La DGII ya aceptó esta cotización con su e-NCF actual; no se puede cambiar.",
+      };
+    }
+
+    const tipo = normalizeEcfTipo(cot.ecfTipo);
+    const environment = normalizeDgiiEnvironment(cot.company.dgiiEnvironment);
+
+    const conflict = await tx.cotizacion.findFirst({
+      where: { companyId, ecfTipo: tipo, ecfNcfSeq: n, id: { not: cotizacionId } },
+      select: { number: true },
+    });
+    if (conflict) {
+      return {
+        ok: false,
+        status: 409,
+        message: `Ese número de secuencia ya está asignado a otra cotización (#${conflict.number}).`,
+      };
+    }
+
+    // Nunca baja el contador (igual que markEcfNcfSeqUsed): evita que una futura asignación
+    // automática reutilice un numero que ya se le entrego manualmente a este e-NCF.
+    await markEcfNcfSeqUsed(tx, companyId, tipo, environment, n);
+
+    await tx.cotizacion.update({
+      where: { id: cotizacionId },
+      data: {
+        ecfNcfSeq: n,
+        dgiiEnvironment: environment,
+        signedXml: null,
+        dgiiStatus: "prepared",
+        dgiiTrackId: null,
+        dgiiSubmittedAt: null,
+        dgiiResponse: JSON.stringify({
+          stage: "prepared",
+          message: "e-NCF asignado manualmente; listo para generar/enviar.",
+        }),
+      },
+    });
+
+    return { ok: true, ecfNcfSeq: n };
+  });
 }
 
 /**

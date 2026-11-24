@@ -2,6 +2,7 @@ import "../types/express-auth.augment";
 import type { RequestHandler } from "express";
 import {
   cotizacionService,
+  setManualEcfNcfSeq,
   type IncomingItem,
 } from "../services/cotizacion.service";
 import { generateDGIIData } from "../utils/dgii";
@@ -745,6 +746,31 @@ export const generateEcfXmlByCotizacion: RequestHandler = async (req, res) => {
     xml: out.xml,
     signed: false,
   });
+};
+
+export const setEcfNcfSeqByCotizacion: RequestHandler = async (req, res) => {
+  const companyId = req.auth?.companyId;
+  if (!companyId) {
+    res.status(401).json({ message: "No autorizado." });
+    return;
+  }
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ message: "ID invalido." });
+    return;
+  }
+  const newSeq = Number(req.body?.ecf_ncf_seq);
+  if (!Number.isFinite(newSeq)) {
+    res.status(400).json({ message: "ecf_ncf_seq debe ser un número." });
+    return;
+  }
+
+  const result = await setManualEcfNcfSeq(id, companyId, newSeq);
+  if (!result.ok) {
+    res.status(result.status).json({ message: result.message });
+    return;
+  }
+  res.json({ message: "Número de secuencia actualizado.", ecf_ncf_seq: result.ecfNcfSeq });
 };
 
 export const signEcfXmlByCotizacion: RequestHandler = async (req, res) => {
