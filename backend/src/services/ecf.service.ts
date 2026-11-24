@@ -253,13 +253,18 @@ export const ecfService = {
     }
 
     const xml = buildEcfXml(payload);
-    const preserveDgiiRejection =
+    const hasDgiiRejection =
       cotizacion.dgiiStatus === "rejected" && Boolean(cotizacion.dgiiResponse?.trim());
+    // Un rechazo que no es de secuencia (ej. vencimiento de secuencia) debe seguir bloqueando
+    // el reenvio ciego via `validateCotizacionDgiiResubmit` -- si aqui pisaramos dgiiStatus a
+    // "prepared" tambien perderiamos ese candado silenciosamente.
+    const preserveRejectedStatus =
+      hasDgiiRejection && !isDgiiSequenceRejection(cotizacion.dgiiResponse);
     await prisma.cotizacion.update({
       where: { id: cotizacionId },
       data: {
-        dgiiStatus: "prepared",
-        ...(preserveDgiiRejection
+        dgiiStatus: preserveRejectedStatus ? "rejected" : "prepared",
+        ...(hasDgiiRejection
           ? {}
           : {
               dgiiResponse: JSON.stringify({
