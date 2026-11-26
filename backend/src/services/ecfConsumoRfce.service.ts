@@ -25,7 +25,7 @@ const contactFromClient = (phone?: string | null, email?: string | null) => {
 
 const toPayload = (cotizacion: CotizacionWithRelations): EcfPayload => {
   const ncfSeq =
-    Number.isFinite(cotizacion.ecfNcfSeq) && cotizacion.ecfNcfSeq > 0
+    typeof cotizacion.ecfNcfSeq === "number" && cotizacion.ecfNcfSeq > 0
       ? cotizacion.ecfNcfSeq
       : cotizacion.number;
   const base: EcfPayload = {

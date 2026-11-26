@@ -61,7 +61,7 @@ const encfFromCotizacion = (cot: CotizacionVentas): string => {
     const encf = extractXmlTagValue(cot.signedXml, "eNCF");
     if (encf) return encf;
   }
-  return buildEcfNumber(cot.ecfTipo, cot.ecfNcfSeq);
+  return buildEcfNumber(cot.ecfTipo, cot.ecfNcfSeq ?? cot.number);
 };
 
 const parseXmlAmount = (signedXml: string, tag: string): number => {

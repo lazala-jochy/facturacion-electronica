@@ -63,7 +63,7 @@ export type CotizacionDetail = {
   ecf_ri_qr_url?: string | null;
   ecf_ri_generated_at?: string | null;
   ecf_tipo?: string;
-  ecf_ncf_seq?: number;
+  ecf_ncf_seq?: number | null;
   ecf_reference_ncf?: string | null;
   client: {
     name: string;

@@ -226,9 +226,10 @@ export async function ensureCotizacionSeqAdvancedAfterSequenceReject(
     const fromEncf = extractEncfFromDgiiResponse(raw);
     const encfSeq =
       fromEncf && fromEncf.tipo === tipo ? fromEncf.seq : fromEncf?.seq ?? 0;
-    const usedSeq = Math.max(cot.ecfNcfSeq > 0 ? cot.ecfNcfSeq : 0, encfSeq);
+    const existingSeq = cot.ecfNcfSeq ?? 0;
+    const usedSeq = Math.max(existingSeq > 0 ? existingSeq : 0, encfSeq);
     if (usedSeq < 1) return { advanced: false };
-    if (cot.ecfNcfSeq > usedSeq) return { advanced: false };
+    if (existingSeq > usedSeq) return { advanced: false };
     return advanceToNext(usedSeq);
   }
 
@@ -613,14 +614,9 @@ export const cotizacionService = {
             },
           });
 
-      const companyRow = await tx.company.findUnique({
-        where: { id: companyId },
-        select: { dgiiEnvironment: true },
-      });
-      const environment = normalizeDgiiEnvironment(companyRow?.dgiiEnvironment);
-
       const number = await nextCotizacionNumber(tx, companyId);
-      const ecfNcfSeq = await allocateEcfNcfSeq(tx, companyId, ecfTipo, environment);
+      // ecfNcfSeq/dgiiEnvironment quedan null: se asignan recién al generar/enviar el e-CF
+      // (ver ecf.service.ts generateForCotizacion), no al crear la cotización.
 
       const cotizacion = await tx.cotizacion.create({
         data: {
@@ -635,8 +631,6 @@ export const cotizacionService = {
           accountManager,
           comment,
           ecfTipo,
-          ecfNcfSeq,
-          dgiiEnvironment: environment,
           ecfReferenceNcf,
           idempotencyKey,
           subtotal: totals.subtotal,
@@ -861,14 +855,12 @@ export const cotizacionService = {
         ecfTipoFinal = existing.ecfTipo;
         ecfNcfSeq = existing.ecfNcfSeq;
         ecfReferenceFinal = existing.ecfReferenceNcf;
-      } else       if (ecfTipoFinal !== existing.ecfTipo) {
-        const companyRow = await tx.company.findUnique({
-          where: { id: companyId },
-          select: { dgiiEnvironment: true },
-        });
-        const environment = normalizeDgiiEnvironment(companyRow?.dgiiEnvironment);
-        ecfNcfSeq = await allocateEcfNcfSeq(tx, companyId, ecfTipoFinal, environment);
-        dgiiEnvironmentFinal = environment;
+      } else if (ecfTipoFinal !== existing.ecfTipo) {
+        // El ecfNcfSeq existente (si lo hay) era para el tipo anterior y nunca se transmitió
+        // a DGII (dgiiLocked es false): se libera y se asigna uno nuevo recién al
+        // generar/enviar el e-CF (ver ecf.service.ts generateForCotizacion).
+        ecfNcfSeq = null;
+        dgiiEnvironmentFinal = null;
       }
 
       const resetDgiiAfterNonSequenceReject =

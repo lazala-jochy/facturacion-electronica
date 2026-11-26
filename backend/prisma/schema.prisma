@@ -250,7 +250,9 @@ model Cotizacion {
   /// Código tipo e-NCF (ej. 31 factura crédito fiscal, 32 consumo).
   ecfTipo        String           @default("31") @map("ecf_tipo")
   /// Correlativo e-NCF por empresa y tipo (cola numérica del e-CF).
-  ecfNcfSeq      Int              @map("ecf_ncf_seq")
+  /// Null hasta que se genera/envía el e-CF por primera vez (ver ecf.service.ts generateForCotizacion):
+  /// no se reserva un número de secuencia solo por crear o editar la cotización.
+  ecfNcfSeq      Int?             @map("ecf_ncf_seq")
   /// e-NCF / NCF del comprobante asociado (notas débito/crédito, etc.).
   /// Ambiente DGII (CERTIFICACION/PRODUCCION) vigente al momento de la transmisión; null en
   /// registros previos a este campo (no reconstruible retroactivamente, ver ecfSeq.service.ts).

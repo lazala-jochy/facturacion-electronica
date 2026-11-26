@@ -81,7 +81,9 @@ export const listClients: RequestHandler = async (req, res) => {
         ecf_tipo: z.ecfTipo,
         ecf_ncf_seq: z.ecfNcfSeq,
         ecf_number:
-          z.ecfNcfSeq > 0 ? buildEcfNumber(z.ecfTipo, z.ecfNcfSeq) : null,
+          typeof z.ecfNcfSeq === "number" && z.ecfNcfSeq > 0
+            ? buildEcfNumber(z.ecfTipo, z.ecfNcfSeq)
+            : null,
         account_manager: z.accountManager,
         subtotal: z.subtotal,
         itbis: z.itbis,

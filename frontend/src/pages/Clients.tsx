@@ -2721,8 +2721,10 @@ export default function Clients() {
                     {ecfTipoDisplayLabel(detail.ecf_tipo, detail.total) || detail.ecf_tipo || "—"}
                   </p>
                   <p>
-                    <span className="font-semibold">e-NCF (próximo XML):</span>{" "}
-                    {formatEcfNumberDisplay(detail.ecf_tipo, detail.ecf_ncf_seq ?? undefined)}
+                    <span className="font-semibold">e-NCF:</span>{" "}
+                    {detail.ecf_ncf_seq
+                      ? formatEcfNumberDisplay(detail.ecf_tipo, detail.ecf_ncf_seq)
+                      : "Se asigna al enviar a DGII"}
                   </p>
                   <p className="text-xs leading-snug text-slate-500 sm:col-span-2">
                     «Reenviar DGII» solo aparece si DGII indica que el número de secuencia ya fue utilizado.

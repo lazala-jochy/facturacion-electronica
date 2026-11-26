@@ -23,6 +23,7 @@ import { mapDgiiRawBodyToCotizacionEstado } from "../utils/dgiiEstadoRecepcion";
 import { DEFAULT_FECHA_VENC_SEC } from "./xmlBuilder/common";
 import { isDgiiSequenceRejection } from "../utils/dgiiRejection";
 import {
+  ECF_NCF_SEQ_EXCEEDED_ERROR_NAME,
   ensureCotizacionSeqAdvancedAfterSequenceReject,
   isPaymentMethodCredito,
   persistCotizacionAfterDgiiSubmission,
@@ -31,6 +32,8 @@ import {
 import { submitConsumoMenor250RfceForCotizacion } from "./ecfConsumoRfce.service";
 import { isRetryableDgiiSubmitError, DGII_SUBMIT_QUEUED_STATUS } from "../utils/dgiiSubmitRetry";
 import { queueFailedDgiiSubmit } from "./dgiiSubmitQueue.service";
+import { allocateNextEcfNcfSeq } from "./ecfSeq.service";
+import { normalizeDgiiEnvironment } from "../utils/dgiiEnvironment";
 
 const contactFromClient = (phone?: string | null, email?: string | null) => {
   if (phone?.trim() && email?.trim()) return `${phone.trim()} | ${email.trim()}`;
@@ -58,7 +61,7 @@ type CotizacionWithRelations = Prisma.CotizacionGetPayload<{
 
 const toPayload = (cotizacion: CotizacionWithRelations): EcfPayload => {
   const ncfSeq =
-    Number.isFinite(cotizacion.ecfNcfSeq) && cotizacion.ecfNcfSeq > 0
+    typeof cotizacion.ecfNcfSeq === "number" && cotizacion.ecfNcfSeq > 0
       ? cotizacion.ecfNcfSeq
       : cotizacion.number;
   const base: EcfPayload = {
@@ -232,16 +235,40 @@ export async function resolveP12ForEcf(
 
 export const ecfService = {
   async generateForCotizacion(cotizacionId: number, companyId: number) {
-    const cotizacion = await prisma.cotizacion.findFirst({
+    const found = await prisma.cotizacion.findFirst({
       where: { id: cotizacionId, companyId },
       include: { company: true, client: true, items: { orderBy: { itemNumber: "asc" } } },
     });
-    if (!cotizacion) {
+    if (!found) {
       return {
         ok: false as const,
         status: 404,
         message: "Cotizacion no encontrada.",
       };
+    }
+    let cotizacion: CotizacionWithRelations = found;
+
+    // El e-NCF se reserva recién aquí (primera generación de XML, vía envío o firma), no al
+    // crear/editar la cotización -- evita quemar correlativos fiscales en cotizaciones que
+    // nunca llegan a transmitirse a DGII.
+    if (cotizacion.ecfNcfSeq == null) {
+      const ecfTipo = cotizacion.ecfTipo;
+      const environment = normalizeDgiiEnvironment(cotizacion.company.dgiiEnvironment);
+      try {
+        cotizacion = await prisma.$transaction(async (tx) => {
+          const ecfNcfSeq = await allocateNextEcfNcfSeq(tx, companyId, ecfTipo, environment);
+          return tx.cotizacion.update({
+            where: { id: cotizacionId },
+            data: { ecfNcfSeq, dgiiEnvironment: environment },
+            include: { company: true, client: true, items: { orderBy: { itemNumber: "asc" } } },
+          });
+        });
+      } catch (e) {
+        if (e instanceof Error && e.name === ECF_NCF_SEQ_EXCEEDED_ERROR_NAME) {
+          return { ok: false as const, status: 400, message: e.message };
+        }
+        throw e;
+      }
     }
 
     const payload = toPayload(cotizacion);

@@ -13,7 +13,7 @@ export type CotizacionForDGII = Cotizacion & {
 export const generateDGIIData = (cotizacion: CotizacionForDGII) => {
   const fecha = cotizacion.createdAt.toISOString().slice(0, 10);
   const ncfSeq =
-    Number.isFinite(cotizacion.ecfNcfSeq) && cotizacion.ecfNcfSeq > 0
+    typeof cotizacion.ecfNcfSeq === "number" && cotizacion.ecfNcfSeq > 0
       ? cotizacion.ecfNcfSeq
       : cotizacion.number;
   return {
