@@ -272,7 +272,7 @@ export default function Dashboard({
               <h3 className="text-base font-semibold text-slate-900 sm:text-lg">Acciones rápidas</h3>
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <QuickAction to="/cotizaciones/nueva" label="Nueva Factura" />
-                <QuickAction to="/ecf" label="Flujo e-CF" />
+                <QuickAction to="/ecf" label="Flujo e-NCF" />
                 <QuickAction to="/clients" label="Nuevo Cliente" />
                 <QuickAction to="/invoices" label="Reporte" />
               </div>

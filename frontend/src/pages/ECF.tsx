@@ -57,6 +57,7 @@ export default function ECF({ company }: { company: AuthCompany }) {
   const [query, setQuery] = useState("");
   const [yearFilter, setYearFilter] = useState("all");
   const [monthFilter, setMonthFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [sortBy, setSortBy] = useState<"date" | "client" | "rnc" | "total" | "status">("date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
@@ -113,6 +114,7 @@ export default function ECF({ company }: { company: AuthCompany }) {
       const mo = String(d.getMonth() + 1).padStart(2, "0");
       if (yearFilter !== "all" && y !== yearFilter) return false;
       if (monthFilter !== "all" && mo !== monthFilter) return false;
+      if (statusFilter !== "all" && (r.dgii_status ?? "") !== statusFilter) return false;
       if (!normalizedQuery) return true;
       const encf = formatEcfNumberDisplay(r.ecf_tipo, r.ecf_ncf_seq ?? undefined);
       return [
@@ -144,7 +146,7 @@ export default function ECF({ company }: { company: AuthCompany }) {
       if (sortBy === "status") compare = (a.dgii_status ?? "").localeCompare(b.dgii_status ?? "");
       return sortDir === "asc" ? compare : -compare;
     });
-  }, [rows, query, yearFilter, monthFilter, sortBy, sortDir]);
+  }, [rows, query, yearFilter, monthFilter, statusFilter, sortBy, sortDir]);
 
   const summary = useMemo(() => {
     const s = (rows ?? []).reduce(
@@ -170,7 +172,7 @@ export default function ECF({ company }: { company: AuthCompany }) {
 
   useEffect(() => {
     setPage(1);
-  }, [query, yearFilter, monthFilter, sortBy, sortDir, pageSize]);
+  }, [query, yearFilter, monthFilter, statusFilter, sortBy, sortDir, pageSize]);
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
@@ -412,7 +414,7 @@ export default function ECF({ company }: { company: AuthCompany }) {
   return (
     <PageShell>
       <PageHeaderCard
-        title="e-CF"
+        title="e-NCF"
         description="Cotizaciones de esta empresa con flujo digital: estado DGII, e-NCF asignado y seguimiento."
         company={{ name: company.name, rnc: company.rnc }}
         stats={
@@ -494,6 +496,21 @@ export default function ECF({ company }: { company: AuthCompany }) {
                   {month.label}
                 </option>
               ))}
+            </select>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+            >
+              <option value="all">Todos los estados</option>
+              <option value="">{statusLabel(null)}</option>
+              <option value="prepared">{statusLabel("prepared")}</option>
+              <option value="pending">{statusLabel("pending")}</option>
+              <option value="accepted">{statusLabel("accepted")}</option>
+              <option value="rejected">{statusLabel("rejected")}</option>
+              <option value="submit_queued">{statusLabel("submit_queued")}</option>
+              <option value="submitting">{statusLabel("submitting")}</option>
+              <option value="submit_failed">{statusLabel("submit_failed")}</option>
             </select>
             <select
               value={sortBy}

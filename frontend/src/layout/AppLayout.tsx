@@ -207,7 +207,7 @@ export default function AppLayout({
                 }`
               }
             >
-              e-CF
+              e-NCF
             </NavLink>
 
             <NavLink

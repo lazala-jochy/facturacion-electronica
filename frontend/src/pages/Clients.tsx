@@ -292,6 +292,7 @@ export default function Clients() {
   const [query, setQuery] = useState("");
   const [yearFilter, setYearFilter] = useState("all");
   const [monthFilter, setMonthFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [sortBy, setSortBy] = useState<"recent" | "name" | "rnc" | "number" | "total" | "status">(
     "recent",
   );
@@ -1152,6 +1153,7 @@ export default function Clients() {
   const rows = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     const periodActive = yearFilter !== "all" || monthFilter !== "all";
+    const statusActive = statusFilter !== "all";
     const cotMatchesPeriod = (cot: ClientCotizacion) => {
       if (!periodActive) return true;
       if (!cot.created_at) return false;
@@ -1162,6 +1164,13 @@ export default function Clients() {
       if (monthFilter !== "all" && mo !== monthFilter) return false;
       return true;
     };
+    const cotMatchesStatus = (cot: ClientCotizacion) => {
+      if (!statusActive) return true;
+      return (cot.dgii_status ?? "") === statusFilter;
+    };
+    // Los borradores offline todavía no tienen estado DGII real: solo cuentan para el filtro
+    // "Sin enviar" (statusFilter === "") o cuando no hay filtro de estado activo.
+    const offlineMatchesStatus = () => !statusActive || statusFilter === "";
     const offlineMatchesPeriod = (entry: OfflineCotizacion) => {
       if (!periodActive) return true;
       const d = new Date(entry.createdAt);
@@ -1180,13 +1189,16 @@ export default function Clients() {
     const flatRows = clients
       .filter((client) => clientMatchesQuery(client, normalizedQuery))
       .flatMap((client): ClientCotRow[] => {
-        const cots = (client.cotizaciones ?? []).filter(cotMatchesPeriod);
+        const cots = (client.cotizaciones ?? []).filter(
+          (cot) => cotMatchesPeriod(cot) && cotMatchesStatus(cot),
+        );
         const clientRnc = normalizeRnc(client.rnc_cedula);
         const matchedOffline = clientRnc
           ? offlineEntries.filter(
               (e) =>
                 normalizeRnc(e.payload.client.rnc_cedula) === clientRnc &&
-                offlineMatchesPeriod(e),
+                offlineMatchesPeriod(e) &&
+                offlineMatchesStatus(),
             )
           : [];
         matchedOffline.forEach((e) => usedOfflineIds.add(e.localId));
@@ -1198,7 +1210,7 @@ export default function Clients() {
         }));
 
         if (cots.length === 0 && offlineRows.length === 0) {
-          return periodActive
+          return periodActive || statusActive
             ? []
             : [{ client, cot: null, offline: null, rowKey: `client-${client.id}-empty` }];
         }
@@ -1243,7 +1255,7 @@ export default function Clients() {
       const compare = compareClientCotRows(a, b, sortBy);
       return sortDir === "asc" ? compare : -compare;
     });
-  }, [clients, offlineEntries, query, yearFilter, monthFilter, sortBy, sortDir]);
+  }, [clients, offlineEntries, query, yearFilter, monthFilter, statusFilter, sortBy, sortDir]);
 
   const clientCount = useMemo(() => new Set(rows.map((r) => r.client.id)).size, [rows]);
 
@@ -1255,7 +1267,7 @@ export default function Clients() {
 
   useEffect(() => {
     setPage(1);
-  }, [query, yearFilter, monthFilter, sortBy, sortDir, pageSize]);
+  }, [query, yearFilter, monthFilter, statusFilter, sortBy, sortDir, pageSize]);
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
@@ -1372,6 +1384,21 @@ export default function Clients() {
               ))}
             </select>
             <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+            >
+              <option value="all">Todos los estados</option>
+              <option value="">{dgiiStatusLabel(null)}</option>
+              <option value="prepared">{dgiiStatusLabel("prepared")}</option>
+              <option value="pending">{dgiiStatusLabel("pending")}</option>
+              <option value="accepted">{dgiiStatusLabel("accepted")}</option>
+              <option value="rejected">{dgiiStatusLabel("rejected")}</option>
+              <option value="submit_queued">{dgiiStatusLabel("submit_queued")}</option>
+              <option value="submitting">{dgiiStatusLabel("submitting")}</option>
+              <option value="submit_failed">{dgiiStatusLabel("submit_failed")}</option>
+            </select>
+            <select
               value={sortBy}
               onChange={(e) =>
                 setSortBy(
@@ -1385,7 +1412,7 @@ export default function Clients() {
               <option value="rnc">Ordenar por RNC/Cedula</option>
               <option value="number">Ordenar por N° cotización</option>
               <option value="total">Ordenar por Total</option>
-              <option value="status">Ordenar por Estado e-CF</option>
+              <option value="status">Ordenar por Estado</option>
             </select>
             <div className="flex gap-2">
               <select
