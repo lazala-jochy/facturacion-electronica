@@ -11,20 +11,7 @@ import {
   runOfflineSync,
 } from "../offline/syncEngine";
 import { formatMoney } from "../utils/money";
-
-const statusLabel: Record<OfflineCotizacion["status"], string> = {
-  pendiente: "Pendiente de sincronizar",
-  sincronizando: "Sincronizando…",
-  error: "Reintentando…",
-  error_permanente: "No se pudo sincronizar",
-};
-
-const statusClass: Record<OfflineCotizacion["status"], string> = {
-  pendiente: "bg-amber-100 text-amber-800 border-amber-200",
-  sincronizando: "bg-blue-100 text-blue-800 border-blue-200",
-  error: "bg-amber-100 text-amber-800 border-amber-200",
-  error_permanente: "bg-red-100 text-red-800 border-red-200",
-};
+import { offlineStatusClass as statusClass, offlineStatusLabel as statusLabel } from "../offline/offlineStatus";
 
 /**
  * Las ventas creadas sin conexión quedan en IndexedDB, invisibles para cualquier vista que

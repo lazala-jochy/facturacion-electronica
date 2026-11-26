@@ -9,6 +9,8 @@ import * as dgiiFormatosController from "../controllers/dgiiFormatos.controller"
 import * as xmlFirmaController from "../controllers/xmlFirma.controller";
 import { asyncHandler } from "../middleware/asyncHandler";
 import { requireAuth } from "../middleware/auth.middleware";
+import { prisma } from "../prisma";
+import { isDbUnreachableError } from "../utils/dbErrors";
 import {
   acecfExcelUpload,
   authFormUpload,
@@ -21,9 +23,24 @@ import {
 export const buildRouter = () => {
   const router = Router();
 
-  router.get("/health", (_req, res) => {
-    res.json({ ok: true });
-  });
+  // Verifica la DB (no solo que el proceso Node esté vivo): si Supabase es inalcanzable (ej. sin
+  // internet), el frontend usa este endpoint como heartbeat de conectividad -- sin este chequeo
+  // reportaría "online" aunque ningún guardado pueda completarse.
+  router.get(
+    "/health",
+    asyncHandler(async (_req, res) => {
+      try {
+        await prisma.$queryRaw`SELECT 1`;
+      } catch (err) {
+        if (isDbUnreachableError(err)) {
+          res.status(503).json({ ok: false, message: "No se pudo conectar a la base de datos." });
+          return;
+        }
+        throw err;
+      }
+      res.json({ ok: true });
+    }),
+  );
 
   // register/login/forgot-password/reset-password viven en Supabase Edge
   // Functions (supabase/functions/), no aqui: necesitan ver todas las

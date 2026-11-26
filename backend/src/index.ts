@@ -7,6 +7,7 @@ import multer from "multer";
 import path from "path";
 import { buildRouter } from "./routes";
 import { prisma } from "./prisma";
+import { isDbUnreachableError } from "./utils/dbErrors";
 import { startDgiiSubmitRetryWorker } from "./services/dgiiSubmitQueue.service";
 import { startEcfGatewayConnectorWorker } from "./services/ecfGatewayConnector.service";
 import { getUploadsRoot } from "./utils/uploadsRoot";
@@ -78,6 +79,11 @@ const bootstrap = async () => {
     ) => {
       if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
         res.status(400).json({ message: "El logo no puede superar 2 MB." });
+        return;
+      }
+      if (isDbUnreachableError(err)) {
+        console.error("DB inalcanzable:", err);
+        res.status(503).json({ message: "No se pudo conectar a la base de datos." });
         return;
       }
       console.error(err);

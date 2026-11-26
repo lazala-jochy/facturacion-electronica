@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { deleteClient, listClients, type ClientListItem } from "../services/clients";
 import { getCachedClients } from "../offline/cacheRefresh";
+import type { OfflineCotizacion } from "../offline/db";
+import { listOfflineCotizaciones, removeOfflineCotizacion } from "../offline/offlineQueue";
+import { notifyOfflineSync, subscribeOfflineSync } from "../offline/syncEngine";
 import { ApiError, readAuthSessionFromStorage, refreshAuthSessionFromServer } from "../services/api";
 import {
   deleteCotizacion,
@@ -24,6 +27,7 @@ import { MONTHS } from "../utils/months";
 import DgiiResponseModal, { type DgiiResponseModalPayload } from "../components/DgiiResponseModal";
 import DgiiRejectionHint from "../components/DgiiRejectionHint";
 import ConfirmModal from "../components/ConfirmModal";
+import { offlineStatusClass, offlineStatusLabel } from "../offline/offlineStatus";
 
 // Helper para formatear moneda
 const formatCurrency = (value: number) => {
@@ -93,8 +97,34 @@ type ClientCotizacion = ClientListItem["cotizaciones"][number];
 type ClientCotRow = {
   client: ClientListItem;
   cot: ClientCotizacion | null;
+  /** Cotización guardada sin conexión (IndexedDB), aún no sincronizada con el backend. */
+  offline: OfflineCotizacion | null;
   rowKey: string;
 };
+
+const normalizeRnc = (v: string) => v.replace(/\D/g, "");
+
+/**
+ * Id negativo estable para un cliente que todavía no existe en el backend (creado sin conexión
+ * junto a su cotización). Nunca viaja a la API -- solo sirve para agrupar filas en esta tabla.
+ */
+const syntheticClientId = (localId: string): number => {
+  let h = 0;
+  for (let i = 0; i < localId.length; i++) h = (h * 31 + localId.charCodeAt(i)) | 0;
+  return -Math.abs(h) - 1;
+};
+
+const syntheticClientFromOffline = (entry: OfflineCotizacion): ClientListItem => ({
+  id: syntheticClientId(entry.localId),
+  name: entry.payload.client.name,
+  rnc_cedula: entry.payload.client.rnc_cedula,
+  address: entry.payload.client.address ?? null,
+  phone: entry.payload.client.phone ?? null,
+  email: entry.payload.client.email ?? null,
+  company_id: entry.companyId,
+  created_at: new Date(entry.createdAt).toISOString(),
+  cotizaciones: [],
+});
 
 const rowCotNumber = (row: ClientCotRow): number | null => {
   if (row.cot == null) return null;
@@ -111,10 +141,12 @@ const compareClientCotRows = (
   if (sortBy === "recent") {
     const aTs =
       Date.parse(a.cot?.created_at ?? "") ||
+      a.offline?.createdAt ||
       Date.parse(a.client.created_at ?? "") ||
       a.client.id;
     const bTs =
       Date.parse(b.cot?.created_at ?? "") ||
+      b.offline?.createdAt ||
       Date.parse(b.client.created_at ?? "") ||
       b.client.id;
     compare = aTs - bTs;
@@ -130,8 +162,8 @@ const compareClientCotRows = (
     else if (bNum == null) compare = -1;
     else compare = aNum - bNum;
   } else if (sortBy === "total") {
-    const aTotal = a.cot?.total ?? -1;
-    const bTotal = b.cot?.total ?? -1;
+    const aTotal = a.cot?.total ?? a.offline?.payload.cotizacion.total ?? -1;
+    const bTotal = b.cot?.total ?? b.offline?.payload.cotizacion.total ?? -1;
     compare = aTotal - bTotal;
   } else if (sortBy === "status") {
     compare = (a.cot?.dgii_status ?? "").localeCompare(b.cot?.dgii_status ?? "", "es");
@@ -211,6 +243,7 @@ export default function Clients() {
     typeof navigator === "undefined" ? true : navigator.onLine,
   );
   const [clients, setClients] = useState<ClientListItem[]>([]);
+  const [offlineEntries, setOfflineEntries] = useState<OfflineCotizacion[]>([]);
   /** Edición manual del número de secuencia e-NCF (fila activa + valor + estado). */
   const [editingSeqId, setEditingSeqId] = useState<number | null>(null);
   const [seqInput, setSeqInput] = useState("");
@@ -252,6 +285,7 @@ export default function Clients() {
   const [pendingDelete, setPendingDelete] = useState<
     | { kind: "client"; client: ClientListItem }
     | { kind: "cotizacionRow"; client: ClientListItem; cot: ClientCotizacion }
+    | { kind: "offlineCotizacion"; localId: string; clientName: string }
     | { kind: "detailCotizacion" }
     | null
   >(null);
@@ -363,6 +397,14 @@ export default function Clients() {
   useEffect(() => {
     void fetchClients();
   }, []);
+
+  useEffect(() => {
+    const companyId = company?.id;
+    if (companyId == null) return;
+    const refresh = () => void listOfflineCotizaciones(companyId).then(setOfflineEntries);
+    refresh();
+    return subscribeOfflineSync(refresh);
+  }, [company?.id]);
 
   const handleDownload = async (cotizacionId: number, clientName: string) => {
     setDownloadingId(cotizacionId);
@@ -825,6 +867,8 @@ export default function Clients() {
       void proceedDeleteClient(action.client);
     } else if (action.kind === "cotizacionRow") {
       void proceedDeleteCotizacionRow(action.cot);
+    } else if (action.kind === "offlineCotizacion") {
+      void proceedDeleteOfflineCotizacion(action.localId);
     } else {
       void proceedDeleteDetailCotizacion();
     }
@@ -1020,6 +1064,24 @@ export default function Clients() {
     }
   };
 
+  const handleDeleteOfflineCotizacion = (localId: string, clientName: string) => {
+    setCrudError("");
+    setCrudMessage("");
+    setPendingDelete({ kind: "offlineCotizacion", localId, clientName });
+  };
+
+  const proceedDeleteOfflineCotizacion = async (localId: string) => {
+    try {
+      await removeOfflineCotizacion(localId);
+      await notifyOfflineSync();
+      setCrudMessage("Cotización offline eliminada.");
+    } catch (error) {
+      setCrudError(
+        error instanceof Error ? error.message : "No se pudo eliminar la cotización offline.",
+      );
+    }
+  };
+
   const startEditSeq = (cot: ClientCotizacion) => {
     setSeqError("");
     setEditingSeqId(cot.id);
@@ -1100,28 +1162,88 @@ export default function Clients() {
       if (monthFilter !== "all" && mo !== monthFilter) return false;
       return true;
     };
+    const offlineMatchesPeriod = (entry: OfflineCotizacion) => {
+      if (!periodActive) return true;
+      const d = new Date(entry.createdAt);
+      const y = String(d.getFullYear());
+      const mo = String(d.getMonth() + 1).padStart(2, "0");
+      if (yearFilter !== "all" && y !== yearFilter) return false;
+      if (monthFilter !== "all" && mo !== monthFilter) return false;
+      return true;
+    };
+
+    // Cotizaciones guardadas sin conexión: se pegan a la fila del cliente real por RNC/cédula
+    // (normalizado) cuando ya existe en el backend; las que usamos acá no vuelven a aparecer
+    // como cliente "nuevo" más abajo.
+    const usedOfflineIds = new Set<string>();
 
     const flatRows = clients
       .filter((client) => clientMatchesQuery(client, normalizedQuery))
       .flatMap((client): ClientCotRow[] => {
         const cots = (client.cotizaciones ?? []).filter(cotMatchesPeriod);
-        if (cots.length === 0) {
+        const clientRnc = normalizeRnc(client.rnc_cedula);
+        const matchedOffline = clientRnc
+          ? offlineEntries.filter(
+              (e) =>
+                normalizeRnc(e.payload.client.rnc_cedula) === clientRnc &&
+                offlineMatchesPeriod(e),
+            )
+          : [];
+        matchedOffline.forEach((e) => usedOfflineIds.add(e.localId));
+        const offlineRows: ClientCotRow[] = matchedOffline.map((entry) => ({
+          client,
+          cot: null,
+          offline: entry,
+          rowKey: `offline-${entry.localId}`,
+        }));
+
+        if (cots.length === 0 && offlineRows.length === 0) {
           return periodActive
             ? []
-            : [{ client, cot: null, rowKey: `client-${client.id}-empty` }];
+            : [{ client, cot: null, offline: null, rowKey: `client-${client.id}-empty` }];
         }
-        return cots.map((cot) => ({
-          client,
-          cot,
-          rowKey: `client-${client.id}-cot-${cot.id}`,
-        }));
+        return [
+          ...cots.map((cot) => ({
+            client,
+            cot,
+            offline: null,
+            rowKey: `client-${client.id}-cot-${cot.id}`,
+          })),
+          ...offlineRows,
+        ];
       });
 
-    return [...flatRows].sort((a, b) => {
+    // Cotizaciones offline de clientes que todavía no existen en el backend (cliente + cotización
+    // creados juntos sin conexión): se arma una fila de cliente "pendiente" con los datos del borrador.
+    const unmatchedByKey = new Map<string, OfflineCotizacion[]>();
+    offlineEntries
+      .filter((e) => !usedOfflineIds.has(e.localId) && offlineMatchesPeriod(e))
+      .forEach((e) => {
+        const key = normalizeRnc(e.payload.client.rnc_cedula) || `local-${e.localId}`;
+        const list = unmatchedByKey.get(key) ?? [];
+        list.push(e);
+        unmatchedByKey.set(key, list);
+      });
+
+    const syntheticRows: ClientCotRow[] = [];
+    unmatchedByKey.forEach((entries) => {
+      const virtualClient = syntheticClientFromOffline(entries[0]);
+      if (!clientMatchesQuery(virtualClient, normalizedQuery)) return;
+      entries.forEach((entry) => {
+        syntheticRows.push({
+          client: virtualClient,
+          cot: null,
+          offline: entry,
+          rowKey: `offline-${entry.localId}`,
+        });
+      });
+    });
+
+    return [...flatRows, ...syntheticRows].sort((a, b) => {
       const compare = compareClientCotRows(a, b, sortBy);
       return sortDir === "asc" ? compare : -compare;
     });
-  }, [clients, query, yearFilter, monthFilter, sortBy, sortDir]);
+  }, [clients, offlineEntries, query, yearFilter, monthFilter, sortBy, sortDir]);
 
   const clientCount = useMemo(() => new Set(rows.map((r) => r.client.id)).size, [rows]);
 
@@ -1348,9 +1470,73 @@ export default function Clients() {
                 </thead>
 
                 <tbody className="divide-y divide-gray-100">
-                  {pageRows.map(({ client, cot, rowKey }, rowIndex) => {
+                  {pageRows.map(({ client, cot, offline, rowKey }, rowIndex) => {
                     const sameClientAsPrev =
                       rowIndex > 0 && pageRows[rowIndex - 1].client.id === client.id;
+
+                    if (offline) {
+                      const offlineTotal = offline.payload.cotizacion.total ?? 0;
+                      return (
+                        <tr
+                          key={rowKey}
+                          className={`hover:bg-amber-50/40 transition ${sameClientAsPrev ? "bg-slate-50/40" : ""}`}
+                        >
+                          <td className="px-3 sm:px-4 py-3 font-semibold text-gray-900 text-sm">
+                            {client.name}
+                          </td>
+                          <td className="px-3 sm:px-4 py-3 text-gray-600 text-sm whitespace-nowrap">
+                            {client.rnc_cedula}
+                          </td>
+                          <td className="px-3 sm:px-4 py-3 text-gray-600 text-sm whitespace-nowrap">
+                            {client.phone || "-"}
+                          </td>
+                          <td className="hidden lg:table-cell px-3 sm:px-4 py-3 text-gray-600 text-sm max-w-[12rem] truncate">
+                            {client.email || "-"}
+                          </td>
+                          <td colSpan={isDgiiCertification ? 10 : 8} className="px-3 sm:px-4 py-3">
+                            <div className="flex flex-wrap items-center gap-3">
+                              <span
+                                className={`inline-block rounded-full border px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap ${offlineStatusClass[offline.status]}`}
+                              >
+                                {offlineStatusLabel[offline.status]}
+                              </span>
+                              <span className="font-mono text-sm text-slate-800">
+                                {formatCurrency(offlineTotal)}
+                              </span>
+                              <span className="text-xs text-slate-500">
+                                Sin e-NCF todavía — se asigna al sincronizar con DGII.
+                              </span>
+                              <span className="ml-auto flex items-center gap-3">
+                                {offline.status !== "sincronizando" && (
+                                  <Link
+                                    to={`/cotizaciones/offline/${offline.localId}/editar`}
+                                    className="text-xs font-medium text-[#0b57d0] hover:underline"
+                                  >
+                                    Editar
+                                  </Link>
+                                )}
+                                <Link
+                                  to={`/cotizaciones/offline/${offline.localId}/imprimir`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs font-medium text-[#0b57d0] hover:underline"
+                                >
+                                  Ver borrador
+                                </Link>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteOfflineCotizacion(offline.localId, client.name)}
+                                  className="text-xs font-medium text-red-600 hover:underline"
+                                >
+                                  Eliminar
+                                </button>
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+
                     const dgiiStatus = cot?.dgii_status;
                     const seqResubmit = cot?.dgii_resubmit_new_seq === true;
                     const queueRetry =
@@ -1898,9 +2084,63 @@ export default function Clients() {
 
             {/* Mobile Cards */}
             <div className="md:hidden divide-y divide-gray-100">
-              {pageRows.map(({ client, cot, rowKey }, rowIndex) => {
+              {pageRows.map(({ client, cot, offline, rowKey }, rowIndex) => {
                 const sameClientAsPrev =
                   rowIndex > 0 && pageRows[rowIndex - 1].client.id === client.id;
+
+                if (offline) {
+                  const offlineTotal = offline.payload.cotizacion.total ?? 0;
+                  return (
+                    <div
+                      key={rowKey}
+                      className={`p-4 hover:bg-amber-50/40 transition ${sameClientAsPrev ? "bg-slate-50/40" : ""}`}
+                    >
+                      <div className="flex items-start justify-between gap-3 mb-2">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-semibold text-gray-900 truncate text-sm sm:text-base">
+                            {client.name}
+                          </h3>
+                          <p className="text-sm text-gray-500">RNC: {client.rnc_cedula}</p>
+                        </div>
+                        <span
+                          className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap ${offlineStatusClass[offline.status]}`}
+                        >
+                          {offlineStatusLabel[offline.status]}
+                        </span>
+                      </div>
+                      <p className="text-sm font-medium text-slate-800">{formatCurrency(offlineTotal)}</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Sin e-NCF todavía — se asigna al sincronizar con DGII.
+                      </p>
+                      <div className="mt-3 flex items-center gap-4">
+                        {offline.status !== "sincronizando" && (
+                          <Link
+                            to={`/cotizaciones/offline/${offline.localId}/editar`}
+                            className="text-xs font-medium text-[#0b57d0] hover:underline"
+                          >
+                            Editar
+                          </Link>
+                        )}
+                        <Link
+                          to={`/cotizaciones/offline/${offline.localId}/imprimir`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-medium text-[#0b57d0] hover:underline"
+                        >
+                          Ver borrador
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteOfflineCotizacion(offline.localId, client.name)}
+                          className="text-xs font-medium text-red-600 hover:underline"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
                 const dgiiStatus = cot?.dgii_status;
                 const seqResubmit = cot?.dgii_resubmit_new_seq === true;
                 const dgiiSendLocked = !canResubmitToDgiiWithoutEdit(cot);
@@ -2962,15 +3202,23 @@ export default function Clients() {
 
       <ConfirmModal
         open={pendingDelete != null}
-        title={pendingDelete?.kind === "client" ? "Eliminar cliente" : "Eliminar cotización"}
+        title={
+          pendingDelete?.kind === "client"
+            ? "Eliminar cliente"
+            : pendingDelete?.kind === "offlineCotizacion"
+              ? "Eliminar cotización offline"
+              : "Eliminar cotización"
+        }
         message={
           pendingDelete?.kind === "client"
             ? `¿Seguro que deseas eliminar el cliente "${pendingDelete.client.name}"? No tiene cotizaciones asociadas.`
             : pendingDelete?.kind === "cotizacionRow"
               ? `¿Seguro que deseas eliminar la cotización ${pendingDelete.cot.number} de "${pendingDelete.client.name}"?`
-              : detail
-                ? `¿Eliminar la cotización ${detail.number} de ${detail.client.name}? No se puede deshacer.`
-                : ""
+              : pendingDelete?.kind === "offlineCotizacion"
+                ? `¿Eliminar la cotización guardada sin conexión de "${pendingDelete.clientName}"? No se puede deshacer.`
+                : detail
+                  ? `¿Eliminar la cotización ${detail.number} de ${detail.client.name}? No se puede deshacer.`
+                  : ""
         }
         confirmLabel="Eliminar"
         variant="danger"

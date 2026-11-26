@@ -2,7 +2,7 @@ services:
   backend:
     image: node:20-bookworm-slim
     working_dir: /app/backend
-    command: sh -c "apt-get update -qq && apt-get install -y -qq openssl ca-certificates libicu-dev > /dev/null && npm install && npx prisma generate && npx prisma migrate deploy && echo 'Esperando firmador DGII .NET...' && until [ -x ./dotnet-signer/DgiiXmlSigner ]; do sleep 1; done && npx ts-node-dev src/index.ts"
+    command: sh -c "apt-get update -qq && apt-get install -y -qq openssl ca-certificates libicu-dev > /dev/null && npm install && npx prisma generate && npx prisma migrate deploy && echo 'Esperando firmador DGII .NET...' && until [ -x ./dotnet-signer/DgiiXmlSigner ]; do sleep 1; done && npx ts-node-dev --poll src/index.ts"
     env_file:
       - .env
     environment:
