@@ -1,7 +1,7 @@
 import Dexie, { type Table } from "dexie";
 import type { AuthCompany, AuthUser } from "../types/session";
 import type { ClientListItem } from "../services/clients";
-import type { CreateClientWithCotizacionPayload } from "../services/cotizaciones";
+import type { CotizacionItemDraft, CreateClientWithCotizacionPayload } from "../services/cotizaciones";
 
 /** Snapshot de empresa/usuario cacheado para imprimir/trabajar sin conexión. */
 export type CachedCompanyProfile = {
@@ -32,10 +32,39 @@ export type OfflineCotizacion = {
   updatedAt: number;
 };
 
+/** Campos editables del formulario de "Nueva cotización", para autoguardar un borrador local. */
+export type CotizacionDraftState = {
+  clientName: string;
+  clientAddress: string;
+  clientRnc: string;
+  clientPhone: string;
+  clientEmail: string;
+  paymentMethod: string;
+  creditDueDate: string;
+  comment: string;
+  ecfTipo: string;
+  ecfReferenceNcf: string;
+  items: Array<CotizacionItemDraft & { key: string }>;
+  calcMode: "auto" | "manual";
+  manualSubtotal: number;
+  manualItbisRate: number;
+  manualItbis: number;
+  manualTotal: number;
+  exento: boolean;
+};
+
+/** Borrador autoguardado del formulario de nueva cotización; uno solo por empresa. */
+export type CotizacionDraft = {
+  companyId: number;
+  state: CotizacionDraftState;
+  updatedAt: number;
+};
+
 class OfflineDatabase extends Dexie {
   cachedClients!: Table<CachedClient, number>;
   cachedCompanyProfile!: Table<CachedCompanyProfile, string>;
   offlineCotizaciones!: Table<OfflineCotizacion, string>;
+  cotizacionDrafts!: Table<CotizacionDraft, number>;
 
   constructor() {
     super("fe_rd_offline_v1");
@@ -43,6 +72,12 @@ class OfflineDatabase extends Dexie {
       cachedClients: "id, company_id",
       cachedCompanyProfile: "id",
       offlineCotizaciones: "localId, companyId, status, createdAt",
+    });
+    this.version(2).stores({
+      cachedClients: "id, company_id",
+      cachedCompanyProfile: "id",
+      offlineCotizaciones: "localId, companyId, status, createdAt",
+      cotizacionDrafts: "companyId",
     });
   }
 }

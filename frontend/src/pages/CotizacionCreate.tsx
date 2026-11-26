@@ -9,6 +9,8 @@ import {
   type CreateClientWithCotizacionPayload,
 } from "../services/cotizaciones";
 import { queueOfflineCotizacion } from "../offline/offlineQueue";
+import { clearCotizacionDraft, getCotizacionDraft, saveCotizacionDraft } from "../offline/draftQueue";
+import type { CotizacionDraftState } from "../offline/db";
 import {
   calculateTotalsFromItems,
   itemLineTotalValue,
@@ -103,6 +105,121 @@ export default function CotizacionCreate() {
 
   const [importing, setImporting] = useState(false);
   const [importNotice, setImportNotice] = useState("");
+
+  // Borrador local (IndexedDB): se autoguarda mientras el usuario llena el formulario para no
+  // perder lo tecleado si recarga o cierra la pestaña sin querer. No se aplica solo: se espera a
+  // que el usuario decida "Continuar" o "Descartar" en el banner, para no pisar un formulario que
+  // ya está llenando a propósito.
+  const [draftPrompt, setDraftPrompt] = useState<{ state: CotizacionDraftState; updatedAt: number } | null>(
+    null,
+  );
+  const [draftCheckDone, setDraftCheckDone] = useState(false);
+
+  useEffect(() => {
+    const companyId = company?.id;
+    if (companyId == null) return;
+    let cancelled = false;
+    void getCotizacionDraft(companyId).then((draft) => {
+      if (cancelled) return;
+      if (draft) setDraftPrompt({ state: draft.state, updatedAt: draft.updatedAt });
+      setDraftCheckDone(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Solo al montar: el borrador se revisa una vez por entrada a la página.
+  }, [company?.id]);
+
+  const applyDraftState = (state: CotizacionDraftState) => {
+    setClientName(state.clientName);
+    setClientAddress(state.clientAddress);
+    setClientRnc(state.clientRnc);
+    setClientPhone(state.clientPhone);
+    setClientEmail(state.clientEmail);
+    setPaymentMethod(state.paymentMethod);
+    setCreditDueDate(state.creditDueDate);
+    setComment(state.comment);
+    setEcfTipo(state.ecfTipo);
+    setEcfReferenceNcf(state.ecfReferenceNcf);
+    setItems(state.items.length > 0 ? state.items : [newRow()]);
+    setCalcMode(state.calcMode);
+    setManualSubtotal(state.manualSubtotal);
+    setManualItbisRate(state.manualItbisRate);
+    setManualItbis(state.manualItbis);
+    setManualTotal(state.manualTotal);
+    setExento(state.exento);
+  };
+
+  const handleContinueDraft = () => {
+    if (!draftPrompt) return;
+    applyDraftState(draftPrompt.state);
+    setDraftPrompt(null);
+  };
+
+  const handleDiscardDraft = () => {
+    if (company?.id != null) void clearCotizacionDraft(company.id);
+    setDraftPrompt(null);
+  };
+
+  const hasDraftContent = (): boolean =>
+    clientName.trim() !== "" ||
+    clientRnc.trim() !== "" ||
+    clientAddress.trim() !== "" ||
+    comment.trim() !== "" ||
+    items.some((it) => it.description.trim() !== "" || Number(it.unit_price) > 0);
+
+  // Autoguardado con debounce: espera a resolver si hay un borrador previo (draftCheckDone) y a
+  // que el usuario decida sobre él (draftPrompt == null) antes de empezar a escribir, para no
+  // sobreescribir un borrador existente con el formulario en blanco mientras carga.
+  useEffect(() => {
+    const companyId = company?.id;
+    if (companyId == null || !draftCheckDone || draftPrompt) return;
+    if (!hasDraftContent()) return;
+    const timer = window.setTimeout(() => {
+      void saveCotizacionDraft(companyId, {
+        clientName,
+        clientAddress,
+        clientRnc,
+        clientPhone,
+        clientEmail,
+        paymentMethod,
+        creditDueDate,
+        comment,
+        ecfTipo,
+        ecfReferenceNcf,
+        items,
+        calcMode,
+        manualSubtotal,
+        manualItbisRate,
+        manualItbis,
+        manualTotal,
+        exento,
+      });
+    }, 1200);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    company?.id,
+    draftCheckDone,
+    draftPrompt,
+    clientName,
+    clientAddress,
+    clientRnc,
+    clientPhone,
+    clientEmail,
+    paymentMethod,
+    creditDueDate,
+    comment,
+    ecfTipo,
+    ecfReferenceNcf,
+    items,
+    calcMode,
+    manualSubtotal,
+    manualItbisRate,
+    manualItbis,
+    manualTotal,
+    exento,
+  ]);
 
   const handleImportAmwayPdf = async (file: File | null) => {
     if (!file) return;
@@ -284,6 +401,8 @@ export default function CotizacionCreate() {
       setManualItbis(0);
       setManualTotal(0);
       setImportNotice("");
+      // Ya se guardó (en línea o en cola offline): el borrador autoguardado ya no hace falta.
+      void clearCotizacionDraft(company.id);
     };
 
     // No se decide "offline" por el heartbeat cacheado (puede dar falso negativo si el backend
@@ -380,6 +499,37 @@ export default function CotizacionCreate() {
             </p>
           )}
         </div>
+
+        {draftPrompt && (
+          <div className="mb-4 flex flex-col gap-2 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950 sm:flex-row sm:items-center sm:justify-between">
+            <p>
+              Tienes un borrador sin guardar de{" "}
+              {new Date(draftPrompt.updatedAt).toLocaleString("es-DO", {
+                day: "2-digit",
+                month: "short",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+              . ¿Deseas continuarlo?
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleDiscardDraft}
+                className="rounded-lg border border-blue-300 px-3 py-1.5 text-xs font-medium text-blue-800 hover:bg-blue-100"
+              >
+                Descartar
+              </button>
+              <button
+                type="button"
+                onClick={handleContinueDraft}
+                className="rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-800"
+              >
+                Continuar borrador
+              </button>
+            </div>
+          </div>
+        )}
 
         <form
           onSubmit={handleSubmit}
