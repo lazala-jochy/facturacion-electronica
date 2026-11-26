@@ -8,7 +8,6 @@ import {
 import { generateDGIIData } from "../utils/dgii";
 import { buildCotizacionPdfBuffer } from "../utils/cotizacion-pdf";
 import { prisma } from "../prisma";
-import { decryptCompanySecret } from "../utils/companyCertificateCrypto";
 import { ecfService } from "../services/ecf.service";
 import {
   buildConsumoMenor250SignedPack,
@@ -17,7 +16,6 @@ import {
   submitConsumoMenor250RfceForCotizacion,
 } from "../services/ecfConsumoRfce.service";
 import { ensureRepresentacionImpresaPdfForCotizacion } from "../services/ecfRepresentacionImpresa.service";
-import { companyHasCertificateRecord } from "../utils/companyCertificateStorage";
 import { getUploadsRoot } from "../utils/uploadsRoot";
 import { parseDgiiCertProfile } from "../types/dgiiCertProfile";
 import {
@@ -54,27 +52,6 @@ const stripTenantFromBody = (body: Record<string, unknown>) => {
 
 const pickStr = (b: Record<string, unknown>, k: string): string | undefined =>
   typeof b[k] === "string" ? (b[k] as string) : undefined;
-
-/** Tras crear/editar cotización: firma y guarda XML si la empresa tiene certificado. */
-const trySignDraftEcfAfterWrite = async (
-  cotizacionId: number,
-  companyId: number,
-  certificateEncryptionSecret: string | undefined,
-): Promise<
-  { status: "ok" } | { status: "skipped" } | { status: "error"; message: string }
-> => {
-  const companyRow = await prisma.company.findUnique({ where: { id: companyId } });
-  if (!companyRow || !companyHasCertificateRecord(companyRow)) {
-    return { status: "skipped" };
-  }
-  const uploadsRoot = getUploadsRoot();
-  const out = await ecfService.signAndStoreDraftForCotizacion(cotizacionId, companyId, {
-    uploadsRoot,
-    certificateEncryptionSecret: certificateEncryptionSecret?.trim() || undefined,
-  });
-  if (!out.ok) return { status: "error", message: out.message };
-  return { status: "ok" };
-};
 
 const serializeCotizacion = (
   c: NonNullable<Awaited<ReturnType<typeof cotizacionService.getByIdForCompany>>>,
@@ -203,21 +180,6 @@ export const createClientWithCotizacion: RequestHandler = async (req, res) => {
       })
     : undefined;
 
-  const encFromBody = pickStr(body, "certificate_encryption_secret") ?? "";
-  const companyRow = await prisma.company.findUnique({ where: { id: companyId } });
-  if (companyRow && companyHasCertificateRecord(companyRow)) {
-    const encOk =
-      encFromBody.trim().length >= 8 ||
-      (decryptCompanySecret(companyRow.certificateKeyphraseEnc, companyRow)?.trim()?.length ?? 0) >= 8;
-    if (!encOk) {
-      res.status(400).json({
-        message:
-          "La empresa tiene certificado DGII. Indicá certificate_encryption_secret en el cuerpo JSON (clave de cifrado del .p12, mín. 8 caracteres) o guardala en Perfil de empresa para generar el e-CF firmado al crear la cotización.",
-      });
-      return;
-    }
-  }
-
   const out = await cotizacionService.createClientWithCotizacion(companyId, {
     client: {
       name: typeof client.name === "string" ? client.name : "",
@@ -270,7 +232,6 @@ export const createClientWithCotizacion: RequestHandler = async (req, res) => {
     return;
   }
 
-  const signResult = await trySignDraftEcfAfterWrite(out.cotizacion.id, companyId, encFromBody);
   const refreshed = await cotizacionService.getByIdForCompany(out.cotizacion.id, companyId);
   if (!refreshed) {
     res.status(500).json({ message: "No se pudo recargar la cotizacion." });
@@ -291,9 +252,6 @@ export const createClientWithCotizacion: RequestHandler = async (req, res) => {
     },
     cotizacion: serialized,
     dgii_preview: generateDGIIData(refreshed),
-    ...(signResult.status === "error"
-      ? { ecf_draft_sign_warning: signResult.message }
-      : {}),
   });
 };
 
@@ -457,32 +415,6 @@ export const updateCotizacionById: RequestHandler = async (req, res) => {
     return;
   }
 
-  const encFromBody = pickStr(body, "certificate_encryption_secret") ?? "";
-  const afterUpdate = await cotizacionService.getByIdForCompany(id, companyId);
-  const locked =
-    Boolean(afterUpdate?.dgiiTrackId?.trim()) || Boolean(afterUpdate?.dgiiSubmittedAt != null);
-
-  let ecfDraftSignWarning: string | undefined;
-  if (!locked) {
-    const companyRow = await prisma.company.findUnique({ where: { id: companyId } });
-    if (companyRow && companyHasCertificateRecord(companyRow)) {
-      const encOk =
-        encFromBody.trim().length >= 8 ||
-        (decryptCompanySecret(companyRow.certificateKeyphraseEnc, companyRow)?.trim()?.length ?? 0) >= 8;
-      if (!encOk) {
-        res.status(400).json({
-          message:
-            "La empresa tiene certificado DGII. Indicá certificate_encryption_secret en el JSON o guardala en Perfil de empresa para actualizar el e-CF firmado.",
-        });
-        return;
-      }
-    }
-    const signResult = await trySignDraftEcfAfterWrite(id, companyId, encFromBody);
-    if (signResult.status === "error") {
-      ecfDraftSignWarning = signResult.message;
-    }
-  }
-
   const finalRow = await cotizacionService.getByIdForCompany(id, companyId);
   if (!finalRow) {
     res.status(404).json({ message: "Cotizacion no encontrada." });
@@ -493,7 +425,6 @@ export const updateCotizacionById: RequestHandler = async (req, res) => {
     message: "Cotizacion actualizada.",
     cotizacion: serializeCotizacion(finalRow),
     dgii_preview: generateDGIIData(finalRow),
-    ...(ecfDraftSignWarning ? { ecf_draft_sign_warning: ecfDraftSignWarning } : {}),
   });
 };
 

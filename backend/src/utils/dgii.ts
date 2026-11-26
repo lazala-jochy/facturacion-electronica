@@ -12,15 +12,18 @@ export type CotizacionForDGII = Cotizacion & {
  */
 export const generateDGIIData = (cotizacion: CotizacionForDGII) => {
   const fecha = cotizacion.createdAt.toISOString().slice(0, 10);
+  // El e-NCF recien se asigna al generar/enviar el e-CF (ver ecf.service.ts
+  // generateForCotizacion) -- mientras eso no pase, ecfNcfSeq es null y esta vista previa
+  // no debe inventar un numero que parezca real.
   const ncfSeq =
     typeof cotizacion.ecfNcfSeq === "number" && cotizacion.ecfNcfSeq > 0
       ? cotizacion.ecfNcfSeq
-      : cotizacion.number;
+      : null;
   return {
     tipo_ecf: cotizacion.ecfTipo,
     ecf_ncf_seq: ncfSeq,
     ncf_modificado: cotizacion.ecfReferenceNcf ?? null,
-    ecf_ejemplo: buildEcfNumber(cotizacion.ecfTipo, ncfSeq),
+    ecf_ejemplo: ncfSeq != null ? buildEcfNumber(cotizacion.ecfTipo, ncfSeq) : null,
     rnc_emisor: cotizacion.company.rnc,
     rnc_cliente: cotizacion.client.rncCedula,
     monto_total: cotizacion.total,
