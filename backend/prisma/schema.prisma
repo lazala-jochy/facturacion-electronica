@@ -267,12 +267,38 @@ model Cotizacion {
   client         Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
   company        Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   items          CotizacionItem[]
+  dgiiIntentos   CotizacionDgiiIntento[]
 
   @@unique([companyId, number])
   @@unique([companyId, ecfTipo, ecfNcfSeq], name: "cotizacion_company_tipo_encf_seq")
   @@index([companyId])
   @@index([clientId])
   @@map("cotizaciones")
+}
+
+/// Historial inmutable de cada intento de envío a DGII: un e-NCF rechazado ya no se puede
+/// reutilizar, así que hay que conservar registro de toda secuencia usada (aceptada o
+/// rechazada), no solo del resultado vigente en Cotizacion. Nunca se actualiza ni se borra,
+/// solo se inserta una fila nueva por cada respuesta real de DGII.
+model CotizacionDgiiIntento {
+  id           Int        @id @default(autoincrement())
+  cotizacionId Int        @map("cotizacion_id")
+  // Denormalizado desde Cotizacion.companyId, mismo motivo que en CotizacionItem.
+  companyId    Int        @map("company_id")
+  ecfTipo      String     @map("ecf_tipo")
+  /// Secuencia e-NCF usada en este intento específico (puede diferir de la vigente en Cotizacion
+  /// si hubo rechazos posteriores por secuencia ya utilizada).
+  ecfNcfSeq    Int?       @map("ecf_ncf_seq")
+  dgiiEnvironment String? @map("dgii_environment")
+  dgiiStatus   String     @map("dgii_status")
+  dgiiResponse String?    @map("dgii_response")
+  dgiiTrackId  String?    @map("dgii_track_id")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  cotizacion   Cotizacion @relation(fields: [cotizacionId], references: [id], onDelete: Cascade)
+
+  @@index([cotizacionId, createdAt])
+  @@index([companyId])
+  @@map("cotizacion_dgii_intentos")
 }
 
 model CotizacionItem {

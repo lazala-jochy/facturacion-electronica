@@ -39,6 +39,22 @@ export type CotizacionListItem = {
   items_count: number;
 };
 
+/** Un intento de envío a DGII en el historial inmutable: cada secuencia e-NCF usada, aceptada
+ * o rechazada, queda registrada aparte -- un rechazo quema esa secuencia para siempre. */
+export type CotizacionDgiiIntento = {
+  id: number;
+  ecf_tipo: string;
+  ecf_ncf_seq: number | null;
+  ecf_number: string | null;
+  dgii_environment?: string | null;
+  dgii_status: string;
+  dgii_track_id?: string | null;
+  dgii_rejection_summary?: string | null;
+  dgii_rejection_full?: string | null;
+  dgii_response?: string | null;
+  created_at: string;
+};
+
 export type CotizacionDetail = {
   id: number;
   number: number;
@@ -58,6 +74,7 @@ export type CotizacionDetail = {
   dgii_rejection_summary?: string | null;
   dgii_rejection_full?: string | null;
   dgii_resubmit_new_seq?: boolean;
+  dgii_history?: CotizacionDgiiIntento[];
   signed_xml?: string | null;
   ecf_ri_pdf_path?: string | null;
   ecf_ri_qr_url?: string | null;
@@ -195,6 +212,14 @@ export const setEcfNcfSeq = (id: number, ecfNcfSeq: number) =>
 export const generateEcfXml = (id: number) =>
   apiFetch<{ message: string; ecf_number: string; xml: string; signed?: boolean }>(
     `/cotizaciones/${id}/ecf/xml`,
+    { method: "GET" },
+  );
+
+/** Previsualiza el e-NCF que se usaría al enviar, SIN reservarlo: no persiste nada en el
+ * backend. Si el usuario cancela el envío tras ver esta previsión, ningún e-NCF queda asignado. */
+export const previewNextEcfNcf = (id: number) =>
+  apiFetch<{ ecf_tipo: string; ecf_ncf_seq: number; ecf_number: string; reserved: boolean }>(
+    `/cotizaciones/${id}/ecf/next-seq-preview`,
     { method: "GET" },
   );
 

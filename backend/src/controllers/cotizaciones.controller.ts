@@ -2,6 +2,7 @@ import "../types/express-auth.augment";
 import type { RequestHandler } from "express";
 import {
   cotizacionService,
+  previewNextEcfNcfForCotizacion,
   setManualEcfNcfSeq,
   type IncomingItem,
 } from "../services/cotizacion.service";
@@ -94,6 +95,27 @@ const serializeCotizacion = (
     c.dgiiStatus === "rejected" && c.dgiiResponse?.trim()
       ? isDgiiSequenceRejection(c.dgiiResponse)
       : false,
+  /** Historial inmutable de todos los intentos de envío a DGII (aceptados y rechazados), cada
+   * uno con la secuencia e-NCF que usó -- un rechazo quema esa secuencia para siempre. */
+  dgii_history: c.dgiiIntentos.map((h) => ({
+    id: h.id,
+    ecf_tipo: h.ecfTipo,
+    ecf_ncf_seq: h.ecfNcfSeq,
+    ecf_number: h.ecfNcfSeq != null ? buildEcfNumber(h.ecfTipo, h.ecfNcfSeq) : null,
+    dgii_environment: h.dgiiEnvironment,
+    dgii_status: h.dgiiStatus,
+    dgii_track_id: h.dgiiTrackId,
+    dgii_rejection_summary:
+      h.dgiiStatus === "rejected" && h.dgiiResponse?.trim()
+        ? summarizeDgiiResponse(h.dgiiResponse)
+        : null,
+    dgii_rejection_full:
+      h.dgiiStatus === "rejected" && h.dgiiResponse?.trim()
+        ? formatDgiiResponseFullMessage(h.dgiiResponse)
+        : null,
+    dgii_response: h.dgiiResponse,
+    created_at: h.createdAt.toISOString(),
+  })),
   ecf_ri_pdf_path: c.ecfRiPdfPath,
   ecf_ri_qr_url: c.ecfRiQrUrl,
   ecf_ri_generated_at: c.ecfRiGeneratedAt?.toISOString() ?? null,
@@ -631,6 +653,36 @@ export const downloadRepresentacionImpresaEcf: RequestHandler = async (req, res)
   res.setHeader("Content-Disposition", `attachment; filename="${out.filename}"`);
   res.setHeader("Cache-Control", "no-store");
   res.status(200).send(out.buffer);
+};
+
+/**
+ * Previsualiza el e-NCF que se usaría al enviar esta cotización a DGII, SIN reservarlo ni
+ * persistir nada -- a diferencia de generateEcfXmlByCotizacion. Pensado para el modal de
+ * confirmación "¿Enviar a DGII?": si el usuario cancela, no debe quedar ningún e-NCF asignado.
+ */
+export const previewNextEcfNcfByCotizacion: RequestHandler = async (req, res) => {
+  const companyId = req.auth?.companyId;
+  if (!companyId) {
+    res.status(401).json({ message: "No autorizado." });
+    return;
+  }
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ message: "ID invalido." });
+    return;
+  }
+
+  const preview = await previewNextEcfNcfForCotizacion(id, companyId);
+  if (!preview) {
+    res.status(404).json({ message: "Cotizacion no encontrada." });
+    return;
+  }
+  res.json({
+    ecf_tipo: preview.ecfTipo,
+    ecf_ncf_seq: preview.ecfNcfSeq,
+    ecf_number: preview.ecfNumber,
+    reserved: preview.reserved,
+  });
 };
 
 export const generateEcfXmlByCotizacion: RequestHandler = async (req, res) => {

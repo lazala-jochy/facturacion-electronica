@@ -13,6 +13,7 @@ import {
   fetchCotizacionPdfBlobUrl,
   generateEcfXml,
   getCotizacion,
+  previewNextEcfNcf,
   signEcfXmlLocal,
   submitConsumoMenor250Rfce,
   submitEcf,
@@ -237,7 +238,10 @@ export default function Clients() {
    */
   const canDeleteCotizacion = (dgiiStatus: string | null | undefined): boolean => {
     if (!isDgiiProduccion) return true;
-    return !dgiiStatus?.trim();
+    // "prepared": el XML se generó/firmó localmente pero nunca se transmitió a DGII -- no
+    // cuenta como envío real, se puede borrar igual que si no tuviera estado.
+    const status = dgiiStatus?.trim() ?? "";
+    return status === "" || status === "prepared";
   };
   const [isOnline, setIsOnline] = useState(
     typeof navigator === "undefined" ? true : navigator.onLine,
@@ -279,7 +283,17 @@ export default function Clients() {
   const [ecfCertModalLoading, setEcfCertModalLoading] = useState(false);
   /** Confirmación previa a enviar/reenviar a DGII (modal propio, no window.confirm). */
   const [pendingDgiiAction, setPendingDgiiAction] = useState<
-    { kind: "send"; cotizacionId: number } | { kind: "retry"; cotizacionId: number } | null
+    | {
+        kind: "send";
+        cotizacionId: number;
+        preview?: {
+          ecfNumber: string | null;
+          isRejectedSequenceResend: boolean;
+          rejectedEcfNumber?: string | null;
+        };
+      }
+    | { kind: "retry"; cotizacionId: number; preview?: { ecfNumber: string | null } }
+    | null
   >(null);
   /** Confirmación previa a eliminar cliente/cotización (modal propio, no window.confirm). */
   const [pendingDelete, setPendingDelete] = useState<
@@ -685,7 +699,36 @@ export default function Clients() {
       );
       return;
     }
-    setPendingDgiiAction({ kind: "send", cotizacionId });
+
+    const isRejectedSequenceResend =
+      cotRow?.dgii_status === "rejected" && cotRow?.dgii_resubmit_new_seq === true;
+
+    // Solo previsualiza (lectura, no reserva nada): si el e-NCF mostrado no llega a enviarse
+    // (el usuario cancela el modal, o el envío falla), no debe quedar ningún e-NCF asignado a
+    // la cotización. La asignación real solo ocurre dentro de la transacción de envío.
+    setSendingEcfId(cotizacionId);
+    setEcfError("");
+    try {
+      const preview = await previewNextEcfNcf(cotizacionId);
+      setPendingDgiiAction({
+        kind: "send",
+        cotizacionId,
+        preview: {
+          ecfNumber: preview.ecf_number?.trim() || null,
+          isRejectedSequenceResend,
+          rejectedEcfNumber:
+            isRejectedSequenceResend && cotRow?.ecf_ncf_seq != null
+              ? formatEcfNumberDisplay(cotRow.ecf_tipo, cotRow.ecf_ncf_seq)
+              : null,
+        },
+      });
+    } catch (error) {
+      setEcfError(
+        error instanceof Error ? error.message : "No se pudo previsualizar el e-NCF a enviar.",
+      );
+    } finally {
+      setSendingEcfId(null);
+    }
   };
 
   const proceedSendEcf = async (cotizacionId: number) => {
@@ -808,7 +851,19 @@ export default function Clients() {
       );
       return;
     }
-    setPendingDgiiAction({ kind: "retry", cotizacionId });
+    const cotRow = clients
+      .flatMap((c) => c.cotizaciones.map((co) => ({ ...co, clientId: c.id })))
+      .find((co) => co.id === cotizacionId);
+    setPendingDgiiAction({
+      kind: "retry",
+      cotizacionId,
+      preview: {
+        ecfNumber:
+          cotRow?.ecf_ncf_seq != null
+            ? formatEcfNumberDisplay(cotRow.ecf_tipo, cotRow.ecf_ncf_seq)
+            : null,
+      },
+    });
   };
 
   const proceedRetryQueuedDgiiSubmit = async (cotizacionId: number) => {
@@ -859,6 +914,28 @@ export default function Clients() {
       void proceedRetryQueuedDgiiSubmit(action.cotizacionId);
     }
   };
+
+  const dgiiConfirmModalMessage = (() => {
+    const action = pendingDgiiAction;
+    if (!action) return "";
+    if (action.kind === "retry") {
+      const encf = action.preview?.ecfNumber;
+      return `Está a punto de reenviar este comprobante a la DGII${
+        encf ? ` (e-NCF ${encf})` : ""
+      }.\n\n¿Desea continuar?`;
+    }
+    if (action.preview?.isRejectedSequenceResend) {
+      const rejected = action.preview.rejectedEcfNumber;
+      const next = action.preview.ecfNumber;
+      return `DGII rechazó el e-NCF ${rejected ?? "anterior"} por secuencia ya utilizada.\n\nAl confirmar, esa secuencia queda liberada y se asignará la siguiente disponible${
+        next ? ` (prevista: ${next}; puede variar si hay otros envíos en curso)` : ""
+      }.\n\n¿Desea continuar?`;
+    }
+    const encf = action.preview?.ecfNumber;
+    return `Está a punto de enviar este comprobante a la DGII${
+      encf ? ` con el e-NCF ${encf}` : ""
+    }.\n\nUna vez enviado, no podrá modificarlo ni cancelarlo.\n\n¿Desea continuar?`;
+  })();
 
   const confirmPendingDelete = () => {
     const action = pendingDelete;
@@ -2831,6 +2908,60 @@ export default function Clients() {
                     )}
                   </div>
                 )}
+                {detail.dgii_history && detail.dgii_history.length > 0 && (
+                  <div className="rounded-lg border border-slate-200 p-3">
+                    <p className="text-sm font-semibold text-slate-700">
+                      Historial de envíos a DGII ({detail.dgii_history.length})
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-slate-500">
+                      Cada secuencia e-NCF que la DGII ya procesó (aceptada o rechazada) queda
+                      registrada aquí; esas secuencias no se reutilizan.
+                    </p>
+                    <ul className="mt-2 space-y-2">
+                      {detail.dgii_history.map((h) => (
+                        <li
+                          key={h.id}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-100 bg-slate-50 px-2 py-1.5 text-xs"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={`rounded-full px-2 py-0.5 font-semibold ${dgiiStatusClass(h.dgii_status)}`}
+                            >
+                              {h.dgii_status}
+                            </span>
+                            <span className="font-mono text-slate-700">
+                              {h.ecf_number ?? formatEcfNumberDisplay(h.ecf_tipo, h.ecf_ncf_seq)}
+                            </span>
+                            <span className="text-slate-500">{formatDate(h.created_at)}</span>
+                          </div>
+                          {(h.dgii_rejection_full?.trim() ||
+                            h.dgii_response?.trim() ||
+                            h.dgii_rejection_summary?.trim()) && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setDgiiResponseModal({
+                                  title: `Respuesta DGII · cotización #${detail.number} · ${h.ecf_number ?? ""}`,
+                                  status: h.dgii_status,
+                                  trackId: h.dgii_track_id,
+                                  summary: h.dgii_rejection_summary,
+                                  fullMessage:
+                                    h.dgii_rejection_full?.trim() ||
+                                    h.dgii_rejection_summary?.trim() ||
+                                    null,
+                                  rawResponse: h.dgii_response,
+                                })
+                              }
+                              className="text-xs font-semibold text-[#0b57d0] hover:underline"
+                            >
+                              Ver mensaje completo
+                            </button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -3219,11 +3350,7 @@ export default function Clients() {
       <ConfirmModal
         open={pendingDgiiAction != null}
         title={pendingDgiiAction?.kind === "retry" ? "Reenviar a la DGII" : "Enviar a la DGII"}
-        message={
-          pendingDgiiAction?.kind === "retry"
-            ? "Está a punto de reenviar este comprobante a la DGII.\n\n¿Desea continuar?"
-            : "Está a punto de enviar este comprobante a la DGII.\n\nUna vez enviado, no podrá modificarlo ni cancelarlo.\n\n¿Desea continuar?"
-        }
+        message={dgiiConfirmModalMessage}
         confirmLabel={pendingDgiiAction?.kind === "retry" ? "Reenviar" : "Enviar"}
         onConfirm={confirmPendingDgiiAction}
         onCancel={() => setPendingDgiiAction(null)}

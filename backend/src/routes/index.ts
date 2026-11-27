@@ -103,6 +103,11 @@ export const buildRouter = () => {
     asyncHandler(cotizacionesController.sendCotizacionEmail),
   );
   router.get(
+    "/cotizaciones/:id/ecf/next-seq-preview",
+    requireAuth,
+    asyncHandler(cotizacionesController.previewNextEcfNcfByCotizacion),
+  );
+  router.get(
     "/cotizaciones/:id/ecf/xml",
     requireAuth,
     asyncHandler(cotizacionesController.generateEcfXmlByCotizacion),

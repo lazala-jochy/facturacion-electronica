@@ -13,6 +13,7 @@ import { resolveP12ForEcf, type SubmitEcfErr } from "./ecf.service";
 import { extractEncfFromDgiiResponse, isDgiiSequenceRejection } from "../utils/dgiiRejection";
 import { allocateNextAfterUsedSeq, markEcfNcfSeqUsed } from "./ecfSeq.service";
 import { normalizeDgiiEnvironment } from "../utils/dgiiEnvironment";
+import { recordDgiiIntento } from "./cotizacion.service";
 
 type CotizacionWithRelations = Prisma.CotizacionGetPayload<{
   include: { company: true; client: true; items: true };
@@ -276,6 +277,18 @@ export async function submitConsumoMenor250RfceForCotizacion(
         dgiiTrackId: dgiiResponse.trackId?.trim() || packResult.pack.ecf_number,
         dgiiSubmittedAt: new Date(),
       },
+    });
+
+    const parsedEncf = parseEncfSequence(packResult.pack.ecf_number);
+    await recordDgiiIntento(prisma, {
+      cotizacionId,
+      companyId,
+      ecfTipo: normalizeEcfTipo(parsedEncf?.tipo ?? "32"),
+      ecfNcfSeq: parsedEncf?.seq ?? null,
+      dgiiEnvironment: normalizeDgiiEnvironment(companyRow.dgiiEnvironment),
+      dgiiStatus,
+      dgiiResponse: dgiiResponse.rawResponse,
+      dgiiTrackId: dgiiResponse.trackId?.trim() || packResult.pack.ecf_number,
     });
 
     // DGII rechazó por e-NCF/código de seguridad ya usado (equivalente RFCE del 1209): si no se

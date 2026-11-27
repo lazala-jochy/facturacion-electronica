@@ -27,6 +27,7 @@ import {
   ensureCotizacionSeqAdvancedAfterSequenceReject,
   isPaymentMethodCredito,
   persistCotizacionAfterDgiiSubmission,
+  previewNextEcfNcfForCotizacion,
   validateCotizacionDgiiResubmit,
 } from "./cotizacion.service";
 import { submitConsumoMenor250RfceForCotizacion } from "./ecfConsumoRfce.service";
@@ -59,11 +60,15 @@ type CotizacionWithRelations = Prisma.CotizacionGetPayload<{
   include: { company: true; client: true; items: true };
 }>;
 
-const toPayload = (cotizacion: CotizacionWithRelations): EcfPayload => {
+const toPayload = (
+  cotizacion: CotizacionWithRelations,
+  /** Secuencia de previsualización (no reservada) cuando todavía no hay ecfNcfSeq persistido. */
+  previewSeq?: number,
+): EcfPayload => {
   const ncfSeq =
     typeof cotizacion.ecfNcfSeq === "number" && cotizacion.ecfNcfSeq > 0
       ? cotizacion.ecfNcfSeq
-      : cotizacion.number;
+      : (previewSeq ?? cotizacion.number);
   const base: EcfPayload = {
     ecfNumber: buildEcfNumber(cotizacion.ecfTipo, ncfSeq),
     issueDate: cotizacion.createdAt,
@@ -234,7 +239,19 @@ export async function resolveP12ForEcf(
 }
 
 export const ecfService = {
-  async generateForCotizacion(cotizacionId: number, companyId: number) {
+  /**
+   * Genera el XML del e-CF. Por defecto NO reserva ningún e-NCF (solo previsualiza uno, sin
+   * persistirlo): usado por el botón "Ver XML". Pasar `{ reserveSeq: true }` únicamente desde
+   * el flujo real de envío (`submitForCotizacion`) -- ahí sí hace falta un número definitivo y
+   * persistido antes de firmar y transmitir. Si nunca se llega a enviar (se cancela, falla
+   * antes, o es solo una vista previa), ninguna cotización debe quedar con un e-NCF asignado.
+   */
+  async generateForCotizacion(
+    cotizacionId: number,
+    companyId: number,
+    opts?: { reserveSeq?: boolean },
+  ) {
+    const reserveSeq = opts?.reserveSeq === true;
     const found = await prisma.cotizacion.findFirst({
       where: { id: cotizacionId, companyId },
       include: { company: true, client: true, items: { orderBy: { itemNumber: "asc" } } },
@@ -247,31 +264,39 @@ export const ecfService = {
       };
     }
     let cotizacion: CotizacionWithRelations = found;
+    let previewSeq: number | undefined;
 
-    // El e-NCF se reserva recién aquí (primera generación de XML, vía envío o firma), no al
-    // crear/editar la cotización -- evita quemar correlativos fiscales en cotizaciones que
-    // nunca llegan a transmitirse a DGII.
     if (cotizacion.ecfNcfSeq == null) {
-      const ecfTipo = cotizacion.ecfTipo;
-      const environment = normalizeDgiiEnvironment(cotizacion.company.dgiiEnvironment);
-      try {
-        cotizacion = await prisma.$transaction(async (tx) => {
-          const ecfNcfSeq = await allocateNextEcfNcfSeq(tx, companyId, ecfTipo, environment);
-          return tx.cotizacion.update({
-            where: { id: cotizacionId },
-            data: { ecfNcfSeq, dgiiEnvironment: environment },
-            include: { company: true, client: true, items: { orderBy: { itemNumber: "asc" } } },
+      if (reserveSeq) {
+        // El e-NCF se reserva recién aquí (envío real), no al crear/editar la cotización ni al
+        // solo generar/previsualizar el XML -- evita quemar correlativos fiscales en
+        // cotizaciones que nunca llegan a transmitirse a DGII.
+        const ecfTipo = cotizacion.ecfTipo;
+        const environment = normalizeDgiiEnvironment(cotizacion.company.dgiiEnvironment);
+        try {
+          cotizacion = await prisma.$transaction(async (tx) => {
+            const ecfNcfSeq = await allocateNextEcfNcfSeq(tx, companyId, ecfTipo, environment);
+            return tx.cotizacion.update({
+              where: { id: cotizacionId },
+              data: { ecfNcfSeq, dgiiEnvironment: environment },
+              include: { company: true, client: true, items: { orderBy: { itemNumber: "asc" } } },
+            });
           });
-        });
-      } catch (e) {
-        if (e instanceof Error && e.name === ECF_NCF_SEQ_EXCEEDED_ERROR_NAME) {
-          return { ok: false as const, status: 400, message: e.message };
+        } catch (e) {
+          if (e instanceof Error && e.name === ECF_NCF_SEQ_EXCEEDED_ERROR_NAME) {
+            return { ok: false as const, status: 400, message: e.message };
+          }
+          throw e;
         }
-        throw e;
+      } else {
+        // Solo vista previa: no se reserva ni persiste nada, solo se calcula un número
+        // indicativo para armar el XML de muestra.
+        const preview = await previewNextEcfNcfForCotizacion(cotizacionId, companyId);
+        previewSeq = preview?.ecfNcfSeq;
       }
     }
 
-    const payload = toPayload(cotizacion);
+    const payload = toPayload(cotizacion, previewSeq);
     const validation = validateEcfPayload(payload);
     if (!validation.valid) {
       return {
@@ -356,7 +381,9 @@ export const ecfService = {
 
     await ensureCotizacionSeqAdvancedAfterSequenceReject(cotizacionId, companyId);
 
-    const generation = await this.generateForCotizacion(cotizacionId, companyId);
+    const generation = await this.generateForCotizacion(cotizacionId, companyId, {
+      reserveSeq: true,
+    });
     if (!generation.ok) return generation;
 
     try {

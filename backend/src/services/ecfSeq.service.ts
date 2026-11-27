@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { prisma } from "../prisma";
 import {
   ECF_NCF_SEQ_EXCEEDED_MESSAGE,
   ECF_NCF_SEQ_MAX,
@@ -57,7 +58,7 @@ const lockCounterRow = async (
  * propósito -- no deben inflar el arranque de un contador recién separado por ambiente.
  */
 export const getLastEcfNcfSeq = async (
-  tx: Prisma.TransactionClient,
+  tx: Prisma.TransactionClient | typeof prisma,
   companyId: number,
   ecfTipo: string,
   environment: DgiiEnvironment,
@@ -96,6 +97,36 @@ export const markEcfNcfSeqUsed = async (
     where: counterWhere(companyId, tipo, environment),
     create: { companyId, ecfTipo: tipo, environment, lastSeq: nextLast },
     update: { lastSeq: nextLast },
+  });
+};
+
+/**
+ * Libera una secuencia reservada (ej. al generar/previsualizar el XML) que nunca llegó a
+ * transmitirse a DGII y cuya cotización se está borrando. Solo retrocede el contador si `seq`
+ * sigue siendo la cima (nada más alto la usó mientras tanto) -- si no, otra cotización ya
+ * avanzó el contador por encima y no hay nada que liberar sin arriesgar una colisión futura.
+ */
+export const releaseEcfNcfSeqIfUnused = async (
+  tx: Prisma.TransactionClient,
+  companyId: number,
+  ecfTipo: string,
+  environment: DgiiEnvironment,
+  seq: number,
+): Promise<void> => {
+  const n = Math.floor(seq);
+  if (!Number.isFinite(n) || n < 1) return;
+
+  const tipo = normalizeEcfTipo(ecfTipo);
+  await lockCounterRow(tx, companyId, tipo, environment);
+  const counter = await tx.companyEcfSeqCounter.findUnique({
+    where: counterWhere(companyId, tipo, environment),
+    select: { lastSeq: true },
+  });
+  if (counter?.lastSeq !== n) return;
+
+  await tx.companyEcfSeqCounter.update({
+    where: counterWhere(companyId, tipo, environment),
+    data: { lastSeq: n - 1 },
   });
 };
 

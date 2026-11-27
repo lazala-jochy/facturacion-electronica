@@ -6,12 +6,14 @@ import {
   itemLineTotalValue,
 } from "../utils/tax";
 import type { DgiiSubmissionResult } from "../types/dgiiEcf";
-import { normalizeEcfTipo } from "../utils/ecfTipo";
+import { buildEcfNumber, normalizeEcfTipo } from "../utils/ecfTipo";
 import { extractEncfFromDgiiResponse, isDgiiSequenceRejection } from "../utils/dgiiRejection";
 import {
   allocateNextAfterUsedSeq,
   allocateNextEcfNcfSeq,
+  getLastEcfNcfSeq,
   markEcfNcfSeqUsed,
+  releaseEcfNcfSeqIfUnused,
 } from "./ecfSeq.service";
 import { isValidPhoneFormat } from "../utils/validation";
 import { validateCotizacionEcfBusiness } from "./ecfTipoHandlers";
@@ -115,6 +117,49 @@ const parseFechaLimitePago = (
 
 /** Error name (no subclass) para detectar límite DGII sin acoplar mensajes en distintos idiomas. */
 export const ECF_NCF_SEQ_EXCEEDED_ERROR_NAME = "EcfNcfSeqExceededError";
+
+/**
+ * "prepared" significa que el XML del e-CF se generó/firmó localmente, pero todavía no se
+ * transmitió a DGII -- no cuenta como envío. Solo los estados que implican un intento real de
+ * transmisión (aceptado, rechazado, pendiente, en cola/reintentando) bloquean el borrado.
+ */
+export const cotizacionWasSentToDgii = (dgiiStatus: string | null | undefined): boolean => {
+  const status = dgiiStatus?.trim() ?? "";
+  return status !== "" && status !== "prepared";
+};
+
+/**
+ * Registra un intento de envío a DGII en el historial inmutable (CotizacionDgiiIntento).
+ * Un e-NCF rechazado ya no se reutiliza, así que cada secuencia usada (aceptada o rechazada,
+ * cualquiera sea el motivo) debe quedar registrada aparte del estado vigente en Cotizacion,
+ * que sí se sobreescribe en cada intento.
+ */
+export async function recordDgiiIntento(
+  tx: Prisma.TransactionClient | typeof prisma,
+  params: {
+    cotizacionId: number;
+    companyId: number;
+    ecfTipo: string;
+    ecfNcfSeq: number | null;
+    dgiiEnvironment: string | null;
+    dgiiStatus: string;
+    dgiiResponse: string | null;
+    dgiiTrackId: string | null;
+  },
+): Promise<void> {
+  await tx.cotizacionDgiiIntento.create({
+    data: {
+      cotizacionId: params.cotizacionId,
+      companyId: params.companyId,
+      ecfTipo: normalizeEcfTipo(params.ecfTipo),
+      ecfNcfSeq: params.ecfNcfSeq,
+      dgiiEnvironment: params.dgiiEnvironment,
+      dgiiStatus: params.dgiiStatus,
+      dgiiResponse: params.dgiiResponse,
+      dgiiTrackId: params.dgiiTrackId,
+    },
+  });
+}
 
 const allocateEcfNcfSeq = allocateNextEcfNcfSeq;
 
@@ -234,6 +279,67 @@ export async function ensureCotizacionSeqAdvancedAfterSequenceReject(
   }
 
   return { advanced: false };
+}
+
+export type EcfNcfSeqPreview = {
+  ecfTipo: string;
+  ecfNcfSeq: number;
+  ecfNumber: string;
+  /** true si ese e-NCF ya está reservado en la cotización (se enviará tal cual). false si es
+   * solo una previsión: recién se asigna/persiste dentro de la transacción de envío. */
+  reserved: boolean;
+};
+
+/**
+ * Previsualiza, SIN reservar ni persistir nada, qué e-NCF se usaría si se enviara esta
+ * cotización a DGII ahora mismo. Pensado para el modal de confirmación "¿Enviar a DGII?":
+ * si el usuario cancela, no debe quedar ningún e-NCF asignado -- esa asignación solo ocurre
+ * de verdad al enviar (ver generateForCotizacion / persistCotizacionAfterDgiiSubmission).
+ */
+export async function previewNextEcfNcfForCotizacion(
+  cotizacionId: number,
+  companyId: number,
+): Promise<EcfNcfSeqPreview | null> {
+  const cot = await prisma.cotizacion.findFirst({
+    where: { id: cotizacionId, companyId },
+    select: {
+      ecfTipo: true,
+      ecfNcfSeq: true,
+      dgiiStatus: true,
+      dgiiResponse: true,
+      company: { select: { dgiiEnvironment: true } },
+    },
+  });
+  if (!cot) return null;
+
+  const tipo = normalizeEcfTipo(cot.ecfTipo);
+  const environment = normalizeDgiiEnvironment(cot.company.dgiiEnvironment);
+
+  // Rechazo por secuencia ya utilizada: la secuencia vigente está quemada, el próximo envío
+  // la liberará y tomará la siguiente libre (ver ensureCotizacionSeqAdvancedAfterSequenceReject).
+  const isPendingSequenceAdvance =
+    cot.dgiiStatus === "rejected" && isDgiiSequenceRejection(cot.dgiiResponse);
+
+  if (cot.ecfNcfSeq != null && !isPendingSequenceAdvance) {
+    return {
+      ecfTipo: tipo,
+      ecfNcfSeq: cot.ecfNcfSeq,
+      ecfNumber: buildEcfNumber(tipo, cot.ecfNcfSeq),
+      reserved: true,
+    };
+  }
+
+  const usedSeq = isPendingSequenceAdvance && cot.ecfNcfSeq ? cot.ecfNcfSeq : 0;
+  // Lectura sin lock (solo previsión): el número definitivo se fija recién dentro de la
+  // transacción de envío, que sí bloquea el contador para evitar colisiones concurrentes.
+  const last = await getLastEcfNcfSeq(prisma, companyId, tipo, environment);
+  const predicted = Math.min(Math.max(last, usedSeq) + 1, ECF_NCF_SEQ_MAX);
+  return {
+    ecfTipo: tipo,
+    ecfNcfSeq: predicted,
+    ecfNumber: buildEcfNumber(tipo, predicted),
+    reserved: false,
+  };
 }
 
 export type SetManualEcfNcfSeqResult =
@@ -372,6 +478,16 @@ export async function persistCotizacionAfterDgiiSubmission(
             dgiiEnvironment: environment,
           },
         });
+        await recordDgiiIntento(tx, {
+          cotizacionId,
+          companyId,
+          ecfTipo: tipo,
+          ecfNcfSeq: usedSeq > 0 ? usedSeq : cotRow?.ecfNcfSeq ?? null,
+          dgiiEnvironment: environment,
+          dgiiStatus: dgiiResponse.status,
+          dgiiResponse: dgiiResponse.rawResponse,
+          dgiiTrackId: dgiiResponse.trackId,
+        });
         return { newSeq };
       }
 
@@ -384,6 +500,16 @@ export async function persistCotizacionAfterDgiiSubmission(
           dgiiResponse: dgiiResponse.rawResponse,
           dgiiSubmittedAt,
         },
+      });
+      await recordDgiiIntento(tx, {
+        cotizacionId,
+        companyId,
+        ecfTipo: tipo,
+        ecfNcfSeq: cotRow?.ecfNcfSeq ?? null,
+        dgiiEnvironment: environment,
+        dgiiStatus: dgiiResponse.status,
+        dgiiResponse: dgiiResponse.rawResponse,
+        dgiiTrackId: dgiiResponse.trackId,
       });
       return {};
     }
@@ -401,6 +527,16 @@ export async function persistCotizacionAfterDgiiSubmission(
         dgiiResponse: dgiiResponse.rawResponse,
         dgiiSubmittedAt,
       },
+    });
+    await recordDgiiIntento(tx, {
+      cotizacionId,
+      companyId,
+      ecfTipo: tipo,
+      ecfNcfSeq: cotRow?.ecfNcfSeq ?? null,
+      dgiiEnvironment: environment,
+      dgiiStatus: dgiiResponse.status,
+      dgiiResponse: dgiiResponse.rawResponse,
+      dgiiTrackId: dgiiResponse.trackId,
     });
     return {};
   });
@@ -708,6 +844,7 @@ export const cotizacionService = {
         client: true,
         company: true,
         items: { orderBy: { itemNumber: "asc" } },
+        dgiiIntentos: { orderBy: { createdAt: "desc" } },
       },
     });
   },
@@ -944,6 +1081,9 @@ export const cotizacionService = {
       select: {
         id: true,
         dgiiStatus: true,
+        ecfTipo: true,
+        ecfNcfSeq: true,
+        dgiiEnvironment: true,
         company: { select: { dgiiEnvironment: true } },
       },
     });
@@ -954,7 +1094,7 @@ export const cotizacionService = {
         message: "Cotizacion no encontrada.",
       };
     }
-    const hasBeenSubmitted = Boolean(existing.dgiiStatus?.trim());
+    const hasBeenSubmitted = cotizacionWasSentToDgii(existing.dgiiStatus);
     const isProduccion = existing.company.dgiiEnvironment === "PRODUCCION";
     // En Producción cualquier envío a DGII (aceptado, rechazado o lo que sea) ya es un hecho real
     // ante DGII -- borrarlo esconde ese intento. En Certificación no hay restricción: son
@@ -967,8 +1107,23 @@ export const cotizacionService = {
           "En ambiente de Producción no se puede eliminar un comprobante que ya fue enviado a DGII (aceptado, rechazado o pendiente).",
       };
     }
-    await prisma.cotizacion.delete({
-      where: { id },
+    await prisma.$transaction(async (tx) => {
+      // Esta cotización nunca llegó a transmitirse a DGII: si su e-NCF sigue siendo el último
+      // reservado (nadie más avanzó el contador después), se libera para que la próxima
+      // cotización lo reclame en vez de perderlo para siempre.
+      if (!hasBeenSubmitted && existing.ecfNcfSeq != null) {
+        const environment = normalizeDgiiEnvironment(
+          existing.dgiiEnvironment ?? existing.company.dgiiEnvironment,
+        );
+        await releaseEcfNcfSeqIfUnused(
+          tx,
+          companyId,
+          existing.ecfTipo,
+          environment,
+          existing.ecfNcfSeq,
+        );
+      }
+      await tx.cotizacion.delete({ where: { id } });
     });
     return { ok: true as const };
   },

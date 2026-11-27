@@ -78,7 +78,10 @@ export default function ECF({ company }: { company: AuthCompany }) {
    */
   const canDeleteCotizacion = (dgiiStatus: string | null | undefined): boolean => {
     if (!isDgiiProduccion) return true;
-    return !dgiiStatus?.trim();
+    // "prepared": el XML se generó/firmó localmente pero nunca se transmitió a DGII -- no
+    // cuenta como envío real, se puede borrar igual que si no tuviera estado.
+    const status = dgiiStatus?.trim() ?? "";
+    return status === "" || status === "prepared";
   };
 
   const loadRows = useCallback(async () => {
