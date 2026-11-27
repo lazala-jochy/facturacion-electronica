@@ -16,6 +16,7 @@ import {
   mapUnidadMedidaDgii,
   money,
   qty,
+  sanitizedRncComprador,
   splitPhones,
   unitPrice4,
 } from "./common";
@@ -80,14 +81,14 @@ export function appendCompradorExtranjero47(enc: XMLBuilder, payload: EcfPayload
 /** Comprador mínimo (muestra e-CF 41: solo RNC y razón social). */
 export function appendCompradorMinimal(enc: XMLBuilder, payload: EcfPayload): void {
   const comp = enc.ele("Comprador");
-  comp.ele("RNCComprador").txt(payload.buyer.rncCedula.trim());
+  comp.ele("RNCComprador").txt(sanitizedRncComprador(payload.buyer.rncCedula));
   comp.ele("RazonSocialComprador").txt(payload.buyer.name.trim());
   comp.up();
 }
 
 export function appendComprador(enc: XMLBuilder, payload: EcfPayload): void {
   const comp = enc.ele("Comprador");
-  comp.ele("RNCComprador").txt(payload.buyer.rncCedula.trim());
+  comp.ele("RNCComprador").txt(sanitizedRncComprador(payload.buyer.rncCedula));
   comp.ele("RazonSocialComprador").txt(payload.buyer.name.trim());
   if (payload.buyer.contact?.trim()) {
     comp.ele("ContactoComprador").txt(payload.buyer.contact.trim());
@@ -123,7 +124,7 @@ export function appendEmisorRfce32(enc: XMLBuilder, payload: RfcePayload): void 
 
 export function appendCompradorRfce32(enc: XMLBuilder, payload: RfcePayload): void {
   const comp = enc.ele("Comprador");
-  comp.ele("RNCComprador").txt(payload.buyer.rncCedula.trim());
+  comp.ele("RNCComprador").txt(sanitizedRncComprador(payload.buyer.rncCedula));
   comp.ele("RazonSocialComprador").txt(payload.buyer.name.trim());
   comp.up();
 }

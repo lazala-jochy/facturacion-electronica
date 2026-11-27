@@ -19,6 +19,22 @@ export const money = (value: number) => value.toFixed(2);
 export const qty = (value: number) => value.toFixed(2);
 export const unitPrice4 = (value: number) => value.toFixed(4);
 
+/** RNC/Cedula para XML DGII: solo dígitos (sin guiones ni espacios) -- DGII valida longitud exacta (9 u 11). */
+export function onlyDigits(value: string): string {
+  return value.replace(/\D/g, "");
+}
+
+/** RNCComprador tal como lo exige DGII: limpio de guiones y no vacío, o lanza un error claro. */
+export function sanitizedRncComprador(rncCedula: string): string {
+  const digits = onlyDigits(rncCedula);
+  if (!digits) {
+    throw new Error(
+      `RNC/Cedula del comprador invalido: "${rncCedula}" no contiene digitos.`,
+    );
+  }
+  return digits;
+}
+
 /** Fecha emisión (bloque Emisor): DD-MM-YYYY */
 export const fechaEmisionDdMmYyyy = (d: Date) => {
   const dd = String(d.getDate()).padStart(2, "0");

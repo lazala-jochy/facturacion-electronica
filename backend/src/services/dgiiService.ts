@@ -225,6 +225,8 @@ export const submitEcfToDgii = async (
   }
 
   const mapped = mapDgiiRawBodyToCotizacionEstado(rawResponse);
+  /** Rechazo confirmado por `codigo`/`estado` estructurado de DGII (confiable), no por heurística de texto. */
+  const structuredRejection = mapped === "rejected";
   let status: "accepted" | "rejected" | "prepared" | "pending";
   if (mapped === "rejected") {
     status = "rejected";
@@ -261,7 +263,13 @@ export const submitEcfToDgii = async (
 
   const accepted = status === "accepted";
 
-  if (status === "rejected" && !trackId?.trim()) {
+  /**
+   * Un rechazo con `codigo`/`estado` estructurado (ej. {"codigo":2,"estado":"Rechazado",...}) es un
+   * veredicto firme de DGII aunque no traiga trackId -- DGII no siempre asigna uno a un documento
+   * rechazado en recepción. Solo desconfiamos (y reintentamos) cuando el "rechazo" salió de la
+   * heurística de texto libre, que puede confundir una página de error genérica con un rechazo real.
+   */
+  if (status === "rejected" && !trackId?.trim() && !structuredRejection) {
     throw new DgiiEcfError(
       `DGII respondió HTTP ${response.status}, pero no confirmó aceptación ni devolvió trackId real. Respuesta: ${compactBody(rawResponse)}`,
       "RECEPTION_FAILED",
