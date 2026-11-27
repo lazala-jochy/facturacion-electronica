@@ -1556,7 +1556,7 @@ export default function Clients() {
                     <th className="px-3 sm:px-4 py-3 text-left">RNC / Cédula</th>
                     <th className="px-3 sm:px-4 py-3 text-left">Teléfono</th>
                     <th className="hidden lg:table-cell px-3 sm:px-4 py-3 text-left">Correo</th>
-                    <th className="px-3 sm:px-4 py-3 text-right">N° Cot.</th>
+                    <th className="px-3 sm:px-4 py-3 text-right">N° Cot. / Fecha</th>
                     <th className="px-3 sm:px-4 py-3 text-left">Tipo e-CF</th>
                     <th className="px-3 sm:px-4 py-3 text-left">e-NCF</th>
                     <th className="px-3 sm:px-4 py-3 text-left">Total</th>
@@ -1738,10 +1738,21 @@ export default function Clients() {
                           {client.email || "-"}
                         </td>
 
-                        <td className="px-3 sm:px-4 py-3 text-right text-indigo-600 font-medium text-sm tabular-nums">
-                          {cot != null && Number.isFinite(Number(cot.number))
-                            ? Number(cot.number)
-                            : "—"}
+                        <td className="px-3 sm:px-4 py-3 text-right whitespace-nowrap">
+                          <div className="text-indigo-600 font-medium text-sm tabular-nums">
+                            {cot != null && Number.isFinite(Number(cot.number))
+                              ? Number(cot.number)
+                              : "—"}
+                          </div>
+                          <div className="text-gray-500 text-[11px]">
+                            {cot?.created_at
+                              ? new Date(cot.created_at).toLocaleDateString("es-DO", {
+                                  day: "2-digit",
+                                  month: "short",
+                                  year: "numeric",
+                                })
+                              : "—"}
+                          </div>
                         </td>
 
                         <td className="px-3 sm:px-4 py-3 text-gray-700 text-xs">
@@ -2492,6 +2503,18 @@ export default function Clients() {
                         <p className="text-gray-500 text-xs">N° Cotización</p>
                         <p className="text-indigo-600 font-medium tabular-nums">
                           {cot ? cot.number : "-"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-gray-500 text-xs">Fecha cotización</p>
+                        <p className="text-gray-900 font-medium">
+                          {cot?.created_at
+                            ? new Date(cot.created_at).toLocaleDateString("es-DO", {
+                                day: "2-digit",
+                                month: "short",
+                                year: "numeric",
+                              })
+                            : "-"}
                         </p>
                       </div>
                       <div>

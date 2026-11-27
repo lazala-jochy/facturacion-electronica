@@ -103,16 +103,23 @@ export default function ECF({ company }: { company: AuthCompany }) {
     void loadRows();
   }, [loadRows, location.key]);
 
+  // Fecha en que el comprobante realmente se transmitió a DGII (se convirtió en factura).
+  // Las cotizaciones que todavía no se enviaron no tienen esa fecha -- se agrupan por su fecha
+  // de creación para que no desaparezcan de los filtros, pero la columna "Fecha factura" les
+  // muestra "—" (no hay factura todavía).
+  const invoiceOrCreatedDate = (r: { dgii_submitted_at?: string | null; created_at: string }) =>
+    new Date(r.dgii_submitted_at ?? r.created_at);
+
   const years = useMemo(() => {
     const setYears = new Set<number>();
-    for (const r of rows) setYears.add(new Date(r.created_at).getFullYear());
+    for (const r of rows) setYears.add(invoiceOrCreatedDate(r).getFullYear());
     return Array.from(setYears).sort((a, b) => b - a);
   }, [rows]);
 
   const ecfRows = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     const filtered = rows.filter((r) => {
-      const d = new Date(r.created_at);
+      const d = invoiceOrCreatedDate(r);
       const y = String(d.getFullYear());
       const mo = String(d.getMonth() + 1).padStart(2, "0");
       if (yearFilter !== "all" && y !== yearFilter) return false;
@@ -140,8 +147,7 @@ export default function ECF({ company }: { company: AuthCompany }) {
     return [...filtered].sort((a, b) => {
       let compare = 0;
       if (sortBy === "date") {
-        compare =
-          new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        compare = invoiceOrCreatedDate(a).getTime() - invoiceOrCreatedDate(b).getTime();
       }
       if (sortBy === "client") compare = a.client_name.localeCompare(b.client_name);
       if (sortBy === "rnc") compare = (a.client_rnc_cedula ?? "").localeCompare(b.client_rnc_cedula ?? "");
@@ -554,7 +560,7 @@ export default function ECF({ company }: { company: AuthCompany }) {
           <table className="w-full text-center text-xs sm:text-sm">
             <thead className="bg-slate-100">
               <tr>
-                <th className="p-2 sm:p-3">Fecha</th>
+                <th className="p-2 sm:p-3">Fecha factura</th>
                 <th className="p-2 sm:p-3"># Cot.</th>
                 <th className="p-2 sm:p-3">Cliente</th>
                 <th className="p-2 sm:p-3">RNC</th>
@@ -563,7 +569,7 @@ export default function ECF({ company }: { company: AuthCompany }) {
                 <th className="p-2 sm:p-3">Total</th>
                 <th className="p-2 sm:p-3">Estado</th>
                 <th className="p-2 sm:p-3">Track ID</th>
-                <th className="p-2 sm:p-3">Rep.</th>
+                <th className="p-2 sm:p-3">Factura</th>
                 {isDgiiCertification && <th className="p-2 sm:p-3">Detalle</th>}
                 <th className="p-2 sm:p-3">Acciones</th>
               </tr>
@@ -573,11 +579,15 @@ export default function ECF({ company }: { company: AuthCompany }) {
                 pageRows.map((row) => (
                   <tr key={row.id}>
                     <td className="p-2 sm:p-3 whitespace-nowrap text-slate-600 tabular-nums">
-                      {new Date(row.created_at).toLocaleDateString("es-DO", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      })}
+                      {row.dgii_submitted_at ? (
+                        new Date(row.dgii_submitted_at).toLocaleDateString("es-DO", {
+                          day: "2-digit",
+                          month: "short",
+                          year: "numeric",
+                        })
+                      ) : (
+                        <span title="Todavía no se envió a DGII: no es factura.">—</span>
+                      )}
                     </td>
                     <td className="p-2 sm:p-3 font-medium tabular-nums">{row.number}</td>
                     <td className="p-2 sm:p-3 text-left">{row.client_name}</td>
@@ -717,7 +727,7 @@ export default function ECF({ company }: { company: AuthCompany }) {
                               <path
                                 strokeLinecap="round"
                                 strokeLinejoin="round"
-                                d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
+                                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
                               />
                             </svg>
                           )}
